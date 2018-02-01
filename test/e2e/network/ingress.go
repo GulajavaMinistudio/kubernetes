@@ -19,17 +19,22 @@ package network
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
+	extensions "k8s.io/api/extensions/v1beta1"
 	rbacv1beta1 "k8s.io/api/rbac/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/authentication/serviceaccount"
+	gcecloud "k8s.io/kubernetes/pkg/cloudprovider/providers/gce"
 	"k8s.io/kubernetes/test/e2e/framework"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	compute "google.golang.org/api/compute/v1"
 )
 
 const (
@@ -151,6 +156,165 @@ var _ = SIGDescribe("Loadbalancing: L7", func() {
 			// restarter.restart()
 			// By("should continue serving on provided static-ip for 30 seconds")
 			// framework.ExpectNoError(jig.verifyURL(fmt.Sprintf("https://%v/", ip), "", 30, 1*time.Second, httpClient))
+		})
+
+		It("should update ingress while sync failures occur on other ingresses", func() {
+			By("Creating ingresses that would fail on sync.")
+			ingFailTLSBackend := &extensions.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ing-fail-on-tls-backend",
+				},
+				Spec: extensions.IngressSpec{
+					TLS: []extensions.IngressTLS{
+						{SecretName: "tls-secret-notexist"},
+					},
+					Backend: &extensions.IngressBackend{
+						ServiceName: "echoheaders-notexist",
+						ServicePort: intstr.IntOrString{
+							Type:   intstr.Int,
+							IntVal: 80,
+						},
+					},
+				},
+			}
+			_, err := jig.Client.ExtensionsV1beta1().Ingresses(ns).Create(ingFailTLSBackend)
+			defer func() {
+				if err := jig.Client.ExtensionsV1beta1().Ingresses(ns).Delete(ingFailTLSBackend.Name, nil); err != nil {
+					framework.Logf("Failed to delete ingress %s: %v", ingFailTLSBackend.Name, err)
+				}
+			}()
+			Expect(err).NotTo(HaveOccurred())
+
+			ingFailRules := &extensions.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ing-fail-on-rules",
+				},
+				Spec: extensions.IngressSpec{
+					Rules: []extensions.IngressRule{
+						{
+							Host: "foo.bar.com",
+							IngressRuleValue: extensions.IngressRuleValue{
+								HTTP: &extensions.HTTPIngressRuleValue{
+									Paths: []extensions.HTTPIngressPath{
+										{
+											Path: "/foo",
+											Backend: extensions.IngressBackend{
+												ServiceName: "echoheaders-notexist",
+												ServicePort: intstr.IntOrString{
+													Type:   intstr.Int,
+													IntVal: 80,
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			_, err = jig.Client.ExtensionsV1beta1().Ingresses(ns).Create(ingFailRules)
+			defer func() {
+				if err := jig.Client.ExtensionsV1beta1().Ingresses(ns).Delete(ingFailRules.Name, nil); err != nil {
+					framework.Logf("Failed to delete ingress %s: %v", ingFailRules.Name, err)
+				}
+			}()
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Creating a basic HTTP ingress and wait for it to come up")
+			jig.CreateIngress(filepath.Join(framework.IngressManifestPath, "http"), ns, nil, nil)
+			jig.WaitForIngress(true)
+
+			By("Updating the path on ingress and wait for it to take effect")
+			jig.Update(func(ing *extensions.Ingress) {
+				updatedRule := extensions.IngressRule{
+					Host: "ingress.test.com",
+					IngressRuleValue: extensions.IngressRuleValue{
+						HTTP: &extensions.HTTPIngressRuleValue{
+							Paths: []extensions.HTTPIngressPath{
+								{
+									Path: "/test",
+									// Copy backend from the first rule.
+									Backend: ing.Spec.Rules[0].HTTP.Paths[0].Backend,
+								},
+							},
+						},
+					},
+				}
+				// Replace the first rule.
+				ing.Spec.Rules[0] = updatedRule
+			})
+			// Wait for change to take effect on the updated ingress.
+			jig.WaitForIngress(false)
+		})
+
+		It("should not reconcile manually modified health check for ingress", func() {
+			By("Creating a basic HTTP ingress and wait for it to come up.")
+			jig.CreateIngress(filepath.Join(framework.IngressManifestPath, "http"), ns, nil, nil)
+			jig.WaitForIngress(true)
+
+			// Get cluster UID.
+			clusterID, err := framework.GetClusterID(f.ClientSet)
+			Expect(err).NotTo(HaveOccurred())
+			// Get default backend nodeport.
+			defaultBackendNodePort, err := jig.GetDefaultBackendNodePort()
+			Expect(err).NotTo(HaveOccurred())
+
+			// Filter health check using cluster UID as the suffix.
+			By("Retrieving relevant health check resources from GCE.")
+			gceCloud := gceController.Cloud.Provider.(*gcecloud.GCECloud)
+			hcs, err := gceCloud.ListHealthChecks()
+			Expect(err).NotTo(HaveOccurred())
+			ingressHCs := []*compute.HealthCheck{}
+			for _, hc := range hcs {
+				if strings.HasSuffix(hc.Name, clusterID) {
+					Expect(hc.HttpHealthCheck).ToNot(Equal(nil))
+					// Skip the default backend healthcheck as that shouldn't be customized.
+					if hc.HttpHealthCheck.Port == int64(defaultBackendNodePort) {
+						continue
+					}
+					ingressHCs = append(ingressHCs, hc)
+				}
+			}
+
+			Expect(len(ingressHCs)).ToNot(Equal(0))
+			hcToChange := ingressHCs[0]
+			By(fmt.Sprintf("Modifying health check %v without involving ingress.", hcToChange.Name))
+			// Change timeout from 60s to 25s.
+			hcToChange.TimeoutSec = 25
+			// Change path from /healthz to /.
+			hcToChange.HttpHealthCheck.RequestPath = "/"
+			err = gceCloud.UpdateHealthCheck(hcToChange)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Add one more path to ingress to trigger resource syncing.
+			By("Adding a new path to ingress and wait for it to take effect.")
+			jig.Update(func(ing *extensions.Ingress) {
+				ing.Spec.Rules = append(ing.Spec.Rules, extensions.IngressRule{
+					Host: "ingress.test.com",
+					IngressRuleValue: extensions.IngressRuleValue{
+						HTTP: &extensions.HTTPIngressRuleValue{
+							Paths: []extensions.HTTPIngressPath{
+								{
+									Path: "/test",
+									// Copy backend from the first rule.
+									Backend: ing.Spec.Rules[0].HTTP.Paths[0].Backend,
+								},
+							},
+						},
+					},
+				})
+			})
+			// Wait for change to take effect before checking the health check resource.
+			jig.WaitForIngress(false)
+
+			// Validate the modified fields on health check are intact.
+			By("Checking if the modified health check is unchanged.")
+			hcAfterSync, err := gceCloud.GetHealthCheck(hcToChange.Name)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hcAfterSync.HttpHealthCheck).ToNot(Equal(nil))
+			Expect(hcAfterSync.TimeoutSec).To(Equal(hcToChange.TimeoutSec))
+			Expect(hcAfterSync.HttpHealthCheck.RequestPath).To(Equal(hcToChange.HttpHealthCheck.RequestPath))
 		})
 
 		It("multicluster ingress should get instance group annotation", func() {
