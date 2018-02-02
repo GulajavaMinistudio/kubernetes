@@ -203,10 +203,10 @@ const (
 	BlockVolume utilfeature.Feature = "BlockVolume"
 
 	// owner: @pospispa
-	//
 	// alpha: v1.9
-	// Postpone deletion of a persistent volume claim in case it is used by a pod
-	PVCProtection utilfeature.Feature = "PVCProtection"
+	//
+	// Postpone deletion of a PV or a PVC when they are being used
+	StorageProtection utilfeature.Feature = "StorageProtection"
 
 	// owner: @aveshagarwal
 	// alpha: v1.9
@@ -231,6 +231,13 @@ const (
 	//
 	// Enable Hyper-V containers on Windows
 	HyperVContainer utilfeature.Feature = "HyperVContainer"
+
+	// owner: @joelsmith
+	// deprecated: v1.10
+	//
+	// Mount secret, configMap, downwardAPI and projected volumes ReadOnly. Note: this feature
+	// gate is present only for backward compatability, it will be removed in the 1.11 release.
+	ReadOnlyAPIDataVolumes utilfeature.Feature = "ReadOnlyAPIDataVolumes"
 )
 
 func init() {
@@ -264,10 +271,10 @@ var defaultKubernetesFeatureGates = map[utilfeature.Feature]utilfeature.FeatureS
 	ServiceNodeExclusion:                        {Default: false, PreRelease: utilfeature.Alpha},
 	MountContainers:                             {Default: false, PreRelease: utilfeature.Alpha},
 	VolumeScheduling:                            {Default: false, PreRelease: utilfeature.Alpha},
-	CSIPersistentVolume:                         {Default: false, PreRelease: utilfeature.Alpha},
+	CSIPersistentVolume:                         {Default: true, PreRelease: utilfeature.Beta},
 	CustomPodDNS:                                {Default: false, PreRelease: utilfeature.Alpha},
 	BlockVolume:                                 {Default: false, PreRelease: utilfeature.Alpha},
-	PVCProtection:                               {Default: false, PreRelease: utilfeature.Alpha},
+	StorageProtection:                           {Default: false, PreRelease: utilfeature.Alpha},
 	ResourceLimitsPriorityFunction:              {Default: false, PreRelease: utilfeature.Alpha},
 	SupportIPVSProxyMode:                        {Default: false, PreRelease: utilfeature.Beta},
 	SupportPodPidsLimit:                         {Default: false, PreRelease: utilfeature.Alpha},
@@ -287,4 +294,5 @@ var defaultKubernetesFeatureGates = map[utilfeature.Feature]utilfeature.FeatureS
 
 	// features that enable backwards compatability but are scheduled to be removed
 	ServiceProxyAllowExternalIPs: {Default: false, PreRelease: utilfeature.Deprecated},
+	ReadOnlyAPIDataVolumes:       {Default: true, PreRelease: utilfeature.Deprecated},
 }
