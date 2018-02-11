@@ -14,12 +14,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package bootstrap
+package manifest
 
-// Context holds common information for vSphere tests
-type Context struct {
-	// NodeMapper and other instances, common to vSphere tests
+import (
+	"testing"
+
+	extensions "k8s.io/api/extensions/v1beta1"
+)
+
+func TestIngressToManifest(t *testing.T) {
+	ing := &extensions.Ingress{}
+	// Write the ingress to a file and ensure that there is no error.
+	if err := IngressToManifest(ing, "/tmp/ing.yaml"); err != nil {
+		t.Fatalf("Error in creating file: %s", err)
+	}
+	// Writing it again should not return an error.
+	if err := IngressToManifest(ing, "/tmp/ing.yaml"); err != nil {
+		t.Fatalf("Error in creating file: %s", err)
+	}
 }
-
-// TestContext should be used by all tests to access common context data. It should be initialized only once, during bootstrapping the tests.
-var TestContext Context
