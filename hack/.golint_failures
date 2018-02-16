@@ -1,5 +1,4 @@
 cluster/images/etcd-version-monitor
-cmd/gke-certificates-controller/app
 cmd/hyperkube
 cmd/kube-controller-manager/app
 cmd/kube-proxy/app
@@ -163,8 +162,9 @@ pkg/kubelet/apis
 pkg/kubelet/apis/cri/runtime/v1alpha2
 pkg/kubelet/apis/cri/testing
 pkg/kubelet/apis/deviceplugin/v1alpha
+pkg/kubelet/apis/deviceplugin/v1beta1
 pkg/kubelet/apis/kubeletconfig
-pkg/kubelet/apis/kubeletconfig/v1alpha1
+pkg/kubelet/apis/kubeletconfig/v1beta1
 pkg/kubelet/cadvisor
 pkg/kubelet/cadvisor/testing
 pkg/kubelet/client

@@ -35,7 +35,6 @@ import (
 	"golang.org/x/net/context"
 	"k8s.io/api/core/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
@@ -210,21 +209,23 @@ func init() {
 
 // Initialize passes a Kubernetes clientBuilder interface to the cloud provider
 func (vs *VSphere) Initialize(clientBuilder controller.ControllerClientBuilder) {
+}
+
+// Initialize Node Informers
+func (vs *VSphere) SetInformers(informerFactory informers.SharedInformerFactory) {
 	if vs.cfg == nil {
 		return
 	}
 
 	// Only on controller node it is required to register listeners.
 	// Register callbacks for node updates
-	client := clientBuilder.ClientOrDie("vsphere-cloud-provider")
-	factory := informers.NewSharedInformerFactory(client, 5*time.Minute)
-	nodeInformer := factory.Core().V1().Nodes()
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	glog.V(4).Infof("Setting up node informers for vSphere Cloud Provider")
+	nodeInformer := informerFactory.Core().V1().Nodes().Informer()
+	nodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vs.NodeAdded,
 		DeleteFunc: vs.NodeDeleted,
 	})
-	go nodeInformer.Informer().Run(wait.NeverStop)
-	glog.V(4).Infof("vSphere cloud provider initialized")
+	glog.V(4).Infof("Node informers in vSphere cloud provider initialized")
 }
 
 // Creates new worker node interface and returns
@@ -606,6 +607,11 @@ func (vs *VSphere) InstanceExistsByProviderID(ctx context.Context, providerID st
 	}
 
 	return false, err
+}
+
+// InstanceShutdownByProviderID returns true if the instance is in safe state to detach volumes
+func (vs *VSphere) InstanceShutdownByProviderID(ctx context.Context, providerID string) (bool, error) {
+	return false, cloudprovider.NotImplemented
 }
 
 // InstanceID returns the cloud provider ID of the node with the specified Name.

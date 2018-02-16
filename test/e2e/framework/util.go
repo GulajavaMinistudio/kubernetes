@@ -2192,9 +2192,17 @@ func RunKubectlOrDieInput(data string, args ...string) string {
 	return NewKubectlCommand(args...).WithStdinData(data).ExecOrDie()
 }
 
-// RunKubemciCmd is a convenience wrapper over kubectlBuilder to run kubemci.
+// runKubemciWithKubeconfig is a convenience wrapper over runKubemciCmd
+func runKubemciWithKubeconfig(args ...string) (string, error) {
+	if TestContext.KubeConfig != "" {
+		args = append(args, "--"+clientcmd.RecommendedConfigPathFlag+"="+TestContext.KubeConfig)
+	}
+	return runKubemciCmd(args...)
+}
+
+// runKubemciCmd is a convenience wrapper over kubectlBuilder to run kubemci.
 // It assumes that kubemci exists in PATH.
-func RunKubemciCmd(args ...string) (string, error) {
+func runKubemciCmd(args ...string) (string, error) {
 	// kubemci is assumed to be in PATH.
 	kubemci := "kubemci"
 	b := new(kubectlBuilder)
@@ -5074,7 +5082,7 @@ func DumpDebugInfo(c clientset.Interface, ns string) {
 }
 
 func IsRetryableAPIError(err error) bool {
-	return apierrs.IsTimeout(err) || apierrs.IsServerTimeout(err) || apierrs.IsTooManyRequests(err) || apierrs.IsInternalError(err)
+	return apierrs.IsTimeout(err) || apierrs.IsServerTimeout(err) || apierrs.IsTooManyRequests(err)
 }
 
 // DsFromManifest reads a .json/yaml file and returns the daemonset in it.
