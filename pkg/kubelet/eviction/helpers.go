@@ -72,6 +72,7 @@ func init() {
 	signalToNodeCondition[evictionapi.SignalNodeFsAvailable] = v1.NodeDiskPressure
 	signalToNodeCondition[evictionapi.SignalImageFsInodesFree] = v1.NodeDiskPressure
 	signalToNodeCondition[evictionapi.SignalNodeFsInodesFree] = v1.NodeDiskPressure
+	signalToNodeCondition[evictionapi.SignalPIDAvailable] = v1.NodePIDPressure
 
 	// map signals to resources (and vice-versa)
 	signalToResource = map[evictionapi.Signal]v1.ResourceName{}
@@ -771,6 +772,17 @@ func makeSignalObservations(summary *statsapi.Summary, capacityProvider Capacity
 		}
 	}
 
+	if rlimit := summary.Node.Rlimit; rlimit != nil {
+		if rlimit.NumOfRunningProcesses != nil && rlimit.MaxPID != nil {
+			available := int64(*rlimit.MaxPID) - int64(*rlimit.NumOfRunningProcesses)
+			result[evictionapi.SignalPIDAvailable] = signalObservation{
+				available: resource.NewQuantity(available, resource.BinarySI),
+				capacity:  resource.NewQuantity(int64(*rlimit.MaxPID), resource.BinarySI),
+				time:      rlimit.Time,
+			}
+		}
+	}
+
 	if memoryAllocatableCapacity, ok := capacityProvider.GetCapacity()[v1.ResourceMemory]; ok {
 		memoryAllocatableAvailable := memoryAllocatableCapacity.Copy()
 		if reserved, exists := capacityProvider.GetNodeAllocatableReservation()[v1.ResourceMemory]; exists {
@@ -1059,38 +1071,15 @@ func buildResourceToNodeReclaimFuncs(imageGC ImageGC, containerGC ContainerGC, w
 		resourceToReclaimFunc[resourceNodeFs] = nodeReclaimFuncs{}
 		resourceToReclaimFunc[resourceNodeFsInodes] = nodeReclaimFuncs{}
 		// with an imagefs, imagefs pressure should delete unused images
-		resourceToReclaimFunc[resourceImageFs] = nodeReclaimFuncs{deleteTerminatedContainers(containerGC), deleteImages(imageGC, true)}
-		resourceToReclaimFunc[resourceImageFsInodes] = nodeReclaimFuncs{deleteTerminatedContainers(containerGC), deleteImages(imageGC, false)}
+		resourceToReclaimFunc[resourceImageFs] = nodeReclaimFuncs{containerGC.DeleteAllUnusedContainers, imageGC.DeleteUnusedImages}
+		resourceToReclaimFunc[resourceImageFsInodes] = nodeReclaimFuncs{containerGC.DeleteAllUnusedContainers, imageGC.DeleteUnusedImages}
 	} else {
 		// without an imagefs, nodefs pressure should delete logs, and unused images
 		// since imagefs and nodefs share a common device, they share common reclaim functions
-		resourceToReclaimFunc[resourceNodeFs] = nodeReclaimFuncs{deleteTerminatedContainers(containerGC), deleteImages(imageGC, true)}
-		resourceToReclaimFunc[resourceNodeFsInodes] = nodeReclaimFuncs{deleteTerminatedContainers(containerGC), deleteImages(imageGC, false)}
-		resourceToReclaimFunc[resourceImageFs] = nodeReclaimFuncs{deleteTerminatedContainers(containerGC), deleteImages(imageGC, true)}
-		resourceToReclaimFunc[resourceImageFsInodes] = nodeReclaimFuncs{deleteTerminatedContainers(containerGC), deleteImages(imageGC, false)}
+		resourceToReclaimFunc[resourceNodeFs] = nodeReclaimFuncs{containerGC.DeleteAllUnusedContainers, imageGC.DeleteUnusedImages}
+		resourceToReclaimFunc[resourceNodeFsInodes] = nodeReclaimFuncs{containerGC.DeleteAllUnusedContainers, imageGC.DeleteUnusedImages}
+		resourceToReclaimFunc[resourceImageFs] = nodeReclaimFuncs{containerGC.DeleteAllUnusedContainers, imageGC.DeleteUnusedImages}
+		resourceToReclaimFunc[resourceImageFsInodes] = nodeReclaimFuncs{containerGC.DeleteAllUnusedContainers, imageGC.DeleteUnusedImages}
 	}
 	return resourceToReclaimFunc
-}
-
-// deleteTerminatedContainers will delete terminated containers to free up disk pressure.
-func deleteTerminatedContainers(containerGC ContainerGC) nodeReclaimFunc {
-	return func() (*resource.Quantity, error) {
-		glog.Infof("eviction manager: attempting to delete unused containers")
-		err := containerGC.DeleteAllUnusedContainers()
-		// Calculating bytes freed is not yet supported.
-		return resource.NewQuantity(int64(0), resource.BinarySI), err
-	}
-}
-
-// deleteImages will delete unused images to free up disk pressure.
-func deleteImages(imageGC ImageGC, reportBytesFreed bool) nodeReclaimFunc {
-	return func() (*resource.Quantity, error) {
-		glog.Infof("eviction manager: attempting to delete unused images")
-		bytesFreed, err := imageGC.DeleteUnusedImages()
-		reclaimed := int64(0)
-		if reportBytesFreed {
-			reclaimed = bytesFreed
-		}
-		return resource.NewQuantity(reclaimed, resource.BinarySI), err
-	}
 }

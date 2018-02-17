@@ -37,22 +37,22 @@ const (
 	DeprecatedTaintNodeUnreachable = "node.alpha.kubernetes.io/unreachable"
 
 	// TaintNodeOutOfDisk will be added when node becomes out of disk
-	// and feature-gate for TaintBasedEvictions flag is enabled,
+	// and feature-gate for TaintNodesByCondition flag is enabled,
 	// and removed when node has enough disk.
 	TaintNodeOutOfDisk = "node.kubernetes.io/out-of-disk"
 
 	// TaintNodeMemoryPressure will be added when node has memory pressure
-	// and feature-gate for TaintBasedEvictions flag is enabled,
+	// and feature-gate for TaintNodesByCondition flag is enabled,
 	// and removed when node has enough memory.
 	TaintNodeMemoryPressure = "node.kubernetes.io/memory-pressure"
 
 	// TaintNodeDiskPressure will be added when node has disk pressure
-	// and feature-gate for TaintBasedEvictions flag is enabled,
+	// and feature-gate for TaintNodesByCondition flag is enabled,
 	// and removed when node has enough disk.
 	TaintNodeDiskPressure = "node.kubernetes.io/disk-pressure"
 
 	// TaintNodeNetworkUnavailable will be added when node's network is unavailable
-	// and feature-gate for TaintBasedEvictions flag is enabled,
+	// and feature-gate for TaintNodesByCondition flag is enabled,
 	// and removed when network becomes ready.
 	TaintNodeNetworkUnavailable = "node.kubernetes.io/network-unavailable"
 
@@ -61,7 +61,4 @@ const (
 	// from the cloud-controller-manager intitializes this node, and then removes
 	// the taint
 	TaintExternalCloudProvider = "node.cloudprovider.kubernetes.io/uninitialized"
-
-	// TaintNodeShutdown when node is shutdown in external cloud provider
-	TaintNodeShutdown = "node.cloudprovider.kubernetes.io/shutdown"
 )
