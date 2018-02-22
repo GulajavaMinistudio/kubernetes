@@ -39,7 +39,8 @@ var (
 	// ErrorNotVmssInstance indicates an instance is not belongint to any vmss.
 	ErrorNotVmssInstance = errors.New("not a vmss instance")
 
-	scaleSetNameRE = regexp.MustCompile(`.*/subscriptions/(?:.*)/Microsoft.Compute/virtualMachineScaleSets/(.+)/virtualMachines(?:.*)`)
+	scaleSetNameRE        = regexp.MustCompile(`.*/subscriptions/(?:.*)/Microsoft.Compute/virtualMachineScaleSets/(.+)/virtualMachines(?:.*)`)
+	vmssMachineIDTemplate = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachineScaleSets/%s/virtualMachines/%s"
 )
 
 // scaleSet implements VMSet interface for Azure scale set.
@@ -325,7 +326,7 @@ func (ss *scaleSet) listScaleSetVMs(scaleSetName string) ([]computepreview.Virtu
 	return allVMs, nil
 }
 
-// getAgentPoolScaleSets lists the virtual machines for for the resource group and then builds
+// getAgentPoolScaleSets lists the virtual machines for the resource group and then builds
 // a list of scale sets that match the nodes available to k8s.
 func (ss *scaleSet) getAgentPoolScaleSets(nodes []*v1.Node) (*[]string, error) {
 	agentPoolScaleSets := &[]string{}
@@ -734,4 +735,14 @@ func (ss *scaleSet) EnsureBackendPoolDeleted(poolID, vmSetName string) error {
 	}
 
 	return nil
+}
+
+// getVmssMachineID returns the full identifier of a vmss virtual machine.
+func (az *Cloud) getVmssMachineID(scaleSetName, instanceID string) string {
+	return fmt.Sprintf(
+		vmssMachineIDTemplate,
+		az.SubscriptionID,
+		az.ResourceGroup,
+		scaleSetName,
+		instanceID)
 }

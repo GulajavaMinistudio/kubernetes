@@ -203,7 +203,7 @@ const (
 	BlockVolume utilfeature.Feature = "BlockVolume"
 
 	// owner: @pospispa
-	// alpha: v1.9
+	// beta: v1.10
 	//
 	// Postpone deletion of a PV or a PVC when they are being used
 	StorageObjectInUseProtection utilfeature.Feature = "StorageObjectInUseProtection"
@@ -244,6 +244,12 @@ const (
 	//
 	// Schedule DaemonSet Pods by default scheduler instead of DaemonSet controller
 	NoDaemonSetScheduler utilfeature.Feature = "NoDaemonSetScheduler"
+
+	// owner: @mikedanese
+	// alpha: v1.10
+	//
+	// Implement TokenRequest endpoint on service account resources.
+	TokenRequest utilfeature.Feature = "TokenRequest"
 )
 
 func init() {
@@ -280,12 +286,13 @@ var defaultKubernetesFeatureGates = map[utilfeature.Feature]utilfeature.FeatureS
 	CSIPersistentVolume:                         {Default: true, PreRelease: utilfeature.Beta},
 	CustomPodDNS:                                {Default: false, PreRelease: utilfeature.Alpha},
 	BlockVolume:                                 {Default: false, PreRelease: utilfeature.Alpha},
-	StorageObjectInUseProtection:                {Default: false, PreRelease: utilfeature.Alpha},
+	StorageObjectInUseProtection:                {Default: true, PreRelease: utilfeature.Beta},
 	ResourceLimitsPriorityFunction:              {Default: false, PreRelease: utilfeature.Alpha},
 	SupportIPVSProxyMode:                        {Default: false, PreRelease: utilfeature.Beta},
 	SupportPodPidsLimit:                         {Default: false, PreRelease: utilfeature.Alpha},
 	HyperVContainer:                             {Default: false, PreRelease: utilfeature.Alpha},
 	NoDaemonSetScheduler:                        {Default: false, PreRelease: utilfeature.Alpha},
+	TokenRequest:                                {Default: false, PreRelease: utilfeature.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:

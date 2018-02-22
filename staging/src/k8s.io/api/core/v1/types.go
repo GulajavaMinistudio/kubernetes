@@ -446,7 +446,7 @@ type PersistentVolumeSource struct {
 	// More info: https://releases.k8s.io/HEAD/examples/volumes/storageos/README.md
 	// +optional
 	StorageOS *StorageOSPersistentVolumeSource `json:"storageos,omitempty" protobuf:"bytes,21,opt,name=storageos"`
-	// CSI represents storage that handled by an external CSI driver
+	// CSI represents storage that handled by an external CSI driver (Beta feature).
 	// +optional
 	CSI *CSIPersistentVolumeSource `json:"csi,omitempty" protobuf:"bytes,22,opt,name=csi"`
 }
@@ -1727,7 +1727,7 @@ type LocalVolumeSource struct {
 	Path string `json:"path" protobuf:"bytes,1,opt,name=path"`
 }
 
-// Represents storage that is managed by an external CSI volume driver
+// Represents storage that is managed by an external CSI volume driver (Beta feature)
 type CSIPersistentVolumeSource struct {
 	// Driver is the name of the driver to use for this volume.
 	// Required.
@@ -2861,6 +2861,15 @@ type PodSpec struct {
 	// +k8s:conversion-gen=false
 	// +optional
 	HostIPC bool `json:"hostIPC,omitempty" protobuf:"varint,13,opt,name=hostIPC"`
+	// Share a single process namespace between all of the containers in a pod.
+	// When this is set containers will be able to view and signal processes from other containers
+	// in the same pod, and the first process in each container will not be assigned PID 1.
+	// HostPID and ShareProcessNamespace cannot both be set.
+	// Optional: Default to false.
+	// This field is alpha-level and is honored only by servers that enable the PodShareProcessNamespace feature.
+	// +k8s:conversion-gen=false
+	// +optional
+	ShareProcessNamespace *bool `json:"shareProcessNamespace,omitempty" protobuf:"varint,27,opt,name=shareProcessNamespace"`
 	// SecurityContext holds pod-level security attributes and common container settings.
 	// Optional: Defaults to empty.  See type description for default values of each field.
 	// +optional

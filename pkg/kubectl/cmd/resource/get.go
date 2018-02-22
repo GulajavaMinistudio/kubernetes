@@ -261,7 +261,7 @@ func (options *GetOptions) Run(f cmdutil.Factory, cmd *cobra.Command, args []str
 	}
 
 	printOpts := cmdutil.ExtractCmdPrintOptions(cmd, options.AllNamespaces)
-	printer, err := f.PrinterForOptions(printOpts)
+	printer, err := cmdutil.PrinterForOptions(printOpts)
 	if err != nil {
 		return err
 	}
@@ -295,7 +295,7 @@ func (options *GetOptions) Run(f cmdutil.Factory, cmd *cobra.Command, args []str
 	var sorter *kubectl.RuntimeSort
 	if len(sorting) > 0 && len(objs) > 1 {
 		// TODO: questionable
-		if sorter, err = kubectl.SortObjects(f.Decoder(true), objs, sorting); err != nil {
+		if sorter, err = kubectl.SortObjects(cmdutil.InternalVersionDecoder(), objs, sorting); err != nil {
 			return err
 		}
 	}
@@ -341,7 +341,7 @@ func (options *GetOptions) Run(f cmdutil.Factory, cmd *cobra.Command, args []str
 				updatePrintOptionsForOpenAPI(f, mapping, printOpts)
 			}
 
-			printer, err = f.PrinterForMapping(printOpts)
+			printer, err = cmdutil.PrinterForOptions(printOpts)
 			if err != nil {
 				if !errs.Has(err.Error()) {
 					errs.Insert(err.Error())
@@ -494,7 +494,7 @@ func (options *GetOptions) watch(f cmdutil.Factory, cmd *cobra.Command, args []s
 	info := infos[0]
 	mapping := info.ResourceMapping()
 	printOpts := cmdutil.ExtractCmdPrintOptions(cmd, options.AllNamespaces)
-	printer, err := f.PrinterForMapping(printOpts)
+	printer, err := cmdutil.PrinterForOptions(printOpts)
 	if err != nil {
 		return err
 	}
