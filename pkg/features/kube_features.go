@@ -255,6 +255,12 @@ const (
 	//
 	// Enable container log rotation for cri container runtime
 	CRIContainerLogRotation utilfeature.Feature = "CRIContainerLogRotation"
+
+	// owner: @verult
+	// beta: v1.10
+	//
+	// Enables the regional PD feature on GCE.
+	GCERegionalPersistentDisk utilfeature.Feature = "GCERegionalPersistentDisk"
 )
 
 func init() {
@@ -293,12 +299,13 @@ var defaultKubernetesFeatureGates = map[utilfeature.Feature]utilfeature.FeatureS
 	BlockVolume:                                 {Default: false, PreRelease: utilfeature.Alpha},
 	StorageObjectInUseProtection:                {Default: true, PreRelease: utilfeature.Beta},
 	ResourceLimitsPriorityFunction:              {Default: false, PreRelease: utilfeature.Alpha},
-	SupportIPVSProxyMode:                        {Default: false, PreRelease: utilfeature.Beta},
+	SupportIPVSProxyMode:                        {Default: true, PreRelease: utilfeature.Beta},
 	SupportPodPidsLimit:                         {Default: false, PreRelease: utilfeature.Alpha},
 	HyperVContainer:                             {Default: false, PreRelease: utilfeature.Alpha},
 	NoDaemonSetScheduler:                        {Default: false, PreRelease: utilfeature.Alpha},
 	TokenRequest:                                {Default: false, PreRelease: utilfeature.Alpha},
 	CRIContainerLogRotation:                     {Default: false, PreRelease: utilfeature.Alpha},
+	GCERegionalPersistentDisk:                   {Default: true, PreRelease: utilfeature.Beta},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
