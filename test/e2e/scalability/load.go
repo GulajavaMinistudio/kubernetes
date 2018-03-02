@@ -248,7 +248,7 @@ var _ = SIGDescribe("Load capacity", func() {
 					framework.Logf("Starting to delete services...")
 					deleteService := func(i int) {
 						defer GinkgoRecover()
-						framework.ExpectNoError(clientset.CoreV1().Services(services[i].Namespace).Delete(services[i].Name, nil))
+						framework.ExpectNoError(testutils.DeleteResourceWithRetries(clientset, api.Kind("Service"), services[i].Namespace, services[i].Name, nil))
 					}
 					workqueue.Parallelize(serviceOperationsParallelism, len(services), deleteService)
 					framework.Logf("Services deleted")
@@ -670,7 +670,7 @@ func scaleResource(wg *sync.WaitGroup, config testutils.RunObjectConfig, scaling
 			return true, nil
 		}
 		framework.Logf("Failed to list pods from %v %v due to: %v", config.GetKind(), config.GetName(), err)
-		if framework.IsRetryableAPIError(err) {
+		if testutils.IsRetryableAPIError(err) {
 			return false, nil
 		}
 		return false, fmt.Errorf("Failed to list pods from %v %v with non-retriable error: %v", config.GetKind(), config.GetName(), err)
