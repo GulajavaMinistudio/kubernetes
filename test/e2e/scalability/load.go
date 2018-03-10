@@ -141,7 +141,6 @@ var _ = SIGDescribe("Load capacity", func() {
 	f.NamespaceDeletionTimeout = time.Hour
 
 	BeforeEach(func() {
-		framework.Skipf("SKIP LOAD")
 		testPhaseDurations = timer.NewTestPhaseTimer()
 		clientset = f.ClientSet
 
@@ -197,7 +196,7 @@ var _ = SIGDescribe("Load capacity", func() {
 	}
 
 	isCanonical := func(test *Load) bool {
-		return test.podsPerNode == 30 && test.kind == api.Kind("ReplicationController") && test.daemonsPerNode == 0 && test.secretsPerPod == 0 && test.configMapsPerPod == 0 && test.quotas
+		return test.podsPerNode == 30 && test.kind == api.Kind("ReplicationController") && test.daemonsPerNode == 0 && test.secretsPerPod == 0 && test.configMapsPerPod == 0 && !test.quotas
 	}
 
 	for _, testArg := range loadTests {
