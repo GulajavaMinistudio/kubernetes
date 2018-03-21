@@ -14,7 +14,6 @@ pkg/api/ref
 pkg/api/testapi
 pkg/api/testing
 pkg/api/testing/compat
-pkg/api/unversioned
 pkg/api/v1/endpoints
 pkg/api/v1/pod
 pkg/api/v1/resource
@@ -403,7 +402,6 @@ plugin/pkg/admission/eventratelimit/apis/eventratelimit/v1alpha1
 plugin/pkg/admission/initialresources
 plugin/pkg/admission/limitranger
 plugin/pkg/admission/noderestriction
-plugin/pkg/admission/persistentvolume/label
 plugin/pkg/admission/podnodeselector
 plugin/pkg/admission/podpreset
 plugin/pkg/admission/podtolerationrestriction
