@@ -120,18 +120,7 @@ var _ = SIGDescribe("Loadbalancing: L7", func() {
 			// ip released when the rest of lb resources are deleted in CleanupGCEIngressController
 			ip := gceController.CreateStaticIP(ns)
 			By(fmt.Sprintf("allocated static ip %v: %v through the GCE cloud provider", ns, ip))
-
-			jig.CreateIngress(filepath.Join(framework.IngressManifestPath, "static-ip"), ns, map[string]string{
-				framework.IngressStaticIPKey:  ns,
-				framework.IngressAllowHTTPKey: "false",
-			}, map[string]string{})
-
-			By("waiting for Ingress to come up with ip: " + ip)
-			httpClient := framework.BuildInsecureClient(framework.IngressReqTimeout)
-			framework.ExpectNoError(framework.PollURL(fmt.Sprintf("https://%v/", ip), "", framework.LoadBalancerPollTimeout, jig.PollInterval, httpClient, false))
-
-			By("should reject HTTP traffic")
-			framework.ExpectNoError(framework.PollURL(fmt.Sprintf("http://%v/", ip), "", framework.LoadBalancerPollTimeout, jig.PollInterval, httpClient, true))
+			executeStaticIPHttpsOnlyTest(f, jig, ns, ip)
 
 			By("should have correct firewall rule for ingress")
 			fw := gceController.GetFirewallRule()
@@ -577,7 +566,7 @@ var _ = SIGDescribe("Loadbalancing: L7", func() {
 
 	Describe("GCE [Slow] [Feature:kubemci]", func() {
 		var gceController *framework.GCEIngressController
-		var ipName string
+		var ipName, ipAddress string
 
 		// Platform specific setup
 		BeforeEach(func() {
@@ -597,7 +586,7 @@ var _ = SIGDescribe("Loadbalancing: L7", func() {
 			// Kubemci should reserve a static ip if user has not specified one.
 			ipName = "kubemci-" + string(uuid.NewUUID())
 			// ip released when the rest of lb resources are deleted in CleanupGCEIngressController
-			ipAddress := gceController.CreateStaticIP(ipName)
+			ipAddress = gceController.CreateStaticIP(ipName)
 			By(fmt.Sprintf("allocated static ip %v: %v through the GCE cloud provider", ipName, ipAddress))
 		})
 
@@ -608,10 +597,10 @@ var _ = SIGDescribe("Loadbalancing: L7", func() {
 			}
 			if jig.Ingress == nil {
 				By("No ingress created, no cleanup necessary")
-				return
+			} else {
+				By("Deleting ingress")
+				jig.TryDeleteIngress()
 			}
-			By("Deleting ingress")
-			jig.TryDeleteIngress()
 
 			By("Cleaning up cloud resources")
 			Expect(gceController.CleanupGCEIngressController()).NotTo(HaveOccurred())
@@ -635,6 +624,60 @@ var _ = SIGDescribe("Loadbalancing: L7", func() {
 
 		It("should create ingress with backend HTTPS", func() {
 			executeBacksideBacksideHTTPSTest(f, jig, ipName)
+		})
+
+		It("should support https-only annotation", func() {
+			executeStaticIPHttpsOnlyTest(f, jig, ipName, ipAddress)
+		})
+
+		It("should remove clusters as expected", func() {
+			ingAnnotations := map[string]string{
+				framework.IngressStaticIPKey: ipName,
+			}
+			ingFilePath := filepath.Join(framework.IngressManifestPath, "http")
+			jig.CreateIngress(ingFilePath, ns, ingAnnotations, map[string]string{})
+			jig.WaitForIngress(false /*waitForNodePort*/)
+			name := jig.Ingress.Name
+			// Verify that the ingress is spread to 1 cluster as expected.
+			verifyKubemciStatusHas(name, "is spread across 1 cluster")
+			// Reuse the ingress file created while creating the ingress.
+			filePath := filepath.Join(framework.TestContext.OutputDir, "mci.yaml")
+			if _, err := framework.RunKubemciWithKubeconfig("remove-clusters", name, "--ingress="+filePath); err != nil {
+				framework.Failf("unexpected error in running kubemci remove-clusters: %s", err)
+			}
+			verifyKubemciStatusHas(name, "is spread across 0 cluster")
+		})
+
+		It("single and multi-cluster ingresses should be able to exist together", func() {
+			By("Creating a single cluster ingress first")
+			jig.Class = ""
+			singleIngFilePath := filepath.Join(framework.IngressManifestPath, "static-ip-2")
+			jig.CreateIngress(singleIngFilePath, ns, map[string]string{}, map[string]string{})
+			jig.WaitForIngress(false /*waitForNodePort*/)
+			// jig.Ingress will be overwritten when we create MCI, so keep a reference.
+			singleIng := jig.Ingress
+
+			// Create the multi-cluster ingress next.
+			By("Creating a multi-cluster ingress next")
+			jig.Class = framework.MulticlusterIngressClassValue
+			ingAnnotations := map[string]string{
+				framework.IngressStaticIPKey: ipName,
+			}
+			multiIngFilePath := filepath.Join(framework.IngressManifestPath, "http")
+			jig.CreateIngress(multiIngFilePath, ns, ingAnnotations, map[string]string{})
+			jig.WaitForIngress(false /*waitForNodePort*/)
+			mciIngress := jig.Ingress
+
+			By("Deleting the single cluster ingress and verifying that multi-cluster ingress continues to work")
+			jig.Ingress = singleIng
+			jig.Class = ""
+			jig.TryDeleteIngress()
+			jig.Ingress = mciIngress
+			jig.Class = framework.MulticlusterIngressClassValue
+			jig.WaitForIngress(false /*waitForNodePort*/)
+
+			By("Cleanup: Deleting the multi-cluster ingress")
+			jig.TryDeleteIngress()
 		})
 	})
 
@@ -690,6 +733,17 @@ var _ = SIGDescribe("Loadbalancing: L7", func() {
 	})
 })
 
+// verifyKubemciStatusHas fails if kubemci get-status output for the given mci does not have the given expectedSubStr.
+func verifyKubemciStatusHas(name, expectedSubStr string) {
+	statusStr, err := framework.RunKubemciCmd("get-status", name)
+	if err != nil {
+		framework.Failf("unexpected error in running kubemci get-status %s: %s", name, err)
+	}
+	if !strings.Contains(statusStr, expectedSubStr) {
+		framework.Failf("expected status to have sub string %s, actual status: %s", expectedSubStr, statusStr)
+	}
+}
+
 func executePresharedCertTest(f *framework.Framework, jig *framework.IngressTestJig, staticIPName string) {
 	preSharedCertName := "test-pre-shared-cert"
 	By(fmt.Sprintf("Creating ssl certificate %q on GCE", preSharedCertName))
@@ -739,6 +793,20 @@ func executePresharedCertTest(f *framework.Framework, jig *framework.IngressTest
 	By("Test that ingress works with the pre-shared certificate")
 	err = jig.WaitForIngressWithCert(true, []string{testHostname}, cert)
 	Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Unexpected error while waiting for ingress: %v", err))
+}
+
+func executeStaticIPHttpsOnlyTest(f *framework.Framework, jig *framework.IngressTestJig, ipName, ip string) {
+	jig.CreateIngress(filepath.Join(framework.IngressManifestPath, "static-ip"), f.Namespace.Name, map[string]string{
+		framework.IngressStaticIPKey:  ipName,
+		framework.IngressAllowHTTPKey: "false",
+	}, map[string]string{})
+
+	By("waiting for Ingress to come up with ip: " + ip)
+	httpClient := framework.BuildInsecureClient(framework.IngressReqTimeout)
+	framework.ExpectNoError(framework.PollURL(fmt.Sprintf("https://%s/", ip), "", framework.LoadBalancerPollTimeout, jig.PollInterval, httpClient, false))
+
+	By("should reject HTTP traffic")
+	framework.ExpectNoError(framework.PollURL(fmt.Sprintf("http://%s/", ip), "", framework.LoadBalancerPollTimeout, jig.PollInterval, httpClient, true))
 }
 
 func executeBacksideBacksideHTTPSTest(f *framework.Framework, jig *framework.IngressTestJig, staticIPName string) {
