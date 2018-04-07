@@ -382,6 +382,40 @@ var _ = SIGDescribe("Loadbalancing: L7", func() {
 			// TODO(nikhiljindal): Check the instance group annotation value and verify with a multizone cluster.
 		})
 
+		// TODO (gau): Remove [Unreleased] label once HTTP2 is in the next Ingress release
+		It("should be able to switch between HTTPS and HTTP2 modes [Unreleased]", func() {
+			httpsScheme := "request_scheme=https"
+
+			By("Create a basic HTTP2 ingress")
+			jig.CreateIngress(filepath.Join(framework.IngressManifestPath, "http2"), ns, map[string]string{}, map[string]string{})
+			jig.WaitForIngress(true)
+
+			address, err := jig.WaitForIngressAddress(jig.Client, jig.Ingress.Namespace, jig.Ingress.Name, framework.LoadBalancerPollTimeout)
+
+			By(fmt.Sprintf("Polling on address %s and verify the backend is serving HTTP2", address))
+			detectHttpVersionAndSchemeTest(f, jig, address, "request_version=2", httpsScheme)
+
+			By("Switch backend service to use HTTPS")
+			svcList, err := f.ClientSet.CoreV1().Services(ns).List(metav1.ListOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			for _, svc := range svcList.Items {
+				svc.Annotations[framework.ServiceApplicationProtocolKey] = `{"http2":"HTTPS"}`
+				_, err = f.ClientSet.CoreV1().Services(ns).Update(&svc)
+				Expect(err).NotTo(HaveOccurred())
+			}
+			detectHttpVersionAndSchemeTest(f, jig, address, "request_version=1.1", httpsScheme)
+
+			By("Switch backend service to use HTTP2")
+			svcList, err = f.ClientSet.CoreV1().Services(ns).List(metav1.ListOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			for _, svc := range svcList.Items {
+				svc.Annotations[framework.ServiceApplicationProtocolKey] = `{"http2":"HTTP2"}`
+				_, err = f.ClientSet.CoreV1().Services(ns).Update(&svc)
+				Expect(err).NotTo(HaveOccurred())
+			}
+			detectHttpVersionAndSchemeTest(f, jig, address, "request_version=2", httpsScheme)
+		})
+
 		// TODO: Implement a multizone e2e that verifies traffic reaches each
 		// zone based on pod labels.
 	})
@@ -640,10 +674,15 @@ var _ = SIGDescribe("Loadbalancing: L7", func() {
 			name := jig.Ingress.Name
 			// Verify that the ingress is spread to 1 cluster as expected.
 			verifyKubemciStatusHas(name, "is spread across 1 cluster")
+			// Validate that removing the ingress from all clusters throws an error.
 			// Reuse the ingress file created while creating the ingress.
 			filePath := filepath.Join(framework.TestContext.OutputDir, "mci.yaml")
-			if _, err := framework.RunKubemciWithKubeconfig("remove-clusters", name, "--ingress="+filePath); err != nil {
-				framework.Failf("unexpected error in running kubemci remove-clusters: %s", err)
+			if _, err := framework.RunKubemciWithKubeconfig("remove-clusters", name, "--ingress="+filePath); err == nil {
+				framework.Failf("expected non-nil error in running kubemci remove-clusters to remove from all clusters")
+			}
+			// remove-clusters should succeed with --force=true
+			if _, err := framework.RunKubemciWithKubeconfig("remove-clusters", name, "--ingress="+filePath, "--force=true"); err != nil {
+				framework.Failf("unexpected error in running kubemci remove-clusters to remove from all clusters with --force=true: %s", err)
 			}
 			verifyKubemciStatusHas(name, "is spread across 0 cluster")
 		})
@@ -839,4 +878,26 @@ func executeBacksideBacksideHTTPSTest(f *framework.Framework, jig *framework.Ing
 		return true, nil
 	})
 	Expect(err).NotTo(HaveOccurred(), "Failed to verify backside re-encryption ingress")
+}
+
+func detectHttpVersionAndSchemeTest(f *framework.Framework, jig *framework.IngressTestJig, address, version, scheme string) {
+	timeoutClient := &http.Client{Timeout: framework.IngressReqTimeout}
+	resp := ""
+	err := wait.PollImmediate(framework.LoadBalancerPollInterval, framework.LoadBalancerPollTimeout, func() (bool, error) {
+		resp, err := framework.SimpleGET(timeoutClient, fmt.Sprintf("http://%s", address), "")
+		if err != nil {
+			framework.Logf("SimpleGET failed: %v", err)
+			return false, nil
+		}
+		if !strings.Contains(resp, version) {
+			framework.Logf("Waiting for transition to HTTP/2")
+			return false, nil
+		}
+		if !strings.Contains(resp, scheme) {
+			return false, nil
+		}
+		framework.Logf("Poll succeeded, request was served by HTTP2")
+		return true, nil
+	})
+	Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Failed to get %s or %s, response body: %s", version, scheme, resp))
 }

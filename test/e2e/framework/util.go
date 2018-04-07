@@ -2077,11 +2077,6 @@ func AssertCleanup(ns string, selectors ...string) {
 		nsArg = fmt.Sprintf("--namespace=%s", ns)
 	}
 
-	backoff := wait.Backoff{
-		Duration: 5 * time.Second,
-		Factor:   2,
-		Steps:    3,
-	}
 	var e error
 	verifyCleanupFunc := func() (bool, error) {
 		e = nil
@@ -2099,7 +2094,7 @@ func AssertCleanup(ns string, selectors ...string) {
 		}
 		return true, nil
 	}
-	err := wait.ExponentialBackoff(backoff, verifyCleanupFunc)
+	err := wait.PollImmediate(500*time.Millisecond, 1*time.Minute, verifyCleanupFunc)
 	if err != nil {
 		Failf(e.Error())
 	}
@@ -2808,7 +2803,6 @@ func RemoveAvoidPodsOffNode(c clientset.Interface, nodeName string) {
 
 func ScaleResource(
 	clientset clientset.Interface,
-	internalClientset internalclientset.Interface,
 	scalesGetter scaleclient.ScalesGetter,
 	ns, name string,
 	size uint,
@@ -2817,8 +2811,8 @@ func ScaleResource(
 	gr schema.GroupResource,
 ) error {
 	By(fmt.Sprintf("Scaling %v %s in namespace %s to %d", kind, name, ns, size))
-	scaler := kubectl.ScalerFor(kind, internalClientset.Batch(), scalesGetter, gr)
-	if err := testutils.ScaleResourceWithRetries(scaler, ns, name, size); err != nil {
+	scaler := kubectl.NewScaler(scalesGetter)
+	if err := testutils.ScaleResourceWithRetries(scaler, ns, name, size, gr); err != nil {
 		return fmt.Errorf("error while scaling RC %s to %d replicas: %v", name, size, err)
 	}
 	if !wait {
@@ -3498,7 +3492,7 @@ func CreatePodOrFail(c clientset.Interface, ns, name string, labels map[string]s
 			Containers: []v1.Container{
 				{
 					Name:  "pause",
-					Image: GetPauseImageName(c),
+					Image: imageutils.GetPauseImageName(),
 					Ports: containerPorts,
 					// Add a dummy environment variable to work around a docker issue.
 					// https://github.com/docker/docker/issues/14203
