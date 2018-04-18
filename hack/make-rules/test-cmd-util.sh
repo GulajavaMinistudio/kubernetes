@@ -1296,9 +1296,9 @@ run_kubectl_run_tests() {
   kubectl run nginx-extensions "--image=$IMAGE_NGINX" "${kube_flags[@]}"
   # Post-Condition: Deployment "nginx" is created
   kube::test::get_object_assert deployment.extensions "{{range.items}}{{$id_field}}:{{end}}" 'nginx-extensions:'
-  # and old generator was used, iow. old defaults are applied
+  # new generator was used
   output_message=$(kubectl get deployment.extensions/nginx-extensions -o jsonpath='{.spec.revisionHistoryLimit}')
-  kube::test::if_has_not_string "${output_message}" '2'
+  kube::test::if_has_string "${output_message}" '2'
   # Clean up
   kubectl delete deployment nginx-extensions "${kube_flags[@]}"
   # Command
@@ -3924,7 +3924,7 @@ run_cmd_with_img_tests() {
 
   # Test that a valid image reference value is provided as the value of --image in `kubectl run <name> --image`
   output_message=$(kubectl run test1 --image=validname)
-  kube::test::if_has_string "${output_message}" 'deployment.apps "test1" created'
+  kube::test::if_has_string "${output_message}" 'deployment.apps/test1 created'
   kubectl delete deployments test1
   # test invalid image name
   output_message=$(! kubectl run test2 --image=InvalidImageName 2>&1)
@@ -4034,6 +4034,8 @@ run_job_tests() {
   kubectl run pi --schedule="59 23 31 2 *" --namespace=test-jobs --generator=cronjob/v1beta1 "--image=$IMAGE_PERL" --restart=OnFailure -- perl -Mbignum=bpi -wle 'print bpi(20)' "${kube_flags[@]}"
   # Post-Condition: assertion object exists
   kube::test::get_object_assert 'cronjob/pi --namespace=test-jobs' "{{$id_field}}" 'pi'
+  kubectl get cronjob/pi --namespace=test-jobs
+  kubectl describe cronjob/pi --namespace=test-jobs
 
   ### Create a job in dry-run mode
   output_message=$(kubectl create job test-job --from=cronjob/pi --dry-run=true --namespace=test-jobs -o name)
@@ -4046,6 +4048,8 @@ run_job_tests() {
   kubectl create job test-job --from=cronjob/pi --namespace=test-jobs
   # Post-Condition: assertion object exists
   kube::test::get_object_assert 'job/test-job --namespace=test-jobs' "{{$id_field}}" 'test-job'
+  kubectl get job/test-job --namespace=test-jobs
+  kubectl describe job/test-job --namespace=test-jobs
   #Clean up
   kubectl delete job test-job --namespace=test-jobs
   kubectl delete cronjob pi --namespace=test-jobs

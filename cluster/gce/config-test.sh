@@ -66,6 +66,10 @@ if [[ "${NODE_OS_DISTRIBUTION}" == "debian" ]]; then
     NODE_ACCELERATORS=""
 fi
 
+# To avoid failing large tests due to some flakes in starting nodes, allow
+# for a small percentage of nodes to not start during cluster startup.
+ALLOWED_NOTREADY_NODES="${ALLOWED_NOTREADY_NODES:-$((NUM_NODES / 100))}"
+
 # By default a cluster will be started with the master and nodes
 # on Container-optimized OS (cos, previously known as gci). If
 # you are updating the os image versions, update this variable.
@@ -141,6 +145,9 @@ ENABLE_L7_LOADBALANCING="${KUBE_ENABLE_L7_LOADBALANCING:-glbc}"
 #   googleinfluxdb - Enable influxdb and google (except GCM)
 #   standalone     - Heapster only. Metrics available via Heapster REST API.
 ENABLE_CLUSTER_MONITORING="${KUBE_ENABLE_CLUSTER_MONITORING:-influxdb}"
+
+# Optional: Enable deploying separate prometheus stack for monitoring kubernetes cluster
+ENABLE_PROMETHEUS_MONITORING="${KUBE_ENABLE_PROMETHEUS_MONITORING:-false}"
 
 # Optional: Enable Metrics Server. Metrics Server should be enable everywhere,
 # since it's a critical component, but in the first release we need a way to disable

@@ -1455,7 +1455,9 @@ function start-kube-apiserver {
   fi
   if [[ -n "${NUM_NODES:-}" ]]; then
     # If the cluster is large, increase max-requests-inflight limit in apiserver.
-    if [[ "${NUM_NODES}" -ge 1000 ]]; then
+    if [[ "${NUM_NODES}" -ge 3000 ]]; then
+      params+=" --max-requests-inflight=3000 --max-mutating-requests-inflight=1000"
+    elif [[ "${NUM_NODES}" -ge 1000 ]]; then
       params+=" --max-requests-inflight=1500 --max-mutating-requests-inflight=500"
     fi
     # Set amount of memory available for apiserver based on number of nodes.
@@ -2212,6 +2214,11 @@ EOF
     prepare-kube-proxy-manifest-variables "$src_dir/kube-proxy/kube-proxy-ds.yaml"
     setup-addon-manifests "addons" "kube-proxy"
   fi
+  # Setup prometheus stack for monitoring kubernetes cluster
+  if [[ "${ENABLE_PROMETHEUS_MONITORING:-}" == "true" ]]; then
+    setup-addon-manifests "addons" "prometheus"
+  fi
+  # Setup cluster monitoring using heapster
   if [[ "${ENABLE_CLUSTER_MONITORING:-}" == "influxdb" ]] || \
      [[ "${ENABLE_CLUSTER_MONITORING:-}" == "google" ]] || \
      [[ "${ENABLE_CLUSTER_MONITORING:-}" == "stackdriver" ]] || \

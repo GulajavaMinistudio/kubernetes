@@ -364,6 +364,12 @@ func SkipUnlessClusterMonitoringModeIs(supportedMonitoring ...string) {
 	}
 }
 
+func SkipUnlessPrometheusMonitoringIsEnabled(supportedMonitoring ...string) {
+	if !TestContext.EnablePrometheusMonitoring {
+		Skipf("Skipped because prometheus monitoring is not enabled")
+	}
+}
+
 func SkipUnlessMasterOSDistroIs(supportedMasterOsDistros ...string) {
 	if !MasterOSDistroIs(supportedMasterOsDistros...) {
 		Skipf("Only supported for master OS distro %v (not %s)", supportedMasterOsDistros, TestContext.MasterOSDistro)
@@ -374,6 +380,22 @@ func SkipUnlessNodeOSDistroIs(supportedNodeOsDistros ...string) {
 	if !NodeOSDistroIs(supportedNodeOsDistros...) {
 		Skipf("Only supported for node OS distro %v (not %s)", supportedNodeOsDistros, TestContext.NodeOSDistro)
 	}
+}
+
+func SkipUnlessSecretExistsAfterWait(c clientset.Interface, name, namespace string, timeout time.Duration) {
+	Logf("Waiting for secret %v in namespace %v to exist in duration %v", name, namespace, timeout)
+	start := time.Now()
+	if wait.PollImmediate(15*time.Second, timeout, func() (bool, error) {
+		_, err := c.CoreV1().Secrets(namespace).Get(name, metav1.GetOptions{})
+		if err != nil {
+			Logf("Secret %v in namespace %v still does not exist after duration %v", name, namespace, time.Since(start))
+			return false, nil
+		}
+		return true, nil
+	}) != nil {
+		Skipf("Secret %v in namespace %v did not exist after timeout of %v", name, namespace, timeout)
+	}
+	Logf("Secret %v in namespace %v found after duration %v", name, namespace, time.Since(start))
 }
 
 func SkipIfContainerRuntimeIs(runtimes ...string) {
