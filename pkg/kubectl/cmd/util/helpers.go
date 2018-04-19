@@ -521,10 +521,6 @@ func AddRecordFlag(cmd *cobra.Command) {
 	cmd.Flags().Bool("record", false, "Record current kubectl command in the resource annotation. If set to false, do not record the command. If set to true, record the command. If not set, default to updating the existing annotation value only if one already exists.")
 }
 
-func AddRecordVarFlag(cmd *cobra.Command, record *bool) {
-	cmd.Flags().BoolVar(record, "record", *record, "Record current kubectl command in the resource annotation. If set to false, do not record the command. If set to true, record the command. If not set, default to updating the existing annotation value only if one already exists.")
-}
-
 func GetRecordFlag(cmd *cobra.Command) bool {
 	return GetFlagBool(cmd, "record")
 }
@@ -591,16 +587,6 @@ func ContainsChangeCause(info *resource.Info) bool {
 // ShouldRecord checks if we should record current change cause
 func ShouldRecord(cmd *cobra.Command, info *resource.Info) bool {
 	return GetRecordFlag(cmd) || (ContainsChangeCause(info) && !cmd.Flags().Changed("record"))
-}
-
-func AddInclude3rdPartyFlags(cmd *cobra.Command) {
-	cmd.Flags().Bool("include-extended-apis", true, "If true, include definitions of new APIs via calls to the API server. [default true]")
-	cmd.Flags().MarkDeprecated("include-extended-apis", "No longer required.")
-}
-
-func AddInclude3rdPartyVarFlags(cmd *cobra.Command, include3rdParty *bool) {
-	cmd.Flags().BoolVar(include3rdParty, "include-extended-apis", *include3rdParty, "If true, include definitions of new APIs via calls to the API server. [default true]")
-	cmd.Flags().MarkDeprecated("include-extended-apis", "No longer required.")
 }
 
 // GetResourcesAndPairs retrieves resources and "KEY=VALUE or KEY-" pair args from given args
