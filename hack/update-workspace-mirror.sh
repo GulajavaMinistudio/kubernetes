@@ -18,19 +18,26 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-KUBE_ROOT=$(dirname "${BASH_SOURCE}")/..
-source "${KUBE_ROOT}/hack/lib/init.sh"
-
-kube::golang::verify_go_version
-
-cd "${KUBE_ROOT}"
-
-make --no-print-directory -C "${KUBE_ROOT}" generated_files
-
-ret=0
-go run test/typecheck/main.go "$@" || ret=$?
-if [[ $ret -ne 0 ]]; then
-  echo "!!! Type Check has failed. This may cause cross platform build failures." >&2
-  echo "!!! Please see https://git.k8s.io/kubernetes/test/typecheck for more information." >&2
-  exit 1
+if [[ $# -ne 1 ]]; then
+    echo 'use "bazel run //build:update-mirror"'
+    echo "(usage: $0 <file with list of URLs to mirror>)"
+    exit 1
 fi
+
+BUCKET="gs://k8s-bazel-cache"
+
+gsutil acl get "${BUCKET}" > /dev/null
+
+tmpfile=$(mktemp bazel_workspace_mirror.XXXXXX)
+trap "rm ${tmpfile}" EXIT
+cat "$1" | while read url; do
+  echo "${url}"
+  if gsutil ls "${BUCKET}/${url}" &> /dev/null; then
+    echo present
+  else
+    echo missing
+    if curl -fLag "${url}" > "${tmpfile}"; then
+        gsutil cp -a public-read "${tmpfile}" "${BUCKET}/${url}"
+    fi
+  fi
+done
