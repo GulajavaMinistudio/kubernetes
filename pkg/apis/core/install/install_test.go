@@ -53,7 +53,7 @@ func TestCodec(t *testing.T) {
 	pod := internal.Pod{}
 	// We do want to use package registered rather than testapi here, because we
 	// want to test if the package install and package registered work as expected.
-	data, err := runtime.Encode(legacyscheme.Codecs.LegacyCodec(legacyscheme.Registry.GroupOrDie(internal.GroupName).GroupVersion), &pod)
+	data, err := runtime.Encode(legacyscheme.Codecs.LegacyCodec(legacyscheme.Registry.GroupOrDie(internal.GroupName).GroupVersions[0]), &pod)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -61,19 +61,8 @@ func TestCodec(t *testing.T) {
 	if err := json.Unmarshal(data, &other); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if other.APIVersion != legacyscheme.Registry.GroupOrDie(internal.GroupName).GroupVersion.Version || other.Kind != "Pod" {
+	if other.APIVersion != legacyscheme.Registry.GroupOrDie(internal.GroupName).GroupVersions[0].Version || other.Kind != "Pod" {
 		t.Errorf("unexpected unmarshalled object %#v", other)
-	}
-}
-
-func TestInterfacesFor(t *testing.T) {
-	if _, err := legacyscheme.Registry.GroupOrDie(internal.GroupName).InterfacesFor(internal.SchemeGroupVersion); err == nil {
-		t.Fatalf("unexpected non-error: %v", err)
-	}
-	for i, version := range legacyscheme.Registry.GroupOrDie(internal.GroupName).GroupVersions {
-		if vi, err := legacyscheme.Registry.GroupOrDie(internal.GroupName).InterfacesFor(version); err != nil || vi == nil {
-			t.Fatalf("%d: unexpected result: %v", i, err)
-		}
 	}
 }
 
@@ -101,11 +90,6 @@ func TestRESTMapper(t *testing.T) {
 		}
 		if mapping.GroupVersionKind.GroupVersion() != version {
 			t.Errorf("incorrect version: %v", mapping)
-		}
-
-		interfaces, _ := legacyscheme.Registry.GroupOrDie(internal.GroupName).InterfacesFor(version)
-		if mapping.ObjectConvertor != interfaces.ObjectConvertor {
-			t.Errorf("unexpected: %#v, expected: %#v", mapping, interfaces)
 		}
 
 		rc := &internal.ReplicationController{ObjectMeta: metav1.ObjectMeta{Name: "foo"}}

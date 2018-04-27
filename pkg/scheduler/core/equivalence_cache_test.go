@@ -18,14 +18,139 @@ package core
 
 import (
 	"reflect"
+	"sync"
 	"testing"
+	"time"
 
 	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
+	"k8s.io/kubernetes/pkg/scheduler/schedulercache"
+	schedulertesting "k8s.io/kubernetes/pkg/scheduler/testing"
 )
+
+// makeBasicPod returns a Pod object with many of the fields populated.
+func makeBasicPod(name string) *v1.Pod {
+	isController := true
+	return &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: "test-ns",
+			Labels:    map[string]string{"app": "web", "env": "prod"},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "v1",
+					Kind:       "ReplicationController",
+					Name:       "rc",
+					UID:        "123",
+					Controller: &isController,
+				},
+			},
+		},
+		Spec: v1.PodSpec{
+			Affinity: &v1.Affinity{
+				NodeAffinity: &v1.NodeAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
+						NodeSelectorTerms: []v1.NodeSelectorTerm{
+							{
+								MatchExpressions: []v1.NodeSelectorRequirement{
+									{
+										Key:      "failure-domain.beta.kubernetes.io/zone",
+										Operator: "Exists",
+									},
+								},
+							},
+						},
+					},
+				},
+				PodAffinity: &v1.PodAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+						{
+							LabelSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"app": "db"}},
+							TopologyKey: "kubernetes.io/hostname",
+						},
+					},
+				},
+				PodAntiAffinity: &v1.PodAntiAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+						{
+							LabelSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"app": "web"}},
+							TopologyKey: "kubernetes.io/hostname",
+						},
+					},
+				},
+			},
+			InitContainers: []v1.Container{
+				{
+					Name:  "init-pause",
+					Image: "gcr.io/google_containers/pause",
+					Resources: v1.ResourceRequirements{
+						Limits: v1.ResourceList{
+							"cpu": resource.MustParse("1"),
+							"mem": resource.MustParse("100Mi"),
+						},
+					},
+				},
+			},
+			Containers: []v1.Container{
+				{
+					Name:  "pause",
+					Image: "gcr.io/google_containers/pause",
+					Resources: v1.ResourceRequirements{
+						Limits: v1.ResourceList{
+							"cpu": resource.MustParse("1"),
+							"mem": resource.MustParse("100Mi"),
+						},
+					},
+					VolumeMounts: []v1.VolumeMount{
+						{
+							Name:      "nfs",
+							MountPath: "/srv/data",
+						},
+					},
+				},
+			},
+			NodeSelector: map[string]string{"node-type": "awesome"},
+			Tolerations: []v1.Toleration{
+				{
+					Effect:   "NoSchedule",
+					Key:      "experimental",
+					Operator: "Exists",
+				},
+			},
+			Volumes: []v1.Volume{
+				{
+					VolumeSource: v1.VolumeSource{
+						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "someEBSVol1",
+						},
+					},
+				},
+				{
+					VolumeSource: v1.VolumeSource{
+						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "someEBSVol2",
+						},
+					},
+				},
+				{
+					Name: "nfs",
+					VolumeSource: v1.VolumeSource{
+						NFS: &v1.NFSVolumeSource{
+							Server: "nfs.corp.example.com",
+						},
+					},
+				},
+			},
+		},
+	}
+}
 
 type predicateItemType struct {
 	fit     bool
@@ -70,9 +195,7 @@ func TestUpdateCachedPredicateItem(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		// this case does not need to calculate equivalence hash, just pass an empty function
-		fakeGetEquivalencePodFunc := func(pod *v1.Pod) interface{} { return nil }
-		ecache := NewEquivalenceCache(fakeGetEquivalencePodFunc)
+		ecache := NewEquivalenceCache()
 		if test.expectPredicateMap {
 			ecache.algorithmCache[test.nodeName] = newAlgorithmCache()
 			predicateItem := HostPredicate{
@@ -191,9 +314,7 @@ func TestPredicateWithECache(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		// this case does not need to calculate equivalence hash, just pass an empty function
-		fakeGetEquivalencePodFunc := func(pod *v1.Pod) interface{} { return nil }
-		ecache := NewEquivalenceCache(fakeGetEquivalencePodFunc)
+		ecache := NewEquivalenceCache()
 		// set cached item to equivalence cache
 		ecache.UpdateCachedPredicateItem(
 			test.podName,
@@ -240,205 +361,46 @@ func TestPredicateWithECache(t *testing.T) {
 	}
 }
 
-func TestGetHashEquivalencePod(t *testing.T) {
+func TestGetEquivalenceHash(t *testing.T) {
 
-	testNamespace := "test"
+	ecache := NewEquivalenceCache()
 
-	pvcInfo := predicates.FakePersistentVolumeClaimInfo{
+	pod1 := makeBasicPod("pod1")
+	pod2 := makeBasicPod("pod2")
+
+	pod3 := makeBasicPod("pod3")
+	pod3.Spec.Volumes = []v1.Volume{
 		{
-			ObjectMeta: metav1.ObjectMeta{UID: "someEBSVol1", Name: "someEBSVol1", Namespace: testNamespace},
-			Spec:       v1.PersistentVolumeClaimSpec{VolumeName: "someEBSVol1"},
+			VolumeSource: v1.VolumeSource{
+				PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+					ClaimName: "someEBSVol111",
+				},
+			},
 		},
+	}
+
+	pod4 := makeBasicPod("pod4")
+	pod4.Spec.Volumes = []v1.Volume{
 		{
-			ObjectMeta: metav1.ObjectMeta{UID: "someEBSVol2", Name: "someEBSVol2", Namespace: testNamespace},
-			Spec:       v1.PersistentVolumeClaimSpec{VolumeName: "someNonEBSVol"},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{UID: "someEBSVol3-0", Name: "someEBSVol3-0", Namespace: testNamespace},
-			Spec:       v1.PersistentVolumeClaimSpec{VolumeName: "pvcWithDeletedPV"},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{UID: "someEBSVol3-1", Name: "someEBSVol3-1", Namespace: testNamespace},
-			Spec:       v1.PersistentVolumeClaimSpec{VolumeName: "anotherPVCWithDeletedPV"},
-		},
-	}
-
-	// use default equivalence class generator
-	ecache := NewEquivalenceCache(predicates.NewEquivalencePodGenerator(pvcInfo))
-
-	isController := true
-
-	pod1 := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pod1",
-			Namespace: testNamespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: "v1",
-					Kind:       "ReplicationController",
-					Name:       "rc",
-					UID:        "123",
-					Controller: &isController,
-				},
-			},
-		},
-		Spec: v1.PodSpec{
-			Volumes: []v1.Volume{
-				{
-					VolumeSource: v1.VolumeSource{
-						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "someEBSVol1",
-						},
-					},
-				},
-				{
-					VolumeSource: v1.VolumeSource{
-						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "someEBSVol2",
-						},
-					},
+			VolumeSource: v1.VolumeSource{
+				PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+					ClaimName: "someEBSVol222",
 				},
 			},
 		},
 	}
 
-	pod2 := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pod2",
-			Namespace: testNamespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: "v1",
-					Kind:       "ReplicationController",
-					Name:       "rc",
-					UID:        "123",
-					Controller: &isController,
-				},
-			},
-		},
-		Spec: v1.PodSpec{
-			Volumes: []v1.Volume{
-				{
-					VolumeSource: v1.VolumeSource{
-						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "someEBSVol2",
-						},
-					},
-				},
-				{
-					VolumeSource: v1.VolumeSource{
-						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "someEBSVol1",
-						},
-					},
-				},
-			},
-		},
-	}
+	pod5 := makeBasicPod("pod5")
+	pod5.Spec.Volumes = []v1.Volume{}
 
-	pod3 := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pod3",
-			Namespace: testNamespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: "v1",
-					Kind:       "ReplicationController",
-					Name:       "rc",
-					UID:        "567",
-					Controller: &isController,
-				},
-			},
-		},
-		Spec: v1.PodSpec{
-			Volumes: []v1.Volume{
-				{
-					VolumeSource: v1.VolumeSource{
-						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "someEBSVol3-1",
-						},
-					},
-				},
-			},
-		},
-	}
+	pod6 := makeBasicPod("pod6")
+	pod6.Spec.Volumes = nil
 
-	pod4 := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pod4",
-			Namespace: testNamespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: "v1",
-					Kind:       "ReplicationController",
-					Name:       "rc",
-					UID:        "567",
-					Controller: &isController,
-				},
-			},
-		},
-		Spec: v1.PodSpec{
-			Volumes: []v1.Volume{
-				{
-					VolumeSource: v1.VolumeSource{
-						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "someEBSVol3-0",
-						},
-					},
-				},
-			},
-		},
-	}
+	pod7 := makeBasicPod("pod7")
+	pod7.Spec.NodeSelector = nil
 
-	pod5 := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pod5",
-			Namespace: testNamespace,
-		},
-	}
-
-	pod6 := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pod6",
-			Namespace: testNamespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: "v1",
-					Kind:       "ReplicationController",
-					Name:       "rc",
-					UID:        "567",
-					Controller: &isController,
-				},
-			},
-		},
-		Spec: v1.PodSpec{
-			Volumes: []v1.Volume{
-				{
-					VolumeSource: v1.VolumeSource{
-						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "no-exists-pvc",
-						},
-					},
-				},
-			},
-		},
-	}
-
-	pod7 := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pod7",
-			Namespace: testNamespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: "v1",
-					Kind:       "ReplicationController",
-					Name:       "rc",
-					UID:        "567",
-					Controller: &isController,
-				},
-			},
-		},
-	}
+	pod8 := makeBasicPod("pod8")
+	pod8.Spec.NodeSelector = make(map[string]string)
 
 	type podInfo struct {
 		pod         *v1.Pod
@@ -446,39 +408,41 @@ func TestGetHashEquivalencePod(t *testing.T) {
 	}
 
 	tests := []struct {
+		name         string
 		podInfoList  []podInfo
 		isEquivalent bool
 	}{
-		// pods with same controllerRef and same pvc claim
 		{
+			name: "pods with everything the same except name",
 			podInfoList: []podInfo{
 				{pod: pod1, hashIsValid: true},
 				{pod: pod2, hashIsValid: true},
 			},
 			isEquivalent: true,
 		},
-		// pods with same controllerRef but different pvc claim
 		{
+			name: "pods that only differ in their PVC volume sources",
 			podInfoList: []podInfo{
 				{pod: pod3, hashIsValid: true},
 				{pod: pod4, hashIsValid: true},
 			},
 			isEquivalent: false,
 		},
-		// pod without controllerRef
 		{
+			name: "pods that have no volumes, but one uses nil and one uses an empty slice",
 			podInfoList: []podInfo{
-				{pod: pod5, hashIsValid: false},
+				{pod: pod5, hashIsValid: true},
+				{pod: pod6, hashIsValid: true},
 			},
-			isEquivalent: false,
+			isEquivalent: true,
 		},
-		// pods with same controllerRef but one has non-exists pvc claim
 		{
+			name: "pods that have no NodeSelector, but one uses nil and one uses an empty map",
 			podInfoList: []podInfo{
-				{pod: pod6, hashIsValid: false},
 				{pod: pod7, hashIsValid: true},
+				{pod: pod8, hashIsValid: true},
 			},
-			isEquivalent: false,
+			isEquivalent: true,
 		},
 	}
 
@@ -488,28 +452,30 @@ func TestGetHashEquivalencePod(t *testing.T) {
 	)
 
 	for _, test := range tests {
-		for i, podInfo := range test.podInfoList {
-			testPod := podInfo.pod
-			eclassInfo := ecache.getEquivalenceClassInfo(testPod)
-			if eclassInfo == nil && podInfo.hashIsValid {
-				t.Errorf("Failed: pod %v is expected to have valid hash", testPod)
-			}
+		t.Run(test.name, func(t *testing.T) {
+			for i, podInfo := range test.podInfoList {
+				testPod := podInfo.pod
+				eclassInfo := ecache.getEquivalenceClassInfo(testPod)
+				if eclassInfo == nil && podInfo.hashIsValid {
+					t.Errorf("Failed: pod %v is expected to have valid hash", testPod)
+				}
 
-			if eclassInfo != nil {
-				// NOTE(harry): the first element will be used as target so
-				// this logic can't verify more than two inequivalent pods
-				if i == 0 {
-					targetHash = eclassInfo.hash
-					targetPodInfo = podInfo
-				} else {
-					if targetHash != eclassInfo.hash {
-						if test.isEquivalent {
-							t.Errorf("Failed: pod: %v is expected to be equivalent to: %v", testPod, targetPodInfo.pod)
+				if eclassInfo != nil {
+					// NOTE(harry): the first element will be used as target so
+					// this logic can't verify more than two inequivalent pods
+					if i == 0 {
+						targetHash = eclassInfo.hash
+						targetPodInfo = podInfo
+					} else {
+						if targetHash != eclassInfo.hash {
+							if test.isEquivalent {
+								t.Errorf("Failed: pod: %v is expected to be equivalent to: %v", testPod, targetPodInfo.pod)
+							}
 						}
 					}
 				}
 			}
-		}
+		})
 	}
 }
 
@@ -554,9 +520,7 @@ func TestInvalidateCachedPredicateItemOfAllNodes(t *testing.T) {
 			},
 		},
 	}
-	// this case does not need to calculate equivalence hash, just pass an empty function
-	fakeGetEquivalencePodFunc := func(pod *v1.Pod) interface{} { return nil }
-	ecache := NewEquivalenceCache(fakeGetEquivalencePodFunc)
+	ecache := NewEquivalenceCache()
 
 	for _, test := range tests {
 		// set cached item to equivalence cache
@@ -623,9 +587,7 @@ func TestInvalidateAllCachedPredicateItemOfNode(t *testing.T) {
 			},
 		},
 	}
-	// this case does not need to calculate equivalence hash, just pass an empty function
-	fakeGetEquivalencePodFunc := func(pod *v1.Pod) interface{} { return nil }
-	ecache := NewEquivalenceCache(fakeGetEquivalencePodFunc)
+	ecache := NewEquivalenceCache()
 
 	for _, test := range tests {
 		// set cached item to equivalence cache
@@ -647,5 +609,109 @@ func TestInvalidateAllCachedPredicateItemOfNode(t *testing.T) {
 			t.Errorf("Failed: cached item for node: %v should be invalidated", test.nodeName)
 			break
 		}
+	}
+}
+
+func BenchmarkEquivalenceHash(b *testing.B) {
+	pod := makeBasicPod("test")
+	for i := 0; i < b.N; i++ {
+		getEquivalenceHash(pod)
+	}
+}
+
+// syncingMockCache delegates method calls to an actual Cache,
+// but calls to UpdateNodeNameToInfoMap synchronize with the test.
+type syncingMockCache struct {
+	schedulercache.Cache
+	cycleStart, cacheInvalidated chan struct{}
+	once                         sync.Once
+}
+
+// UpdateNodeNameToInfoMap delegates to the real implementation, but on the first call, it
+// synchronizes with the test.
+//
+// Since UpdateNodeNameToInfoMap is one of the first steps of (*genericScheduler).Schedule, we use
+// this point to signal to the test that a scheduling cycle has started.
+func (c *syncingMockCache) UpdateNodeNameToInfoMap(infoMap map[string]*schedulercache.NodeInfo) error {
+	err := c.Cache.UpdateNodeNameToInfoMap(infoMap)
+	c.once.Do(func() {
+		c.cycleStart <- struct{}{}
+		<-c.cacheInvalidated
+	})
+	return err
+}
+
+// TestEquivalenceCacheInvalidationRace tests that equivalence cache invalidation is correctly
+// handled when an invalidation event happens early in a scheduling cycle. Specifically, the event
+// occurs after schedulercache is snapshotted and before equivalence cache lock is acquired.
+func TestEquivalenceCacheInvalidationRace(t *testing.T) {
+	// Create a predicate that returns false the first time and true on subsequent calls.
+	podWillFit := false
+	var callCount int
+	testPredicate := func(pod *v1.Pod,
+		meta algorithm.PredicateMetadata,
+		nodeInfo *schedulercache.NodeInfo) (bool, []algorithm.PredicateFailureReason, error) {
+		callCount++
+		if !podWillFit {
+			podWillFit = true
+			return false, []algorithm.PredicateFailureReason{predicates.ErrFakePredicate}, nil
+		}
+		return true, nil, nil
+	}
+
+	// Set up the mock cache.
+	cache := schedulercache.New(time.Duration(0), wait.NeverStop)
+	cache.AddNode(&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "machine1"}})
+	mockCache := &syncingMockCache{
+		Cache:            cache,
+		cycleStart:       make(chan struct{}),
+		cacheInvalidated: make(chan struct{}),
+	}
+
+	eCache := NewEquivalenceCache()
+	// Ensure that equivalence cache invalidation happens after the scheduling cycle starts, but before
+	// the equivalence cache would be updated.
+	go func() {
+		<-mockCache.cycleStart
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "new-pod", UID: "new-pod"},
+			Spec:       v1.PodSpec{NodeName: "machine1"}}
+		if err := cache.AddPod(pod); err != nil {
+			t.Errorf("Could not add pod to cache: %v", err)
+		}
+		eCache.InvalidateAllCachedPredicateItemOfNode("machine1")
+		mockCache.cacheInvalidated <- struct{}{}
+	}()
+
+	// Set up the scheduler.
+	ps := map[string]algorithm.FitPredicate{"testPredicate": testPredicate}
+	predicates.SetPredicatesOrdering([]string{"testPredicate"})
+	prioritizers := []algorithm.PriorityConfig{{Map: EqualPriorityMap, Weight: 1}}
+	pvcLister := schedulertesting.FakePersistentVolumeClaimLister([]*v1.PersistentVolumeClaim{})
+	scheduler := NewGenericScheduler(
+		mockCache,
+		eCache,
+		NewSchedulingQueue(),
+		ps,
+		algorithm.EmptyPredicateMetadataProducer,
+		prioritizers,
+		algorithm.EmptyPriorityMetadataProducer,
+		nil, nil, pvcLister, true, false)
+
+	// First scheduling attempt should fail.
+	nodeLister := schedulertesting.FakeNodeLister(makeNodeList([]string{"machine1"}))
+	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "test-pod"}}
+	machine, err := scheduler.Schedule(pod, nodeLister)
+	if machine != "" || err == nil {
+		t.Error("First scheduling attempt did not fail")
+	}
+
+	// Second scheduling attempt should succeed because cache was invalidated.
+	_, err = scheduler.Schedule(pod, nodeLister)
+	if err != nil {
+		t.Errorf("Second scheduling attempt failed: %v", err)
+	}
+	if callCount != 2 {
+		t.Errorf("Predicate should have been called twice. Was called %d times.", callCount)
 	}
 }

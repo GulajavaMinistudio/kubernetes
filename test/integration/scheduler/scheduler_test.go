@@ -54,8 +54,6 @@ import (
 	"k8s.io/kubernetes/test/integration/framework"
 )
 
-const enableEquivalenceCache = true
-
 type nodeMutationFunc func(t *testing.T, n *v1.Node, nodeLister corelisters.NodeLister, c clientset.Interface)
 
 type nodeStateManager struct {
@@ -136,6 +134,7 @@ func TestSchedulerCreationFromConfigMap(t *testing.T) {
 				"CheckNodeCondition", // mandatory predicate
 				"CheckNodeDiskPressure",
 				"CheckNodeMemoryPressure",
+				"CheckNodePIDPressure",
 				"CheckVolumeBinding",
 				"GeneralPredicates",
 				"MatchInterPodAffinity",

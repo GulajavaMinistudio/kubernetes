@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	coreclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/internalversion"
 	"k8s.io/kubernetes/pkg/kubectl"
@@ -118,12 +119,10 @@ type RunOptions struct {
 	Schedule       string
 	TTY            bool
 
-	In     io.Reader
-	Out    io.Writer
-	ErrOut io.Writer
+	genericclioptions.IOStreams
 }
 
-func NewRunOptions(in io.Reader, out, errOut io.Writer) *RunOptions {
+func NewRunOptions(streams genericclioptions.IOStreams) *RunOptions {
 	return &RunOptions{
 		PrintFlags:  printers.NewPrintFlags("created"),
 		DeleteFlags: NewDeleteFlags("to use to replace the resource."),
@@ -131,14 +130,12 @@ func NewRunOptions(in io.Reader, out, errOut io.Writer) *RunOptions {
 
 		Recorder: genericclioptions.NoopRecorder{},
 
-		In:     in,
-		Out:    out,
-		ErrOut: errOut,
+		IOStreams: streams,
 	}
 }
 
-func NewCmdRun(f cmdutil.Factory, in io.Reader, out, errOut io.Writer) *cobra.Command {
-	o := NewRunOptions(in, out, errOut)
+func NewCmdRun(f cmdutil.Factory, streams genericclioptions.IOStreams) *cobra.Command {
+	o := NewRunOptions(streams)
 
 	cmd := &cobra.Command{
 		Use: "run NAME --image=image [--env=\"key=value\"] [--port=port] [--replicas=replicas] [--dry-run=bool] [--overrides=inline-json] [--command] -- [COMMAND] [args...]",
@@ -461,7 +458,7 @@ func (o *RunOptions) removeCreatedObjects(f cmdutil.Factory, createdObjects []*R
 			return err
 		}
 		r := f.NewBuilder().
-			Internal().
+			Internal(legacyscheme.Scheme).
 			ContinueOnError().
 			NamespaceParam(namespace).DefaultNamespace().
 			ResourceNames(obj.Mapping.Resource, name).
@@ -646,8 +643,9 @@ func (o *RunOptions) createGeneratedObject(f cmdutil.Factory, cmd *cobra.Command
 		return nil, err
 	}
 
-	mapper, typer := f.Object()
-	groupVersionKinds, _, err := typer.ObjectKinds(obj)
+	mapper := f.RESTMapper()
+	// run has compiled knowledge of the thing is is creating
+	groupVersionKinds, _, err := legacyscheme.Scheme.ObjectKinds(obj)
 	if err != nil {
 		return nil, err
 	}
@@ -677,12 +675,11 @@ func (o *RunOptions) createGeneratedObject(f cmdutil.Factory, cmd *cobra.Command
 	versioned := obj
 	if !o.DryRun {
 		resourceMapper := &resource.Mapper{
-			ObjectTyper:  typer,
 			RESTMapper:   mapper,
 			ClientMapper: resource.ClientMapperFunc(f.ClientForMapping),
 			Decoder:      cmdutil.InternalVersionDecoder(),
 		}
-		info, err := resourceMapper.InfoForObject(obj, nil)
+		info, err := resourceMapper.InfoForObject(obj, legacyscheme.Scheme, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -696,7 +693,7 @@ func (o *RunOptions) createGeneratedObject(f cmdutil.Factory, cmd *cobra.Command
 			return nil, err
 		}
 
-		versioned = info.AsVersioned()
+		versioned = info.AsVersioned(legacyscheme.Scheme)
 	}
 	return &RunObject{
 		Versioned: versioned,

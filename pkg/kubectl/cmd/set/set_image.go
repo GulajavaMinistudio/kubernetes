@@ -18,8 +18,8 @@ package set
 
 import (
 	"fmt"
-	"io"
 
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/printers"
 
 	"github.com/golang/glog"
@@ -45,8 +45,6 @@ type SetImageOptions struct {
 
 	Infos        []*resource.Info
 	Selector     string
-	Out          io.Writer
-	Err          io.Writer
 	DryRun       bool
 	All          bool
 	Output       string
@@ -59,6 +57,8 @@ type SetImageOptions struct {
 	UpdatePodSpecForObject func(obj runtime.Object, fn func(*v1.PodSpec) error) (bool, error)
 	Resources              []string
 	ContainerImages        map[string]string
+
+	genericclioptions.IOStreams
 }
 
 var (
@@ -85,20 +85,19 @@ var (
 		kubectl set image -f path/to/file.yaml nginx=nginx:1.9.1 --local -o yaml`)
 )
 
-func NewImageOptions(out, errOut io.Writer) *SetImageOptions {
+func NewImageOptions(streams genericclioptions.IOStreams) *SetImageOptions {
 	return &SetImageOptions{
 		PrintFlags:  printers.NewPrintFlags("image updated"),
 		RecordFlags: genericclioptions.NewRecordFlags(),
 
 		Recorder: genericclioptions.NoopRecorder{},
 
-		Out: out,
-		Err: errOut,
+		IOStreams: streams,
 	}
 }
 
-func NewCmdImage(f cmdutil.Factory, out, errOut io.Writer) *cobra.Command {
-	o := NewImageOptions(out, errOut)
+func NewCmdImage(f cmdutil.Factory, streams genericclioptions.IOStreams) *cobra.Command {
+	o := NewImageOptions(streams)
 
 	cmd := &cobra.Command{
 		Use: "image (-f FILENAME | TYPE NAME) CONTAINER_NAME_1=CONTAINER_IMAGE_1 ... CONTAINER_NAME_N=CONTAINER_IMAGE_N",
@@ -162,7 +161,7 @@ func (o *SetImageOptions) Complete(f cmdutil.Factory, cmd *cobra.Command, args [
 
 	includeUninitialized := cmdutil.ShouldIncludeUninitialized(cmd, false)
 	builder := f.NewBuilder().
-		Internal().
+		Internal(legacyscheme.Scheme).
 		LocalParam(o.Local).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
@@ -212,7 +211,7 @@ func (o *SetImageOptions) Run() error {
 
 	patches := CalculatePatches(o.Infos, cmdutil.InternalVersionJSONEncoder(), func(info *resource.Info) ([]byte, error) {
 		transformed := false
-		info.Object = info.AsVersioned()
+		info.Object = info.AsVersioned(legacyscheme.Scheme)
 		_, err := o.UpdatePodSpecForObject(info.Object, func(spec *v1.PodSpec) error {
 			for name, image := range o.ContainerImages {
 				var (
@@ -276,7 +275,7 @@ func (o *SetImageOptions) Run() error {
 		}
 
 		if o.Local || o.DryRun {
-			if err := o.PrintObj(patch.Info.AsVersioned(), o.Out); err != nil {
+			if err := o.PrintObj(patch.Info.AsVersioned(legacyscheme.Scheme), o.Out); err != nil {
 				return err
 			}
 			continue
@@ -290,7 +289,7 @@ func (o *SetImageOptions) Run() error {
 		}
 		info.Refresh(obj, true)
 
-		if err := o.PrintObj(info.AsVersioned(), o.Out); err != nil {
+		if err := o.PrintObj(info.AsVersioned(legacyscheme.Scheme), o.Out); err != nil {
 			return err
 		}
 	}

@@ -18,7 +18,6 @@ package set
 
 import (
 	"fmt"
-	"io"
 
 	"k8s.io/kubernetes/pkg/printers"
 
@@ -30,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/genericclioptions"
@@ -53,7 +53,6 @@ type SetSelectorOptions struct {
 	resources []string
 	selector  *metav1.LabelSelector
 
-	out              io.Writer
 	ClientForMapping func(mapping *meta.RESTMapping) (resource.RESTClient, error)
 
 	PrintObj printers.ResourcePrinterFunc
@@ -61,6 +60,8 @@ type SetSelectorOptions struct {
 
 	builder *resource.Builder
 	mapper  meta.RESTMapper
+
+	genericclioptions.IOStreams
 }
 
 var (
@@ -77,20 +78,20 @@ var (
         kubectl create deployment my-dep -o yaml --dry-run | kubectl label --local -f - environment=qa -o yaml | kubectl create -f -`)
 )
 
-func NewSelectorOptions(out io.Writer) *SetSelectorOptions {
+func NewSelectorOptions(streams genericclioptions.IOStreams) *SetSelectorOptions {
 	return &SetSelectorOptions{
 		PrintFlags:  printers.NewPrintFlags("selector updated"),
 		RecordFlags: genericclioptions.NewRecordFlags(),
 
 		Recorder: genericclioptions.NoopRecorder{},
 
-		out: out,
+		IOStreams: streams,
 	}
 }
 
 // NewCmdSelector is the "set selector" command.
-func NewCmdSelector(f cmdutil.Factory, out io.Writer) *cobra.Command {
-	o := NewSelectorOptions(out)
+func NewCmdSelector(f cmdutil.Factory, streams genericclioptions.IOStreams) *cobra.Command {
+	o := NewSelectorOptions(streams)
 
 	cmd := &cobra.Command{
 		Use: "selector (-f FILENAME | TYPE NAME) EXPRESSIONS [--resource-version=version]",
@@ -139,7 +140,7 @@ func (o *SetSelectorOptions) Complete(f cmdutil.Factory, cmd *cobra.Command, arg
 		return err
 	}
 
-	mapper, _ := f.Object()
+	mapper := f.RESTMapper()
 	o.mapper = mapper
 
 	o.resources, o.selector, err = getResourcesAndSelector(args)
@@ -149,7 +150,7 @@ func (o *SetSelectorOptions) Complete(f cmdutil.Factory, cmd *cobra.Command, arg
 
 	includeUninitialized := cmdutil.ShouldIncludeUninitialized(cmd, false)
 	o.builder = f.NewBuilder().
-		Internal().
+		Internal(legacyscheme.Scheme).
 		LocalParam(o.local).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
@@ -207,7 +208,7 @@ func (o *SetSelectorOptions) RunSelector() error {
 	return r.Visit(func(info *resource.Info, err error) error {
 		patch := &Patch{Info: info}
 		CalculatePatch(patch, cmdutil.InternalVersionJSONEncoder(), func(info *resource.Info) ([]byte, error) {
-			versioned := info.AsVersioned()
+			versioned := info.AsVersioned(legacyscheme.Scheme)
 			patch.Info.Object = versioned
 			selectErr := updateSelectorForObject(info.Object, *o.selector)
 			if selectErr != nil {
@@ -226,7 +227,7 @@ func (o *SetSelectorOptions) RunSelector() error {
 			return patch.Err
 		}
 		if o.local || o.dryrun {
-			return o.PrintObj(info.Object, o.out)
+			return o.PrintObj(info.Object, o.Out)
 		}
 
 		patched, err := resource.NewHelper(info.Client, info.Mapping).Patch(info.Namespace, info.Name, types.StrategicMergePatchType, patch.Patch)
@@ -235,7 +236,7 @@ func (o *SetSelectorOptions) RunSelector() error {
 		}
 
 		info.Refresh(patched, true)
-		return o.PrintObj(patch.Info.AsVersioned(), o.out)
+		return o.PrintObj(patch.Info.AsVersioned(legacyscheme.Scheme), o.Out)
 	})
 }
 

@@ -81,9 +81,11 @@ func NewCmdRollingUpdate(f cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "rolling-update OLD_CONTROLLER_NAME ([NEW_CONTROLLER_NAME] --image=NEW_CONTAINER_IMAGE | -f NEW_CONTROLLER_SPEC)",
 		DisableFlagsInUseLine: true,
-		Short:   i18n.T("Perform a rolling update of the given ReplicationController"),
-		Long:    rollingUpdateLong,
-		Example: rollingUpdateExample,
+		Short:      "Perform a rolling update. This command is deprecated, use rollout instead.",
+		Long:       rollingUpdateLong,
+		Example:    rollingUpdateExample,
+		Deprecated: `use "rollout" instead`,
+		Hidden:     true,
 		Run: func(cmd *cobra.Command, args []string) {
 			err := RunRollingUpdate(f, out, cmd, args, options)
 			cmdutil.CheckErr(err)
@@ -215,10 +217,19 @@ func RunRollingUpdate(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args
 			return cmdutil.UsageErrorf(cmd, "please make sure %s exists and is not empty", filename)
 		}
 
-		switch t := infos[0].AsVersioned().(type) {
+		uncastVersionedObj, err := legacyscheme.Scheme.ConvertToVersion(infos[0].Object, v1.SchemeGroupVersion)
+		if err != nil {
+			return err
+		}
+		switch t := uncastVersionedObj.(type) {
 		case *v1.ReplicationController:
 			replicasDefaulted = t.Spec.Replicas == nil
-			newRc, _ = infos[0].AsInternal().(*api.ReplicationController)
+
+			// previous code ignored the error.  Seem like it's very unlikely to fail, so ok for now.
+			uncastObj, err := legacyscheme.Scheme.ConvertToVersion(uncastVersionedObj, api.SchemeGroupVersion)
+			if err == nil {
+				newRc, _ = uncastObj.(*api.ReplicationController)
+			}
 		}
 		if newRc == nil {
 			glog.V(4).Infof("Object %T is not a ReplicationController", infos[0].Object)

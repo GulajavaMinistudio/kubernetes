@@ -46,8 +46,12 @@ import (
 	"k8s.io/client-go/rest/fake"
 	restclientwatch "k8s.io/client-go/rest/watch"
 	utiltesting "k8s.io/client-go/util/testing"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/kubectl/categories"
 	"k8s.io/kubernetes/pkg/kubectl/scheme"
+
+	// install the pod scheme into the legacy scheme for test typer resolution
+	_ "k8s.io/kubernetes/pkg/apis/core/install"
 )
 
 var (
@@ -271,13 +275,12 @@ func newDefaultBuilderWith(client ClientMapper) *Builder {
 	return NewBuilder(
 		&Mapper{
 			RESTMapper:   restmapper,
-			ObjectTyper:  scheme.Scheme,
 			ClientMapper: client,
 			Decoder:      corev1Codec,
 		},
 		nil,
 		categories.LegacyCategoryExpander,
-	).Internal()
+	).Internal(legacyscheme.Scheme)
 }
 
 func TestPathBuilderAndVersionedObjectNotDefaulted(t *testing.T) {
@@ -296,7 +299,7 @@ func TestPathBuilderAndVersionedObjectNotDefaulted(t *testing.T) {
 	if info.Name != "update-demo-kitten" || info.Namespace != "" || info.Object == nil {
 		t.Errorf("unexpected info: %#v", info)
 	}
-	obj := info.AsVersioned()
+	obj := info.AsVersioned(legacyscheme.Scheme)
 	version, ok := obj.(*v1.ReplicationController)
 	// versioned object does not have defaulting applied
 	if obj == nil || !ok || version.Spec.Replicas != nil {

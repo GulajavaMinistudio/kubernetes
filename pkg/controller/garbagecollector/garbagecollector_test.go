@@ -59,7 +59,7 @@ func (_ *testRESTMapper) Reset() {}
 func TestGarbageCollectorConstruction(t *testing.T) {
 	config := &restclient.Config{}
 	config.ContentConfig.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: metaonly.NewMetadataCodecFactory()}
-	tweakableRM := meta.NewDefaultRESTMapper(nil, nil)
+	tweakableRM := meta.NewDefaultRESTMapper(nil)
 	rm := &testRESTMapper{meta.MultiRESTMapper{tweakableRM, legacyscheme.Registry.RESTMapper()}}
 	metaOnlyClientPool := dynamic.NewClientPool(config, rm, dynamic.LegacyAPIPathResolverFunc)
 	config.ContentConfig.NegotiatedSerializer = nil
@@ -686,9 +686,13 @@ func TestOrphanDependentsFailure(t *testing.T) {
 		},
 	}
 	err := gc.orphanDependents(objectReference{}, dependents)
-	expected := `the server reported a conflict (patch pods pod)`
+	expected := `the server reported a conflict`
 	if err == nil || !strings.Contains(err.Error(), expected) {
-		t.Errorf("expected error contains text %s, got %v", expected, err)
+		if err != nil {
+			t.Errorf("expected error contains text %q, got %q", expected, err.Error())
+		} else {
+			t.Errorf("expected error contains text %q, got nil", expected)
+		}
 	}
 }
 

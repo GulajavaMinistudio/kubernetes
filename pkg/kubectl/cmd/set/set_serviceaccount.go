@@ -19,7 +19,6 @@ package set
 import (
 	"errors"
 	"fmt"
-	"io"
 
 	"k8s.io/kubernetes/pkg/printers"
 
@@ -30,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/genericclioptions"
@@ -62,8 +62,6 @@ type SetServiceAccountOptions struct {
 	RecordFlags *genericclioptions.RecordFlags
 
 	fileNameOptions        resource.FilenameOptions
-	out                    io.Writer
-	err                    io.Writer
 	dryRun                 bool
 	shortOutput            bool
 	all                    bool
@@ -75,23 +73,24 @@ type SetServiceAccountOptions struct {
 
 	PrintObj printers.ResourcePrinterFunc
 	Recorder genericclioptions.Recorder
+
+	genericclioptions.IOStreams
 }
 
-func NewSetServiceAccountOptions(out, errOut io.Writer) *SetServiceAccountOptions {
+func NewSetServiceAccountOptions(streams genericclioptions.IOStreams) *SetServiceAccountOptions {
 	return &SetServiceAccountOptions{
 		PrintFlags:  printers.NewPrintFlags("serviceaccount updated"),
 		RecordFlags: genericclioptions.NewRecordFlags(),
 
 		Recorder: genericclioptions.NoopRecorder{},
 
-		out: out,
-		err: errOut,
+		IOStreams: streams,
 	}
 }
 
 // NewCmdServiceAccount returns the "set serviceaccount" command.
-func NewCmdServiceAccount(f cmdutil.Factory, out, errOut io.Writer) *cobra.Command {
-	o := NewSetServiceAccountOptions(out, errOut)
+func NewCmdServiceAccount(f cmdutil.Factory, streams genericclioptions.IOStreams) *cobra.Command {
+	o := NewSetServiceAccountOptions(streams)
 
 	cmd := &cobra.Command{
 		Use: "serviceaccount (-f FILENAME | TYPE NAME) SERVICE_ACCOUNT",
@@ -153,7 +152,7 @@ func (o *SetServiceAccountOptions) Complete(f cmdutil.Factory, cmd *cobra.Comman
 	resources := args[:len(args)-1]
 	includeUninitialized := cmdutil.ShouldIncludeUninitialized(cmd, false)
 	builder := f.NewBuilder().
-		Internal().
+		Internal(legacyscheme.Scheme).
 		LocalParam(o.local).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
@@ -175,7 +174,7 @@ func (o *SetServiceAccountOptions) Complete(f cmdutil.Factory, cmd *cobra.Comman
 func (o *SetServiceAccountOptions) Run() error {
 	patchErrs := []error{}
 	patchFn := func(info *resource.Info) ([]byte, error) {
-		info.Object = info.AsVersioned()
+		info.Object = info.AsVersioned(legacyscheme.Scheme)
 		_, err := o.updatePodSpecForObject(info.Object, func(podSpec *v1.PodSpec) error {
 			podSpec.ServiceAccountName = o.serviceAccountName
 			return nil
@@ -199,7 +198,7 @@ func (o *SetServiceAccountOptions) Run() error {
 			continue
 		}
 		if o.local || o.dryRun {
-			if err := o.PrintObj(patch.Info.AsVersioned(), o.out); err != nil {
+			if err := o.PrintObj(patch.Info.AsVersioned(legacyscheme.Scheme), o.Out); err != nil {
 				return err
 			}
 			continue
@@ -211,7 +210,7 @@ func (o *SetServiceAccountOptions) Run() error {
 		}
 		info.Refresh(patched, true)
 
-		if err := o.PrintObj(info.AsVersioned(), o.out); err != nil {
+		if err := o.PrintObj(info.AsVersioned(legacyscheme.Scheme), o.Out); err != nil {
 			return err
 		}
 	}

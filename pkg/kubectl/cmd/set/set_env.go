@@ -19,7 +19,6 @@ package set
 import (
 	"errors"
 	"fmt"
-	"io"
 	"regexp"
 	"sort"
 	"strings"
@@ -36,6 +35,8 @@ import (
 	"k8s.io/kubernetes/pkg/printers"
 
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	"k8s.io/kubernetes/pkg/kubectl/genericclioptions"
 )
 
 var (
@@ -94,10 +95,6 @@ var (
 type EnvOptions struct {
 	PrintFlags *printers.PrintFlags
 
-	Out io.Writer
-	Err io.Writer
-	In  io.Reader
-
 	resource.FilenameOptions
 	EnvParams []string
 	EnvArgs   []string
@@ -123,25 +120,26 @@ type EnvOptions struct {
 	Infos   []*resource.Info
 
 	UpdatePodSpecForObject func(obj runtime.Object, fn func(*v1.PodSpec) error) (bool, error)
+
+	genericclioptions.IOStreams
 }
 
 // NewEnvOptions returns an EnvOptions indicating all containers in the selected
 // pod templates are selected by default and allowing environment to be overwritten
-func NewEnvOptions(in io.Reader, out, errout io.Writer) *EnvOptions {
+func NewEnvOptions(streams genericclioptions.IOStreams) *EnvOptions {
 	return &EnvOptions{
 		PrintFlags: printers.NewPrintFlags("env updated"),
 
-		Out:               out,
-		Err:               errout,
-		In:                in,
 		ContainerSelector: "*",
 		Overwrite:         true,
+
+		IOStreams: streams,
 	}
 }
 
 // NewCmdEnv implements the OpenShift cli env command
-func NewCmdEnv(f cmdutil.Factory, in io.Reader, out, errout io.Writer) *cobra.Command {
-	options := NewEnvOptions(in, out, errout)
+func NewCmdEnv(f cmdutil.Factory, streams genericclioptions.IOStreams) *cobra.Command {
+	options := NewEnvOptions(streams)
 	cmd := &cobra.Command{
 		Use: "env RESOURCE/NAME KEY_1=VAL_1 ... KEY_N=VAL_N",
 		DisableFlagsInUseLine: true,
@@ -255,7 +253,7 @@ func (o *EnvOptions) RunEnv(f cmdutil.Factory) error {
 
 	if len(o.From) != 0 {
 		b := f.NewBuilder().
-			Internal().
+			Internal(legacyscheme.Scheme).
 			LocalParam(o.Local).
 			ContinueOnError().
 			NamespaceParam(cmdNamespace).DefaultNamespace().
@@ -275,7 +273,7 @@ func (o *EnvOptions) RunEnv(f cmdutil.Factory) error {
 		}
 
 		for _, info := range infos {
-			versionedObject, err := info.Mapping.ConvertToVersion(info.Object, info.Mapping.GroupVersionKind.GroupVersion())
+			versionedObject, err := legacyscheme.Scheme.ConvertToVersion(info.Object, info.Mapping.GroupVersionKind.GroupVersion())
 			if err != nil {
 				return err
 			}
@@ -323,7 +321,7 @@ func (o *EnvOptions) RunEnv(f cmdutil.Factory) error {
 	}
 
 	b := f.NewBuilder().
-		Internal().
+		Internal(legacyscheme.Scheme).
 		LocalParam(o.Local).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
@@ -341,12 +339,12 @@ func (o *EnvOptions) RunEnv(f cmdutil.Factory) error {
 		return err
 	}
 	patches := CalculatePatches(o.Infos, cmdutil.InternalVersionJSONEncoder(), func(info *resource.Info) ([]byte, error) {
-		info.Object = info.AsVersioned()
+		info.Object = info.AsVersioned(legacyscheme.Scheme)
 		_, err := o.UpdatePodSpecForObject(info.Object, func(spec *v1.PodSpec) error {
 			resolutionErrorsEncountered := false
 			containers, _ := selectContainers(spec.Containers, o.ContainerSelector)
 			if len(containers) == 0 {
-				fmt.Fprintf(o.Err, "warning: %s/%s does not have any containers matching %q\n", info.Mapping.Resource, info.Name, o.ContainerSelector)
+				fmt.Fprintf(o.ErrOut, "warning: %s/%s does not have any containers matching %q\n", info.Mapping.Resource, info.Name, o.ContainerSelector)
 				return nil
 			}
 			for _, c := range containers {
@@ -397,7 +395,7 @@ func (o *EnvOptions) RunEnv(f cmdutil.Factory) error {
 					}
 					sort.Strings(errs)
 					for _, err := range errs {
-						fmt.Fprintln(o.Err, err)
+						fmt.Fprintln(o.ErrOut, err)
 					}
 				}
 			}
@@ -432,7 +430,7 @@ func (o *EnvOptions) RunEnv(f cmdutil.Factory) error {
 		}
 
 		if o.Local || o.DryRun {
-			if err := o.PrintObj(patch.Info.AsVersioned(), o.Out); err != nil {
+			if err := o.PrintObj(patch.Info.AsVersioned(legacyscheme.Scheme), o.Out); err != nil {
 				return err
 			}
 			continue
@@ -451,7 +449,7 @@ func (o *EnvOptions) RunEnv(f cmdutil.Factory) error {
 			return fmt.Errorf("at least one environment variable must be provided")
 		}
 
-		if err := o.PrintObj(info.AsVersioned(), o.Out); err != nil {
+		if err := o.PrintObj(info.AsVersioned(legacyscheme.Scheme), o.Out); err != nil {
 			return err
 		}
 	}

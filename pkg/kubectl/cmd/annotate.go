@@ -19,6 +19,7 @@ package cmd
 import (
 	"bytes"
 	"fmt"
+	"io"
 
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/golang/glog"
@@ -29,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/json"
+	"k8s.io/kubernetes/pkg/printers"
 
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
@@ -40,6 +42,9 @@ import (
 
 // AnnotateOptions have the data required to perform the annotate operation
 type AnnotateOptions struct {
+	PrintFlags *printers.PrintFlags
+	PrintObj   printers.ResourcePrinterFunc
+
 	// Filename options
 	resource.FilenameOptions
 	RecordFlags *genericclioptions.RecordFlags
@@ -99,14 +104,15 @@ var (
 
 func NewAnnotateOptions(ioStreams genericclioptions.IOStreams) *AnnotateOptions {
 	return &AnnotateOptions{
-		RecordFlags: genericclioptions.NewRecordFlags(),
+		PrintFlags: printers.NewPrintFlags("annotated"),
 
-		Recorder:  genericclioptions.NoopRecorder{},
-		IOStreams: ioStreams,
+		RecordFlags: genericclioptions.NewRecordFlags(),
+		Recorder:    genericclioptions.NoopRecorder{},
+		IOStreams:   ioStreams,
 	}
 }
 
-func NewCmdAnnotate(f cmdutil.Factory, ioStreams genericclioptions.IOStreams) *cobra.Command {
+func NewCmdAnnotate(parent string, f cmdutil.Factory, ioStreams genericclioptions.IOStreams) *cobra.Command {
 	o := NewAnnotateOptions(ioStreams)
 	validArgs := cmdutil.ValidArgList(f)
 
@@ -114,7 +120,7 @@ func NewCmdAnnotate(f cmdutil.Factory, ioStreams genericclioptions.IOStreams) *c
 		Use: "annotate [--overwrite] (-f FILENAME | TYPE NAME) KEY_1=VAL_1 ... KEY_N=VAL_N [--resource-version=version]",
 		DisableFlagsInUseLine: true,
 		Short:   i18n.T("Update the annotations on a resource"),
-		Long:    annotateLong + "\n\n" + cmdutil.ValidResourceTypeList(f),
+		Long:    annotateLong + "\n\n" + cmdutil.SuggestApiResources(parent),
 		Example: annotateExample,
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := o.Complete(f, cmd, args); err != nil {
@@ -131,8 +137,8 @@ func NewCmdAnnotate(f cmdutil.Factory, ioStreams genericclioptions.IOStreams) *c
 
 	// bind flag structs
 	o.RecordFlags.AddFlags(cmd)
+	o.PrintFlags.AddFlags(cmd)
 
-	cmdutil.AddPrinterFlags(cmd)
 	cmdutil.AddIncludeUninitializedFlag(cmd)
 	cmd.Flags().BoolVar(&o.overwrite, "overwrite", o.overwrite, "If true, allow annotations to be overwritten, otherwise reject annotation updates that overwrite existing annotations.")
 	cmd.Flags().BoolVar(&o.local, "local", o.local, "If true, annotation will NOT contact api-server but run locally.")
@@ -158,6 +164,17 @@ func (o *AnnotateOptions) Complete(f cmdutil.Factory, cmd *cobra.Command, args [
 
 	o.outputFormat = cmdutil.GetFlagString(cmd, "output")
 	o.dryrun = cmdutil.GetDryRunFlag(cmd)
+
+	if o.dryrun {
+		o.PrintFlags.Complete("%s (dry run)")
+	}
+	printer, err := o.PrintFlags.ToPrinter()
+	if err != nil {
+		return err
+	}
+	o.PrintObj = func(obj runtime.Object, out io.Writer) error {
+		return printer.PrintObj(obj, out)
+	}
 
 	// retrieves resource and annotation args from args
 	// also checks args to verify that all resources are specified before annotations
@@ -229,12 +246,7 @@ func (o AnnotateOptions) RunAnnotate(f cmdutil.Factory, cmd *cobra.Command) erro
 		}
 
 		var outputObj runtime.Object
-		var obj runtime.Object
-
-		obj, err = info.Mapping.ConvertToVersion(info.Object, info.Mapping.GroupVersionKind.GroupVersion())
-		if err != nil {
-			return err
-		}
+		obj := info.Object
 
 		if o.dryrun || o.local {
 			if err := o.updateAnnotations(obj); err != nil {
@@ -280,11 +292,7 @@ func (o AnnotateOptions) RunAnnotate(f cmdutil.Factory, cmd *cobra.Command) erro
 			}
 		}
 
-		if len(o.outputFormat) > 0 {
-			return cmdutil.PrintObject(cmd, outputObj, o.Out)
-		}
-		cmdutil.PrintSuccess(false, o.Out, info.Object, o.dryrun, "annotated")
-		return nil
+		return o.PrintObj(outputObj, o.Out)
 	})
 }
 

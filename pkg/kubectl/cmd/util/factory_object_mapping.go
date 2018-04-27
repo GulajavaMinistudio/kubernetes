@@ -76,34 +76,22 @@ func NewObjectMappingFactory(clientAccessFactory ClientAccessFactory) ObjectMapp
 // the built in mapper if necessary. It supports unstructured objects either way, since
 // the underlying Scheme supports Unstructured. The mapper will return converters that can
 // convert versioned types to unstructured and back.
-func (f *ring1Factory) objectLoader() (meta.RESTMapper, runtime.ObjectTyper, error) {
+func (f *ring1Factory) restMapper() (meta.RESTMapper, error) {
 	discoveryClient, err := f.clientAccessFactory.DiscoveryClient()
 	if err != nil {
 		glog.V(3).Infof("Unable to get a discovery client to find server resources, falling back to hardcoded types: %v", err)
-		return legacyscheme.Registry.RESTMapper(), legacyscheme.Scheme, nil
-	}
-
-	groupResources, err := discovery.GetAPIGroupResources(discoveryClient)
-	if err != nil && !discoveryClient.Fresh() {
-		discoveryClient.Invalidate()
-		groupResources, err = discovery.GetAPIGroupResources(discoveryClient)
-	}
-	if err != nil {
-		glog.V(3).Infof("Unable to retrieve API resources, falling back to hardcoded types: %v", err)
-		return legacyscheme.Registry.RESTMapper(), legacyscheme.Scheme, nil
+		return legacyscheme.Registry.RESTMapper(), nil
 	}
 
 	// allow conversion between typed and unstructured objects
-	interfaces := meta.InterfacesForUnstructuredConversion(legacyscheme.Registry.InterfacesFor)
-	mapper := discovery.NewDeferredDiscoveryRESTMapper(discoveryClient, meta.VersionInterfacesFunc(interfaces))
+	mapper := discovery.NewDeferredDiscoveryRESTMapper(discoveryClient)
 	// TODO: should this also indicate it recognizes typed objects?
-	typer := discovery.NewUnstructuredObjectTyper(groupResources, legacyscheme.Scheme)
 	expander := NewShortcutExpander(mapper, discoveryClient)
-	return expander, typer, err
+	return expander, err
 }
 
-func (f *ring1Factory) Object() (meta.RESTMapper, runtime.ObjectTyper) {
-	return meta.NewLazyObjectLoader(f.objectLoader)
+func (f *ring1Factory) RESTMapper() meta.RESTMapper {
+	return meta.NewLazyRESTMapperLoader(f.restMapper)
 }
 
 func (f *ring1Factory) CategoryExpander() categories.CategoryExpander {
@@ -164,16 +152,12 @@ func (f *ring1Factory) UnstructuredClientForMapping(mapping *meta.RESTMapping) (
 }
 
 func (f *ring1Factory) Describer(mapping *meta.RESTMapping) (printers.Describer, error) {
-	clientset, err := f.clientAccessFactory.ClientSet()
-	if err != nil {
-		return nil, err
-	}
-	externalclientset, err := f.clientAccessFactory.KubernetesClientSet()
+	clientConfig, err := f.clientAccessFactory.ClientConfig()
 	if err != nil {
 		return nil, err
 	}
 	// try to get a describer
-	if describer, ok := printersinternal.DescriberFor(mapping.GroupVersionKind.GroupKind(), clientset, externalclientset); ok {
+	if describer, ok := printersinternal.DescriberFor(mapping.GroupVersionKind.GroupKind(), clientConfig); ok {
 		return describer, nil
 	}
 	// if this is a kind we don't have a describer for yet, go generic if possible
@@ -197,7 +181,7 @@ func genericDescriber(clientAccessFactory ClientAccessFactory, mapping *meta.RES
 	clientConfigCopy.GroupVersion = &gv
 
 	// used to fetch the resource
-	dynamicClient, err := dynamic.NewClient(&clientConfigCopy)
+	dynamicClient, err := dynamic.NewClient(&clientConfigCopy, gv)
 	if err != nil {
 		return nil, err
 	}

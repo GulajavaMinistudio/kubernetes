@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -388,9 +389,10 @@ func RunCreateSubcommand(f cmdutil.Factory, options *CreateSubcommandOptions) er
 	if err != nil {
 		return err
 	}
-	mapper, typer := f.Object()
+	mapper := f.RESTMapper()
 	if !options.DryRun {
-		gvks, _, err := typer.ObjectKinds(obj)
+		// create subcommands have compiled knowledge of things they create, so type them directly
+		gvks, _, err := legacyscheme.Scheme.ObjectKinds(obj)
 		if err != nil {
 			return err
 		}
@@ -404,11 +406,10 @@ func RunCreateSubcommand(f cmdutil.Factory, options *CreateSubcommandOptions) er
 			return err
 		}
 		resourceMapper := &resource.Mapper{
-			ObjectTyper:  typer,
 			RESTMapper:   mapper,
 			ClientMapper: resource.ClientMapperFunc(f.ClientForMapping),
 		}
-		info, err := resourceMapper.InfoForObject(obj, nil)
+		info, err := resourceMapper.InfoForObject(obj, legacyscheme.Scheme, nil)
 		if err != nil {
 			return err
 		}
@@ -422,7 +423,7 @@ func RunCreateSubcommand(f cmdutil.Factory, options *CreateSubcommandOptions) er
 		}
 
 		// ensure we pass a versioned object to the printer
-		obj = info.AsVersioned()
+		obj = info.AsVersioned(legacyscheme.Scheme)
 	} else {
 		if meta, err := meta.Accessor(obj); err == nil && nsOverriden {
 			meta.SetNamespace(namespace)

@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -150,7 +151,7 @@ func (o *TaintOptions) Complete(f cmdutil.Factory, out io.Writer, cmd *cobra.Com
 		return cmdutil.UsageErrorf(cmd, err.Error())
 	}
 	o.builder = f.NewBuilder().
-		Internal().
+		Internal(legacyscheme.Scheme).
 		ContinueOnError().
 		NamespaceParam(namespace).DefaultNamespace()
 	if o.selector != "" {
@@ -233,7 +234,7 @@ func (o TaintOptions) RunTaint() error {
 			return err
 		}
 
-		obj, err := info.Mapping.ConvertToVersion(info.Object, info.Mapping.GroupVersionKind.GroupVersion())
+		obj, err := legacyscheme.Scheme.ConvertToVersion(info.Object, info.Mapping.GroupVersionKind.GroupVersion())
 		if err != nil {
 			return err
 		}

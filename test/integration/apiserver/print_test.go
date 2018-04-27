@@ -147,7 +147,7 @@ func TestServerSidePrint(t *testing.T) {
 	printer := newFakePrinter(printersinternal.AddHandlers)
 
 	factory := util.NewFactory(clientcmd.NewDefaultClientConfig(*createKubeConfig(s.URL), &clientcmd.ConfigOverrides{}))
-	mapper, _ := factory.Object()
+	mapper := factory.RESTMapper()
 
 	for gvk, apiType := range legacyscheme.Scheme.AllKnownTypes() {
 		// we do not care about internal objects or lists // TODO make sure this is always true
@@ -192,7 +192,7 @@ func TestServerSidePrint(t *testing.T) {
 			continue
 		}
 		intGV := gvk.GroupKind().WithVersion(runtime.APIVersionInternal).GroupVersion()
-		intObj, err := mapping.ConvertToVersion(obj, intGV)
+		intObj, err := legacyscheme.Scheme.ConvertToVersion(obj, intGV)
 		if err != nil {
 			t.Errorf("unexpected error converting %s to internal: %v", gvk, err)
 			continue
