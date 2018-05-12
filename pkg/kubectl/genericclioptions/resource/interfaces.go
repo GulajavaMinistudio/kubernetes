@@ -17,9 +17,17 @@ limitations under the License.
 package resource
 
 import (
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/rest"
 )
+
+type RESTClientGetter interface {
+	ToRESTConfig() (*rest.Config, error)
+	ToDiscoveryClient() (discovery.CachedDiscoveryInterface, error)
+	ToRESTMapper() (meta.RESTMapper, error)
+}
 
 type ClientConfigFunc func() (*rest.Config, error)
 
@@ -69,4 +77,9 @@ func (c *clientOptions) Delete() *rest.Request {
 }
 func (c *clientOptions) Put() *rest.Request {
 	return c.modify(c.c.Put())
+}
+
+// ContentValidator is an interface that knows how to validate an API object serialized to a byte array.
+type ContentValidator interface {
+	ValidateBytes(data []byte) error
 }

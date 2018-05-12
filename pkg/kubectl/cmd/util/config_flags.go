@@ -17,6 +17,7 @@ limitations under the License.
 package util
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -31,8 +32,6 @@ import (
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
-
-	"fmt"
 
 	"k8s.io/kubernetes/pkg/kubectl/cmd/util/transport"
 )
@@ -53,6 +52,7 @@ const (
 	flagUsername         = "username"
 	flagPassword         = "password"
 	flagTimeout          = "request-timeout"
+	flagHTTPCacheDir     = "cache-dir"
 )
 
 // TODO(juanvallejo): move to pkg/kubectl/genericclioptions once
@@ -225,7 +225,7 @@ func (f *ConfigFlags) AddFlags(flags *pflag.FlagSet) {
 		flags.StringVar(f.KubeConfig, "kubeconfig", *f.KubeConfig, "Path to the kubeconfig file to use for CLI requests.")
 	}
 	if f.CacheDir != nil {
-		flags.StringVar(f.CacheDir, FlagHTTPCacheDir, *f.CacheDir, "Default HTTP cache directory")
+		flags.StringVar(f.CacheDir, flagHTTPCacheDir, *f.CacheDir, "Default HTTP cache directory")
 	}
 
 	// add config options

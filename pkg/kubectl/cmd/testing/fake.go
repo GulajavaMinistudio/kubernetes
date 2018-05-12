@@ -47,11 +47,10 @@ import (
 	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/kubectl"
-	"k8s.io/kubernetes/pkg/kubectl/categories"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/util/openapi"
 	openapitesting "k8s.io/kubernetes/pkg/kubectl/cmd/util/openapi/testing"
-	"k8s.io/kubernetes/pkg/kubectl/resource"
+	"k8s.io/kubernetes/pkg/kubectl/genericclioptions/resource"
 	"k8s.io/kubernetes/pkg/kubectl/validation"
 	"k8s.io/kubernetes/pkg/printers"
 )
@@ -287,8 +286,8 @@ func (f *TestFactory) Cleanup() {
 	os.Remove(f.tempConfigFile.Name())
 }
 
-func (f *TestFactory) CategoryExpander() categories.CategoryExpander {
-	return categories.LegacyCategoryExpander
+func (f *TestFactory) CategoryExpander() (restmapper.CategoryExpander, error) {
+	return resource.FakeCategoryExpander, nil
 }
 
 func (f *TestFactory) ClientConfig() (*restclient.Config, error) {
@@ -335,6 +334,7 @@ func (f *TestFactory) Command(*cobra.Command, bool) string {
 
 func (f *TestFactory) NewBuilder() *resource.Builder {
 	mapper, err := f.RESTMapper()
+	categoryExpander, err2 := f.CategoryExpander()
 
 	return resource.NewFakeBuilder(
 		func(version schema.GroupVersion) (resource.RESTClient, error) {
@@ -347,8 +347,8 @@ func (f *TestFactory) NewBuilder() *resource.Builder {
 			return f.Client, nil
 		},
 		mapper,
-		f.CategoryExpander(),
-	).AddError(err)
+		categoryExpander,
+	).AddError(err).AddError(err2)
 }
 
 func (f *TestFactory) KubernetesClientSet() (*kubernetes.Clientset, error) {
@@ -398,7 +398,7 @@ func (f *TestFactory) ClientSet() (internalclientset.Interface, error) {
 	return clientset, nil
 }
 
-func (f *TestFactory) DynamicClient() (dynamic.DynamicInterface, error) {
+func (f *TestFactory) DynamicClient() (dynamic.Interface, error) {
 	if f.FakeDynamicClient != nil {
 		return f.FakeDynamicClient, nil
 	}

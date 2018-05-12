@@ -40,7 +40,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/genericclioptions"
-	"k8s.io/kubernetes/pkg/kubectl/resource"
+	"k8s.io/kubernetes/pkg/kubectl/genericclioptions/resource"
 	"k8s.io/kubernetes/pkg/kubectl/scheme"
 	"k8s.io/kubernetes/pkg/kubectl/util/i18n"
 	"k8s.io/kubernetes/pkg/util/interrupt"
@@ -107,7 +107,7 @@ type RunOptions struct {
 	PrintObj func(runtime.Object) error
 	Recorder genericclioptions.Recorder
 
-	DynamicClient dynamic.DynamicInterface
+	DynamicClient dynamic.Interface
 
 	ArgsLenAtDash  int
 	Attach         bool
@@ -126,7 +126,7 @@ type RunOptions struct {
 
 func NewRunOptions(streams genericclioptions.IOStreams) *RunOptions {
 	return &RunOptions{
-		PrintFlags:  printers.NewPrintFlags("created"),
+		PrintFlags:  printers.NewPrintFlags("created", legacyscheme.Scheme),
 		DeleteFlags: NewDeleteFlags("to use to replace the resource."),
 		RecordFlags: genericclioptions.NewRecordFlags(),
 

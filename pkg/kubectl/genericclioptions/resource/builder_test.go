@@ -29,9 +29,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/ghodss/yaml"
 
-	"k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/meta/testrestmapper"
@@ -47,19 +47,16 @@ import (
 	"k8s.io/client-go/rest/fake"
 	restclientwatch "k8s.io/client-go/rest/watch"
 	utiltesting "k8s.io/client-go/util/testing"
-	"k8s.io/kubernetes/pkg/kubectl/categories"
-	"k8s.io/kubernetes/pkg/kubectl/scheme"
 
-	// install the pod scheme into the legacy scheme for test typer resolution
-	"github.com/davecgh/go-spew/spew"
-	_ "k8s.io/kubernetes/pkg/apis/core/install"
+	// TODO we need to remove this linkage and create our own scheme
+	"k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes/scheme"
 )
 
 var (
 	corev1GV     = schema.GroupVersion{Version: "v1"}
 	corev1Codec  = scheme.Codecs.CodecForVersions(scheme.Codecs.LegacyCodec(corev1GV), scheme.Codecs.UniversalDecoder(corev1GV), corev1GV, corev1GV)
 	metaAccessor = meta.NewAccessor()
-	restmapper   = testrestmapper.TestOnlyStaticRESTMapper(scheme.Scheme)
 )
 
 func stringBody(body string) io.ReadCloser {
@@ -273,13 +270,13 @@ func newDefaultBuilder() *Builder {
 }
 
 func newDefaultBuilderWith(fakeClientFn FakeClientFunc) *Builder {
-	return NewFakeBuilder(fakeClientFn, restmapper, categories.LegacyCategoryExpander).
+	return NewFakeBuilder(fakeClientFn, testrestmapper.TestOnlyStaticRESTMapper(scheme.Scheme), FakeCategoryExpander).
 		WithScheme(scheme.Scheme, scheme.Scheme.PrioritizedVersionsAllGroups()...)
 }
 
 func TestPathBuilderAndVersionedObjectNotDefaulted(t *testing.T) {
 	b := newDefaultBuilder().
-		FilenameParam(false, &FilenameOptions{Recursive: false, Filenames: []string{"../../../test/fixtures/pkg/kubectl/builder/kitten-rc.yaml"}})
+		FilenameParam(false, &FilenameOptions{Recursive: false, Filenames: []string{"../../../../test/fixtures/pkg/kubectl/builder/kitten-rc.yaml"}})
 
 	test := &testVisitor{}
 	singleItemImplied := false
@@ -373,9 +370,9 @@ func TestPathBuilderWithMultiple(t *testing.T) {
 		directory     string
 		expectedNames []string
 	}{
-		{"pod", &v1.Pod{}, false, "../../../test/e2e/testing-manifests/pod", []string{"nginx"}},
+		{"pod", &v1.Pod{}, false, "../../../../test/e2e/testing-manifests/pod", []string{"nginx"}},
 		{"recursive-pod", &v1.Pod{}, true, fmt.Sprintf("%s/recursive/pod", tmpDir), []string{"busybox0", "busybox1"}},
-		{"rc", &v1.ReplicationController{}, false, "../../../test/e2e/testing-manifests/guestbook/legacy/redis-master-controller.yaml", []string{"redis-master"}},
+		{"rc", &v1.ReplicationController{}, false, "../../../../test/e2e/testing-manifests/guestbook/legacy/redis-master-controller.yaml", []string{"redis-master"}},
 		{"recursive-rc", &v1.ReplicationController{}, true, fmt.Sprintf("%s/recursive/rc", tmpDir), []string{"busybox0", "busybox1"}},
 		{"hardlink", &v1.Pod{}, false, fmt.Sprintf("%s/inode/hardlink/busybox-link.json", tmpDir), []string{"busybox0"}},
 		{"hardlink", &v1.Pod{}, true, fmt.Sprintf("%s/inode/hardlink/busybox-link.json", tmpDir), []string{"busybox0"}},
@@ -457,7 +454,7 @@ func TestPathBuilderWithMultipleInvalid(t *testing.T) {
 
 func TestDirectoryBuilder(t *testing.T) {
 	b := newDefaultBuilder().
-		FilenameParam(false, &FilenameOptions{Recursive: false, Filenames: []string{"../../../test/e2e/testing-manifests/guestbook/legacy"}}).
+		FilenameParam(false, &FilenameOptions{Recursive: false, Filenames: []string{"../../../../test/e2e/testing-manifests/guestbook/legacy"}}).
 		NamespaceParam("test").DefaultNamespace()
 
 	test := &testVisitor{}
@@ -1027,7 +1024,7 @@ func TestContinueOnErrorVisitor(t *testing.T) {
 func TestSingleItemImpliedObject(t *testing.T) {
 	obj, err := newDefaultBuilder().
 		NamespaceParam("test").DefaultNamespace().
-		FilenameParam(false, &FilenameOptions{Recursive: false, Filenames: []string{"../../../test/e2e/testing-manifests/guestbook/legacy/redis-master-controller.yaml"}}).
+		FilenameParam(false, &FilenameOptions{Recursive: false, Filenames: []string{"../../../../test/e2e/testing-manifests/guestbook/legacy/redis-master-controller.yaml"}}).
 		Flatten().
 		Do().Object()
 
@@ -1047,7 +1044,7 @@ func TestSingleItemImpliedObject(t *testing.T) {
 func TestSingleItemImpliedObjectNoExtension(t *testing.T) {
 	obj, err := newDefaultBuilder().
 		NamespaceParam("test").DefaultNamespace().
-		FilenameParam(false, &FilenameOptions{Recursive: false, Filenames: []string{"../../../test/e2e/testing-manifests/pod"}}).
+		FilenameParam(false, &FilenameOptions{Recursive: false, Filenames: []string{"../../../../test/e2e/testing-manifests/pod"}}).
 		Flatten().
 		Do().Object()
 
@@ -1158,7 +1155,7 @@ func TestWatch(t *testing.T) {
 		}),
 	})).
 		NamespaceParam("test").DefaultNamespace().
-		FilenameParam(false, &FilenameOptions{Recursive: false, Filenames: []string{"../../../test/e2e/testing-manifests/guestbook/redis-master-service.yaml"}}).Flatten().
+		FilenameParam(false, &FilenameOptions{Recursive: false, Filenames: []string{"../../../../test/e2e/testing-manifests/guestbook/redis-master-service.yaml"}}).Flatten().
 		Do().Watch("12")
 
 	if err != nil {
@@ -1185,8 +1182,8 @@ func TestWatch(t *testing.T) {
 func TestWatchMultipleError(t *testing.T) {
 	_, err := newDefaultBuilder().
 		NamespaceParam("test").DefaultNamespace().
-		FilenameParam(false, &FilenameOptions{Recursive: false, Filenames: []string{"../../../test/e2e/testing-manifests/guestbook/legacy/redis-master-controller.yaml"}}).Flatten().
-		FilenameParam(false, &FilenameOptions{Recursive: false, Filenames: []string{"../../../test/e2e/testing-manifests/guestbook/legacy/redis-master-controller.yaml"}}).Flatten().
+		FilenameParam(false, &FilenameOptions{Recursive: false, Filenames: []string{"../../../../test/e2e/testing-manifests/guestbook/legacy/redis-master-controller.yaml"}}).Flatten().
+		FilenameParam(false, &FilenameOptions{Recursive: false, Filenames: []string{"../../../../test/e2e/testing-manifests/guestbook/legacy/redis-master-controller.yaml"}}).Flatten().
 		Do().Watch("")
 
 	if err == nil {

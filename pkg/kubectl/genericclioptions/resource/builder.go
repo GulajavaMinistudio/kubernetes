@@ -34,8 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/kubernetes/pkg/kubectl/categories"
-	"k8s.io/kubernetes/pkg/kubectl/validation"
+	"k8s.io/client-go/restmapper"
 )
 
 var FileExtensions = []string{".json", ".yaml", ".yml"}
@@ -47,7 +46,7 @@ const defaultHttpGetAttempts int = 3
 // from the command line and converting them to a list of resources to iterate
 // over using the Visitor interface.
 type Builder struct {
-	categoryExpander categories.CategoryExpander
+	categoryExpander restmapper.CategoryExpander
 
 	// mapper is set explicitly by resource builders
 	mapper       *mapper
@@ -105,7 +104,7 @@ type Builder struct {
 
 	export bool
 
-	schema validation.Schema
+	schema ContentValidator
 
 	// fakeClientFn is used for testing
 	fakeClientFn FakeClientFunc
@@ -143,8 +142,8 @@ type resourceTuple struct {
 
 type FakeClientFunc func(version schema.GroupVersion) (RESTClient, error)
 
-func NewFakeBuilder(fakeClientFn FakeClientFunc, restMapper meta.RESTMapper, categoryExpander categories.CategoryExpander) *Builder {
-	ret := NewBuilder(nil, restMapper, categoryExpander)
+func NewFakeBuilder(fakeClientFn FakeClientFunc, restMapper meta.RESTMapper, categoryExpander restmapper.CategoryExpander) *Builder {
+	ret := newBuilder(nil, restMapper, categoryExpander)
 	ret.fakeClientFn = fakeClientFn
 	return ret
 }
@@ -153,7 +152,7 @@ func NewFakeBuilder(fakeClientFn FakeClientFunc, restMapper meta.RESTMapper, cat
 // internal or unstructured must be specified.
 // TODO: Add versioned client (although versioned is still lossy)
 // TODO remove internal and unstructured mapper and instead have them set the negotiated serializer for use in the client
-func NewBuilder(clientConfigFn ClientConfigFunc, restMapper meta.RESTMapper, categoryExpander categories.CategoryExpander) *Builder {
+func newBuilder(clientConfigFn ClientConfigFunc, restMapper meta.RESTMapper, categoryExpander restmapper.CategoryExpander) *Builder {
 	return &Builder{
 		clientConfigFn:   clientConfigFn,
 		restMapper:       restMapper,
@@ -162,7 +161,22 @@ func NewBuilder(clientConfigFn ClientConfigFunc, restMapper meta.RESTMapper, cat
 	}
 }
 
-func (b *Builder) Schema(schema validation.Schema) *Builder {
+func NewBuilder(restClientGetter RESTClientGetter) *Builder {
+	restMapper, mapperErr := restClientGetter.ToRESTMapper()
+	discoveryClient, discoveryErr := restClientGetter.ToDiscoveryClient()
+	var categoryExpander restmapper.CategoryExpander
+	if discoveryErr == nil {
+		categoryExpander = restmapper.NewDiscoveryCategoryExpander(discoveryClient)
+	}
+
+	return newBuilder(
+		restClientGetter.ToRESTConfig,
+		restMapper,
+		categoryExpander,
+	).AddError(mapperErr).AddError(discoveryErr)
+}
+
+func (b *Builder) Schema(schema ContentValidator) *Builder {
 	b.schema = schema
 	return b
 }
@@ -543,6 +557,9 @@ func (b *Builder) ResourceTypeOrNameArgs(allowEmptySelector bool, args ...string
 func (b *Builder) ReplaceAliases(input string) string {
 	replaced := []string{}
 	for _, arg := range strings.Split(input, ",") {
+		if b.categoryExpander == nil {
+			continue
+		}
 		if resources, ok := b.categoryExpander.Expand(arg); ok {
 			asStrings := []string{}
 			for _, resource := range resources {
