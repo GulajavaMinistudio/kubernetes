@@ -193,7 +193,7 @@ func (f *ring0Factory) UpdatePodSpecForObject(obj runtime.Object, fn func(*v1.Po
 		return true, fn(&t.Spec.JobTemplate.Spec.Template.Spec)
 
 	default:
-		return false, fmt.Errorf("the object is not a pod or does not have a pod template")
+		return false, fmt.Errorf("the object is not a pod or does not have a pod template: %T", t)
 	}
 }
 
@@ -576,10 +576,6 @@ func (f *ring0Factory) CanBeAutoscaled(kind schema.GroupKind) error {
 		return fmt.Errorf("cannot autoscale a %v", kind)
 	}
 	return nil
-}
-
-func (f *ring0Factory) EditorEnvs() []string {
-	return []string{"KUBE_EDITOR", "EDITOR"}
 }
 
 // overlyCautiousIllegalFileCharacters matches characters that *might* not be supported.  Windows is really restrictive, so this is really restrictive
