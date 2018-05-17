@@ -19,6 +19,7 @@ package eviction
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -155,7 +156,7 @@ func (m *managerImpl) Admit(attrs *lifecycle.PodAdmitAttributes) lifecycle.PodAd
 	glog.Warningf("Failed to admit pod %s - node has conditions: %v", format.Pod(attrs.Pod), m.nodeConditions)
 	return lifecycle.PodAdmitResult{
 		Admit:   false,
-		Reason:  reason,
+		Reason:  Reason,
 		Message: fmt.Sprintf(message, m.nodeConditions),
 	}
 }
@@ -231,7 +232,7 @@ func (m *managerImpl) startMemoryThresholdNotifier(summary *statsapi.Summary, ha
 		memcgThreshold.Sub(*evictionThresholdQuantity)
 		memcgThreshold.Add(*inactiveFile)
 		description := fmt.Sprintf("<%s available", formatThresholdValue(threshold.Value))
-		memcgThresholdNotifier, err := NewMemCGThresholdNotifier(cgpath, attribute, memcgThreshold.String(), description, handler)
+		memcgThresholdNotifier, err := NewMemCGThresholdNotifier(cgpath, attribute, strconv.FormatInt(memcgThreshold.Value(), 10), description, handler)
 		if err != nil {
 			return err
 		}
@@ -607,10 +608,10 @@ func (m *managerImpl) evictPod(pod *v1.Pod, gracePeriodOverride int64, evictMsg 
 	status := v1.PodStatus{
 		Phase:   v1.PodFailed,
 		Message: evictMsg,
-		Reason:  reason,
+		Reason:  Reason,
 	}
 	// record that we are evicting the pod
-	m.recorder.Eventf(pod, v1.EventTypeWarning, reason, evictMsg)
+	m.recorder.Eventf(pod, v1.EventTypeWarning, Reason, evictMsg)
 	// this is a blocking call and should only return when the pod and its containers are killed.
 	err := m.killPodFunc(pod, status, &gracePeriodOverride)
 	if err != nil {
