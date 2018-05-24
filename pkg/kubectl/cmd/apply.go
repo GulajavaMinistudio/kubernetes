@@ -201,13 +201,17 @@ func (o *ApplyOptions) Complete(f cmdutil.Factory, cmd *cobra.Command) error {
 	}
 
 	var err error
-	o.RecordFlags.Complete(f.Command(cmd, false))
+	o.RecordFlags.Complete(cmd)
 	o.Recorder, err = o.RecordFlags.ToRecorder()
 	if err != nil {
 		return err
 	}
 
-	o.DeleteOptions = o.DeleteFlags.ToOptions(o.IOStreams)
+	dynamicClient, err := f.DynamicClient()
+	if err != nil {
+		return err
+	}
+	o.DeleteOptions = o.DeleteFlags.ToOptions(dynamicClient, o.IOStreams)
 	o.ShouldIncludeUninitialized = cmdutil.ShouldIncludeUninitialized(cmd, o.Prune)
 
 	o.OpenAPISchema, _ = f.OpenAPISchema()

@@ -193,7 +193,7 @@ func addRunFlags(cmd *cobra.Command, opt *RunOptions) {
 func (o *RunOptions) Complete(f cmdutil.Factory, cmd *cobra.Command) error {
 	var err error
 
-	o.RecordFlags.Complete(f.Command(cmd, false))
+	o.RecordFlags.Complete(cmd)
 	o.Recorder, err = o.RecordFlags.ToRecorder()
 	if err != nil {
 		return err
@@ -223,7 +223,7 @@ func (o *RunOptions) Complete(f cmdutil.Factory, cmd *cobra.Command) error {
 		return printer.PrintObj(obj, o.Out)
 	}
 
-	deleteOpts := o.DeleteFlags.ToOptions(o.IOStreams)
+	deleteOpts := o.DeleteFlags.ToOptions(o.DynamicClient, o.IOStreams)
 	deleteOpts.IgnoreNotFound = true
 	deleteOpts.WaitForDeletion = false
 	deleteOpts.GracePeriod = -1

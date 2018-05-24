@@ -133,7 +133,7 @@ func NewCmdReplace(f cmdutil.Factory, streams genericclioptions.IOStreams) *cobr
 func (o *ReplaceOptions) Complete(f cmdutil.Factory, cmd *cobra.Command, args []string) error {
 	var err error
 
-	o.RecordFlags.Complete(f.Command(cmd, false))
+	o.RecordFlags.Complete(cmd)
 	o.Recorder, err = o.RecordFlags.ToRecorder()
 	if err != nil {
 		return err
@@ -150,7 +150,11 @@ func (o *ReplaceOptions) Complete(f cmdutil.Factory, cmd *cobra.Command, args []
 		return printer.PrintObj(obj, o.Out)
 	}
 
-	deleteOpts := o.DeleteFlags.ToOptions(o.IOStreams)
+	dynamicClient, err := f.DynamicClient()
+	if err != nil {
+		return err
+	}
+	deleteOpts := o.DeleteFlags.ToOptions(dynamicClient, o.IOStreams)
 
 	//Replace will create a resource if it doesn't exist already, so ignore not found error
 	deleteOpts.IgnoreNotFound = true

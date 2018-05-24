@@ -27,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured/unstructuredscheme"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
@@ -37,6 +36,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubectl/genericclioptions"
 	"k8s.io/kubernetes/pkg/kubectl/genericclioptions/printers"
 	"k8s.io/kubernetes/pkg/kubectl/genericclioptions/resource"
+	"k8s.io/kubernetes/pkg/kubectl/polymorphichelpers"
 	"k8s.io/kubernetes/pkg/kubectl/scheme"
 	"k8s.io/kubernetes/pkg/kubectl/util/i18n"
 )
@@ -91,12 +91,11 @@ type ExposeServiceOptions struct {
 	EnforceNamespace bool
 
 	Generators                func(string) map[string]kubectl.Generator
-	CanBeExposed              func(kind schema.GroupKind) error
+	CanBeExposed              polymorphichelpers.CanBeExposedFunc
 	ClientForMapping          func(*meta.RESTMapping) (resource.RESTClient, error)
 	MapBasedSelectorForObject func(runtime.Object) (string, error)
-	PortsForObject            func(runtime.Object) ([]string, error)
+	PortsForObject            polymorphichelpers.PortsForObjectFunc
 	ProtocolsForObject        func(runtime.Object) (map[string]string, error)
-	LabelsForObject           func(runtime.Object) (map[string]string, error)
 
 	Namespace string
 	Mapper    meta.RESTMapper
@@ -178,7 +177,7 @@ func (o *ExposeServiceOptions) Complete(f cmdutil.Factory, cmd *cobra.Command) e
 	}
 	o.PrintObj = printer.PrintObj
 
-	o.RecordFlags.Complete(f.Command(cmd, false))
+	o.RecordFlags.Complete(cmd)
 	o.Recorder, err = o.RecordFlags.ToRecorder()
 	if err != nil {
 		return err
@@ -191,16 +190,15 @@ func (o *ExposeServiceOptions) Complete(f cmdutil.Factory, cmd *cobra.Command) e
 
 	o.Generators = f.Generators
 	o.Builder = f.NewBuilder()
-	o.CanBeExposed = f.CanBeExposed
+	o.CanBeExposed = polymorphichelpers.CanBeExposedFn
 	o.ClientForMapping = f.ClientForMapping
 	o.MapBasedSelectorForObject = f.MapBasedSelectorForObject
-	o.PortsForObject = f.PortsForObject
+	o.PortsForObject = polymorphichelpers.PortsForObjectFn
 	o.ProtocolsForObject = f.ProtocolsForObject
 	o.Mapper, err = f.ToRESTMapper()
 	if err != nil {
 		return err
 	}
-	o.LabelsForObject = f.LabelsForObject
 
 	o.Namespace, o.EnforceNamespace, err = f.DefaultNamespace()
 	if err != nil {
@@ -294,7 +292,7 @@ func (o *ExposeServiceOptions) RunExpose(cmd *cobra.Command, args []string) erro
 		}
 
 		if kubectl.IsZero(params["labels"]) {
-			labels, err := o.LabelsForObject(info.Object)
+			labels, err := meta.NewAccessor().Labels(info.Object)
 			if err != nil {
 				return err
 			}

@@ -1838,7 +1838,7 @@ run_non_native_resource_tests() {
   kubectl "${kube_flags[@]}" delete resources myobj --cascade=true
 
   # Make sure it's gone
-  kube::test::get_object_assert resources "{{range.items}}{{$id_field}}:{{end}}" ''
+  kube::test::wait_object_assert resources "{{range.items}}{{$id_field}}:{{end}}" ''
 
   # Test that we can create a new resource of type Foo
   kubectl "${kube_flags[@]}" create -f hack/testdata/CRD/foo.yaml "${kube_flags[@]}"
@@ -1919,7 +1919,7 @@ run_non_native_resource_tests() {
   kubectl "${kube_flags[@]}" delete foos test --cascade=true
 
   # Make sure it's gone
-  kube::test::get_object_assert foos "{{range.items}}{{$id_field}}:{{end}}" ''
+  kube::test::wait_object_assert foos "{{range.items}}{{$id_field}}:{{end}}" ''
 
   # Test that we can create a new resource of type Bar
   kubectl "${kube_flags[@]}" create -f hack/testdata/CRD/bar.yaml "${kube_flags[@]}"
@@ -2382,7 +2382,11 @@ run_namespace_tests() {
   # Post-condition: namespace 'my-namespace' is created.
   kube::test::get_object_assert 'namespaces/my-namespace' "{{$id_field}}" 'my-namespace'
   # Clean up
-  kubectl delete namespace my-namespace
+  kubectl delete namespace my-namespace --wait=false
+  # make sure that wait properly waits for finalization
+  kubectl wait --for=delete ns/my-namespace
+  output_message=$(! kubectl get ns/my-namespace 2>&1 "${kube_flags[@]}")
+  kube::test::if_has_string "${output_message}" ' not found'
 
   ######################
   # Pods in Namespaces #
@@ -3174,12 +3178,22 @@ run_deployment_tests() {
   kube::test::get_object_assert deployment "{{range.items}}{{$id_field}}:{{end}}" 'nginx-deployment:'
   kube::test::get_object_assert configmap "{{range.items}}{{$id_field}}:{{end}}" 'test-set-env-config:'
   kube::test::get_object_assert secret "{{range.items}}{{$id_field}}:{{end}}" 'test-set-env-secret:'
+  # Set env of deployments by configmap from keys
+  kubectl set env deployment nginx-deployment --keys=key-2 --from=configmap/test-set-env-config "${kube_flags[@]}"
+  # Assert correct value in deployment env
+  kube::test::get_object_assert 'deploy nginx-deployment' "{{ (index (index .spec.template.spec.containers 0).env 0).name}}" 'KEY_2'
+  # Assert single value in deployment env
+  kube::test::get_object_assert 'deploy nginx-deployment' "{{ len (index .spec.template.spec.containers 0).env }}" '1'
+  # Set env of deployments by configmap
+  kubectl set env deployment nginx-deployment --from=configmap/test-set-env-config "${kube_flags[@]}"
+  # Assert all values in deployment env
+  kube::test::get_object_assert 'deploy nginx-deployment' "{{ len (index .spec.template.spec.containers 0).env }}" '2'
   # Set env of deployments for all container
   kubectl set env deployment nginx-deployment env=prod "${kube_flags[@]}"
   # Set env of deployments for specific container
   kubectl set env deployment nginx-deployment superenv=superprod -c=nginx "${kube_flags[@]}"
-  # Set env of deployments by configmap
-  kubectl set env deployment nginx-deployment --from=configmap/test-set-env-config "${kube_flags[@]}"
+  # Set env of deployments by secret from keys
+  kubectl set env deployment nginx-deployment --keys=username --from=secret/test-set-env-secret "${kube_flags[@]}"
   # Set env of deployments by secret
   kubectl set env deployment nginx-deployment --from=secret/test-set-env-secret "${kube_flags[@]}"
   # Remove specific env of deployment
@@ -3802,6 +3816,8 @@ run_clusterroles_tests() {
   kubectl create "${kube_flags[@]}" clusterrole url-reader --verb=get --non-resource-url=/logs/* --non-resource-url=/healthz/*
   kube::test::get_object_assert clusterrole/url-reader "{{range.rules}}{{range.verbs}}{{.}}:{{end}}{{end}}" 'get:'
   kube::test::get_object_assert clusterrole/url-reader "{{range.rules}}{{range.nonResourceURLs}}{{.}}:{{end}}{{end}}" '/logs/\*:/healthz/\*:'
+  kubectl create "${kube_flags[@]}" clusterrole aggregation-reader --aggregation-rule="foo1=foo2"
+  kube::test::get_object_assert clusterrole/aggregation-reader "{{$id_field}}" 'aggregation-reader'
 
   # test `kubectl create clusterrolebinding`
   # test `kubectl set subject clusterrolebinding`
