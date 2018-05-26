@@ -119,17 +119,26 @@ func SetDefaults_MasterConfiguration(obj *MasterConfiguration) {
 		obj.ImageRepository = DefaultImageRepository
 	}
 
-	if obj.Etcd.DataDir == "" {
-		obj.Etcd.DataDir = DefaultEtcdDataDir
-	}
-
 	if obj.ClusterName == "" {
 		obj.ClusterName = DefaultClusterName
 	}
 
 	SetDefaults_KubeletConfiguration(obj)
+	SetDefaults_Etcd(obj)
 	SetDefaults_ProxyConfiguration(obj)
 	SetDefaults_AuditPolicyConfiguration(obj)
+}
+
+// SetDefaults_Etcd assigns default values for the Proxy
+func SetDefaults_Etcd(obj *MasterConfiguration) {
+	if obj.Etcd.External == nil && obj.Etcd.Local == nil {
+		obj.Etcd.Local = &LocalEtcd{}
+	}
+	if obj.Etcd.Local != nil {
+		if obj.Etcd.Local.DataDir == "" {
+			obj.Etcd.Local.DataDir = DefaultEtcdDataDir
+		}
+	}
 }
 
 // SetDefaults_ProxyConfiguration assigns default values for the Proxy
@@ -210,12 +219,13 @@ func SetDefaults_KubeletConfiguration(obj *MasterConfiguration) {
 	obj.KubeletConfiguration.BaseConfig.Authorization.Mode = kubeletconfigv1beta1.KubeletAuthorizationModeWebhook
 
 	// Let clients using other authentication methods like ServiceAccount tokens also access the kubelet API
-	// TODO: Enable in a future PR
-	// obj.KubeletConfiguration.BaseConfig.Authentication.Webhook.Enabled = utilpointer.BoolPtr(true)
+	obj.KubeletConfiguration.BaseConfig.Authentication.Webhook.Enabled = utilpointer.BoolPtr(true)
 
 	// Disable the readonly port of the kubelet, in order to not expose unnecessary information
-	// TODO: Enable in a future PR
-	// obj.KubeletConfiguration.BaseConfig.ReadOnlyPort = 0
+	obj.KubeletConfiguration.BaseConfig.ReadOnlyPort = 0
+
+	// Enables client certificate rotation for the kubelet
+	obj.KubeletConfiguration.BaseConfig.RotateCertificates = true
 
 	// Serve a /healthz webserver on localhost:10248 that kubeadm can talk to
 	obj.KubeletConfiguration.BaseConfig.HealthzBindAddress = "127.0.0.1"

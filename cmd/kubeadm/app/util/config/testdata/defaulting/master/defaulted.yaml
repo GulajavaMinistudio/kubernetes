@@ -11,12 +11,9 @@ certificatesDir: /var/lib/kubernetes/pki
 clusterName: kubernetes
 criSocket: /var/run/criruntime.sock
 etcd:
-  caFile: ""
-  certFile: ""
-  dataDir: /var/lib/etcd
-  endpoints: null
-  image: ""
-  keyFile: ""
+  local:
+    dataDir: /var/lib/etcd
+    image: ""
 imageRepository: my-company.com
 kind: MasterConfiguration
 kubeProxy:
@@ -118,6 +115,7 @@ kubeletConfiguration:
     registryBurst: 10
     registryPullQPS: 5
     resolvConf: /etc/resolv.conf
+    rotateCertificates: true
     runtimeRequestTimeout: 2m0s
     serializeImagePulls: true
     staticPodPath: /etc/kubernetes/manifests
