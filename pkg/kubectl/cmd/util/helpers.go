@@ -29,6 +29,7 @@ import (
 	"github.com/evanphx/json-patch"
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -38,9 +39,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/scale"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/kubectl/genericclioptions"
 	"k8s.io/kubernetes/pkg/kubectl/genericclioptions/resource"
 	"k8s.io/kubernetes/pkg/printers"
@@ -403,8 +405,17 @@ func AddValidateOptionFlags(cmd *cobra.Command, options *ValidateOptions) {
 }
 
 func AddFilenameOptionFlags(cmd *cobra.Command, options *resource.FilenameOptions, usage string) {
-	kubectl.AddJsonFilenameFlag(cmd, &options.Filenames, "Filename, directory, or URL to files "+usage)
+	AddJsonFilenameFlag(cmd.Flags(), &options.Filenames, "Filename, directory, or URL to files "+usage)
 	cmd.Flags().BoolVarP(&options.Recursive, "recursive", "R", options.Recursive, "Process the directory used in -f, --filename recursively. Useful when you want to manage related manifests organized within the same directory.")
+}
+
+func AddJsonFilenameFlag(flags *pflag.FlagSet, value *[]string, usage string) {
+	flags.StringSliceVarP(value, "filename", "f", *value, usage)
+	annotations := make([]string, 0, len(resource.FileExtensions))
+	for _, ext := range resource.FileExtensions {
+		annotations = append(annotations, strings.TrimLeft(ext, "."))
+	}
+	flags.SetAnnotation("filename", cobra.BashCompFilenameExt, annotations)
 }
 
 // AddDryRunFlag adds dry-run flag to a command. Usually used by mutations.
@@ -672,4 +683,36 @@ func genericDescriber(restClientGetter genericclioptions.RESTClientGetter, mappi
 
 	eventsClient := clientSet.Core()
 	return printersinternal.GenericDescriberFor(mapping, dynamicClient, eventsClient), nil
+}
+
+// ScaleClientFunc provides a ScalesGetter
+type ScaleClientFunc func(genericclioptions.RESTClientGetter) (scale.ScalesGetter, error)
+
+// ScaleClientFn gives a way to easily override the function for unit testing if needed.
+var ScaleClientFn ScaleClientFunc = scaleClient
+
+// scaleClient gives you back scale getter
+func scaleClient(restClientGetter genericclioptions.RESTClientGetter) (scale.ScalesGetter, error) {
+	discoveryClient, err := restClientGetter.ToDiscoveryClient()
+	if err != nil {
+		return nil, err
+	}
+
+	clientConfig, err := restClientGetter.ToRESTConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	setKubernetesDefaults(clientConfig)
+	restClient, err := rest.RESTClientFor(clientConfig)
+	if err != nil {
+		return nil, err
+	}
+	resolver := scale.NewDiscoveryScaleKindResolver(discoveryClient)
+	mapper, err := restClientGetter.ToRESTMapper()
+	if err != nil {
+		return nil, err
+	}
+
+	return scale.New(restClient, mapper, dynamic.LegacyAPIPathResolverFunc, resolver), nil
 }

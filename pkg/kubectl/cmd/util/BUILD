@@ -5,9 +5,8 @@ go_library(
     srcs = [
         "conversion.go",
         "factory.go",
-        "factory_builder.go",
         "factory_client_access.go",
-        "factory_object_mapping.go",
+        "generator.go",
         "helpers.go",
         "kubectl_match_version.go",
         "printing.go",
