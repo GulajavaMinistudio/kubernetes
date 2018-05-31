@@ -212,7 +212,7 @@ const (
 	ResourceLimitsPriorityFunction utilfeature.Feature = "ResourceLimitsPriorityFunction"
 
 	// owner: @m1093782566
-	// beta: v1.9
+	// GA: v1.11
 	//
 	// Implement IPVS-based in-cluster service load balancing
 	SupportIPVSProxyMode utilfeature.Feature = "SupportIPVSProxyMode"
@@ -247,6 +247,12 @@ const (
 	//
 	// Implement TokenRequest endpoint on service account resources.
 	TokenRequest utilfeature.Feature = "TokenRequest"
+
+	// owner: @mikedanese
+	// alpha: v1.11
+	//
+	// Enable ServiceAccountTokenVolumeProjection support in ProjectedVolumes.
+	TokenRequestProjection utilfeature.Feature = "TokenRequestProjection"
 
 	// owner: @Random-Liu
 	// beta: v1.11
@@ -286,6 +292,13 @@ const (
 	//
 	// Extend the default scheduler to be aware of volume topology and handle PV provisioning
 	DynamicProvisioningScheduling utilfeature.Feature = "DynamicProvisioningScheduling"
+
+	// owner: @kevtaylor
+	// alpha: v1.11
+	//
+	// Allow subpath environment variable substitution
+	// Only applicable if the VolumeSubpath feature is also enabled
+	VolumeSubpathEnvExpansion utilfeature.Feature = "VolumeSubpathEnvExpansion"
 )
 
 func init() {
@@ -324,17 +337,19 @@ var defaultKubernetesFeatureGates = map[utilfeature.Feature]utilfeature.FeatureS
 	BlockVolume:                                 {Default: false, PreRelease: utilfeature.Alpha},
 	StorageObjectInUseProtection:                {Default: true, PreRelease: utilfeature.GA},
 	ResourceLimitsPriorityFunction:              {Default: false, PreRelease: utilfeature.Alpha},
-	SupportIPVSProxyMode:                        {Default: true, PreRelease: utilfeature.Beta},
+	SupportIPVSProxyMode:                        {Default: true, PreRelease: utilfeature.GA},
 	SupportPodPidsLimit:                         {Default: false, PreRelease: utilfeature.Alpha},
 	HyperVContainer:                             {Default: false, PreRelease: utilfeature.Alpha},
 	ScheduleDaemonSetPods:                       {Default: false, PreRelease: utilfeature.Alpha},
 	TokenRequest:                                {Default: false, PreRelease: utilfeature.Alpha},
+	TokenRequestProjection:                      {Default: false, PreRelease: utilfeature.Alpha},
 	CRIContainerLogRotation:                     {Default: true, PreRelease: utilfeature.Beta},
 	GCERegionalPersistentDisk:                   {Default: true, PreRelease: utilfeature.Beta},
 	RunAsGroup:                                  {Default: false, PreRelease: utilfeature.Alpha},
 	VolumeSubpath:                               {Default: true, PreRelease: utilfeature.GA},
 	BalanceAttachedNodeVolumes:                  {Default: false, PreRelease: utilfeature.Alpha},
 	DynamicProvisioningScheduling:               {Default: false, PreRelease: utilfeature.Alpha},
+	VolumeSubpathEnvExpansion:                   {Default: false, PreRelease: utilfeature.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
