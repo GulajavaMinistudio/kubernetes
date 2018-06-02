@@ -284,6 +284,13 @@ const (
 	// Do not remove this feature gate even though it's GA
 	VolumeSubpath utilfeature.Feature = "VolumeSubpath"
 
+	// owner: @gnufied
+	// alpha : v1.11
+	//
+	// Add support for volume plugins to report node specific
+	// volume limits
+	AttachVolumeLimit utilfeature.Feature = "AttachVolumeLimit"
+
 	// owner: @ravig
 	// alpha: v1.11
 	//
@@ -291,6 +298,12 @@ const (
 	// A node which has closer cpu,memory utilization and volume count is favoured by scheduler
 	// while making decisions.
 	BalanceAttachedNodeVolumes utilfeature.Feature = "BalanceAttachedNodeVolumes"
+
+	// owner @freehan
+	// beta: v1.11
+	//
+	// Support Pod Ready++
+	PodReadinessGates utilfeature.Feature = "PodReadinessGates"
 
 	// owner: @lichuqiang
 	// alpha: v1.11
@@ -341,6 +354,7 @@ var defaultKubernetesFeatureGates = map[utilfeature.Feature]utilfeature.FeatureS
 	QOSReserved:                                 {Default: false, PreRelease: utilfeature.Alpha},
 	ExpandPersistentVolumes:                     {Default: true, PreRelease: utilfeature.Beta},
 	ExpandInUsePersistentVolumes:                {Default: false, PreRelease: utilfeature.Alpha},
+	AttachVolumeLimit:                           {Default: false, PreRelease: utilfeature.Alpha},
 	CPUManager:                                  {Default: true, PreRelease: utilfeature.Beta},
 	ServiceNodeExclusion:                        {Default: false, PreRelease: utilfeature.Alpha},
 	MountContainers:                             {Default: false, PreRelease: utilfeature.Alpha},
@@ -362,6 +376,7 @@ var defaultKubernetesFeatureGates = map[utilfeature.Feature]utilfeature.FeatureS
 	VolumeSubpath:                               {Default: true, PreRelease: utilfeature.GA},
 	BalanceAttachedNodeVolumes:                  {Default: false, PreRelease: utilfeature.Alpha},
 	DynamicProvisioningScheduling:               {Default: false, PreRelease: utilfeature.Alpha},
+	PodReadinessGates:                           {Default: false, PreRelease: utilfeature.Beta},
 	VolumeSubpathEnvExpansion:                   {Default: false, PreRelease: utilfeature.Alpha},
 	KubeletPluginsWatcher:                       {Default: false, PreRelease: utilfeature.Alpha},
 
