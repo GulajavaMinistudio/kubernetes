@@ -106,7 +106,7 @@ spec:
           operator: "Exists"
       containers:
       - name: coredns
-        image: coredns/coredns:1.1.3
+        image: k8s.gcr.io/coredns:1.1.3
         imagePullPolicy: IfNotPresent
         resources:
           limits:
@@ -118,6 +118,7 @@ spec:
         volumeMounts:
         - name: config-volume
           mountPath: /etc/coredns
+          readOnly: true
         ports:
         - containerPort: 53
           name: dns
@@ -137,6 +138,14 @@ spec:
           timeoutSeconds: 5
           successThreshold: 1
           failureThreshold: 5
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            add:
+            - NET_BIND_SERVICE
+            drop:
+            - all
+          readOnlyRootFilesystem: true
       dnsPolicy: Default
       volumes:
         - name: config-volume
