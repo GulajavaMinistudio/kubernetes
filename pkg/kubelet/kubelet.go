@@ -100,6 +100,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/volumemanager"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
 	"k8s.io/kubernetes/pkg/security/apparmor"
+	sysctlwhitelist "k8s.io/kubernetes/pkg/security/podsecuritypolicy/sysctl"
 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
 	kubeio "k8s.io/kubernetes/pkg/util/io"
 	utilipt "k8s.io/kubernetes/pkg/util/iptables"
@@ -222,8 +223,7 @@ type Builder func(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	nodeLabels map[string]string,
 	seccompProfileRoot string,
 	bootstrapCheckpointPath string,
-	nodeStatusMaxImages int32,
-	stopCh <-chan struct{}) (Bootstrap, error)
+	nodeStatusMaxImages int32) (Bootstrap, error)
 
 // Dependencies is a bin for things we might consider "injected dependencies" -- objects constructed
 // at runtime that are necessary for running the Kubelet. This is a temporary solution for grouping
@@ -349,8 +349,7 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	nodeLabels map[string]string,
 	seccompProfileRoot string,
 	bootstrapCheckpointPath string,
-	nodeStatusMaxImages int32,
-	stopCh <-chan struct{}) (*Kubelet, error) {
+	nodeStatusMaxImages int32) (*Kubelet, error) {
 	if rootDirectory == "" {
 		return nil, fmt.Errorf("invalid root directory %q", rootDirectory)
 	}
@@ -631,7 +630,7 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 			remoteImageEndpoint)
 		glog.V(2).Infof("Starting the GRPC server for the docker CRI shim.")
 		server := dockerremote.NewDockerServer(remoteRuntimeEndpoint, ds)
-		if err := server.Start(stopCh); err != nil {
+		if err := server.Start(); err != nil {
 			return nil, err
 		}
 
@@ -780,7 +779,7 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		containerRefManager,
 		kubeDeps.Recorder)
 
-	tokenManager := token.NewManager(kubeDeps.KubeClient.CoreV1())
+	tokenManager := token.NewManager(kubeDeps.KubeClient)
 
 	klet.volumePluginMgr, err =
 		NewInitializedVolumePluginMgr(klet, secretManager, configMapManager, tokenManager, kubeDeps.VolumePlugins, kubeDeps.DynamicPluginProber)
@@ -832,25 +831,23 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	klet.evictionManager = evictionManager
 	klet.admitHandlers.AddPodAdmitHandler(evictionAdmitHandler)
 
-	// add sysctl admission
-	runtimeSupport, err := sysctl.NewRuntimeAdmitHandler(klet.containerRuntime)
-	if err != nil {
-		return nil, err
+	if utilfeature.DefaultFeatureGate.Enabled(features.Sysctls) {
+		// add sysctl admission
+		runtimeSupport, err := sysctl.NewRuntimeAdmitHandler(klet.containerRuntime)
+		if err != nil {
+			return nil, err
+		}
+
+		// Safe, whitelisted sysctls can always be used as unsafe sysctls in the spec.
+		// Hence, we concatenate those two lists.
+		safeAndUnsafeSysctls := append(sysctlwhitelist.SafeSysctlWhitelist(), allowedUnsafeSysctls...)
+		sysctlsWhitelist, err := sysctl.NewWhitelist(safeAndUnsafeSysctls)
+		if err != nil {
+			return nil, err
+		}
+		klet.admitHandlers.AddPodAdmitHandler(runtimeSupport)
+		klet.admitHandlers.AddPodAdmitHandler(sysctlsWhitelist)
 	}
-	safeWhitelist, err := sysctl.NewWhitelist(sysctl.SafeSysctlWhitelist(), v1.SysctlsPodAnnotationKey)
-	if err != nil {
-		return nil, err
-	}
-	// Safe, whitelisted sysctls can always be used as unsafe sysctls in the spec
-	// Hence, we concatenate those two lists.
-	safeAndUnsafeSysctls := append(sysctl.SafeSysctlWhitelist(), allowedUnsafeSysctls...)
-	unsafeWhitelist, err := sysctl.NewWhitelist(safeAndUnsafeSysctls, v1.UnsafeSysctlsPodAnnotationKey)
-	if err != nil {
-		return nil, err
-	}
-	klet.admitHandlers.AddPodAdmitHandler(runtimeSupport)
-	klet.admitHandlers.AddPodAdmitHandler(safeWhitelist)
-	klet.admitHandlers.AddPodAdmitHandler(unsafeWhitelist)
 
 	// enable active deadline handler
 	activeDeadlineHandler, err := newActiveDeadlineHandler(klet.statusManager, kubeDeps.Recorder, klet.clock)
