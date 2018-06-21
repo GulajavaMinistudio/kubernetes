@@ -632,6 +632,10 @@ def configure_kubelet(dns, ingress_ip):
         cloud_config_path = _cloud_config_path('kubelet')
         kubelet_opts['cloud-provider'] = 'gce'
         kubelet_opts['cloud-config'] = str(cloud_config_path)
+    elif is_state('endpoint.openstack.ready'):
+        cloud_config_path = _cloud_config_path('kubelet')
+        kubelet_opts['cloud-provider'] = 'openstack'
+        kubelet_opts['cloud-config'] = str(cloud_config_path)
 
     configure_kubernetes_service('kubelet', kubelet_opts, 'kubelet-extra-args')
 
@@ -740,15 +744,12 @@ def launch_default_ingress_controller():
     # Render the ingress daemon set controller manifest
     context['ingress_image'] = config.get('nginx-image')
     if context['ingress_image'] == "" or context['ingress_image'] == "auto":
-        if context['arch'] == 's390x':
-            context['ingress_image'] = \
-                "docker.io/cdkbot/nginx-ingress-controller-s390x:0.9.0-beta.13"
-        elif context['arch'] == 'arm64':
-            context['ingress_image'] = \
-                "k8s.gcr.io/nginx-ingress-controller-arm64:0.9.0-beta.15"
-        else:
-            context['ingress_image'] = \
-                "k8s.gcr.io/nginx-ingress-controller:0.9.0-beta.15"  # noqa
+        images = {'amd64': 'quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.15.0', # noqa
+                  'arm64': 'quay.io/kubernetes-ingress-controller/nginx-ingress-controller-arm64:0.15.0', # noqa
+                  's390x': 'quay.io/kubernetes-ingress-controller/nginx-ingress-controller-s390x:0.15.0', # noqa
+                  'ppc64el': 'quay.io/kubernetes-ingress-controller/nginx-ingress-controller-ppc64le:0.15.0', # noqa
+                  }
+        context['ingress_image'] = images.get(context['arch'], images['amd64'])
     if get_version('kubelet') < (1, 9):
         context['daemonset_api_version'] = 'extensions/v1beta1'
     else:
@@ -1040,7 +1041,9 @@ def get_node_name():
     if is_state('endpoint.aws.ready'):
         cloud_provider = 'aws'
     elif is_state('endpoint.gcp.ready'):
-        cloud_provider = 'gcp'
+        cloud_provider = 'gce'
+    elif is_state('endpoint.openstack.ready'):
+        cloud_provider = 'openstack'
     if cloud_provider == 'aws':
         return getfqdn()
     else:
@@ -1122,11 +1125,14 @@ def clear_requested_integration():
 
 
 @when_any('endpoint.aws.ready',
-          'endpoint.gcp.ready')
+          'endpoint.gcp.ready',
+          'endpoint.openstack.ready')
 @when_not('kubernetes-worker.restarted-for-cloud')
 def restart_for_cloud():
     if is_state('endpoint.gcp.ready'):
         _write_gcp_snap_config('kubelet')
+    elif is_state('endpoint.openstack.ready'):
+        _write_openstack_snap_config('kubelet')
     set_state('kubernetes-worker.restarted-for-cloud')
     set_state('kubernetes-worker.restart-needed')
 
@@ -1174,6 +1180,21 @@ def _write_gcp_snap_config(component):
         daemon_env += '{}={}\n'.format(gcp_creds_env_key, creds_path)
         daemon_env_path.parent.mkdir(parents=True, exist_ok=True)
         daemon_env_path.write_text(daemon_env)
+
+
+def _write_openstack_snap_config(component):
+    # openstack requires additional credentials setup
+    openstack = endpoint_from_flag('endpoint.openstack.ready')
+
+    cloud_config_path = _cloud_config_path(component)
+    cloud_config_path.write_text('\n'.join([
+        '[Global]',
+        'auth-url = {}'.format(openstack.auth_url),
+        'username = {}'.format(openstack.username),
+        'password = {}'.format(openstack.password),
+        'tenant-name = {}'.format(openstack.project_name),
+        'domain-name = {}'.format(openstack.user_domain_name),
+    ]))
 
 
 def get_first_mount(mount_relation):
