@@ -210,12 +210,14 @@ func (l *PodStartupLatency) PrintJSON() string {
 }
 
 type SchedulingMetrics struct {
-	SelectingNodeLatency LatencyMetric `json:"selectingNodeLatency"`
-	BindingLatency       LatencyMetric `json:"bindingLatency"`
-	ThroughputAverage    float64       `json:"throughputAverage"`
-	ThroughputPerc50     float64       `json:"throughputPerc50"`
-	ThroughputPerc90     float64       `json:"throughputPerc90"`
-	ThroughputPerc99     float64       `json:"throughputPerc99"`
+	PredicateEvaluationLatency  LatencyMetric `json:"predicateEvaluationLatency"`
+	PriorityEvaluationLatency   LatencyMetric `json:"priorityEvaluationLatency"`
+	PreemptionEvaluationLatency LatencyMetric `json:"preemptionEvaluationLatency"`
+	BindingLatency              LatencyMetric `json:"bindingLatency"`
+	ThroughputAverage           float64       `json:"throughputAverage"`
+	ThroughputPerc50            float64       `json:"throughputPerc50"`
+	ThroughputPerc90            float64       `json:"throughputPerc90"`
+	ThroughputPerc99            float64       `json:"throughputPerc99"`
 }
 
 func (l *SchedulingMetrics) SummaryKind() string {
@@ -511,8 +513,12 @@ func getSchedulingLatency(c clientset.Interface) (*SchedulingMetrics, error) {
 
 		var metric *LatencyMetric = nil
 		switch sample.Metric[schedulermetric.OperationLabel] {
-		case schedulermetric.SelectingNode:
-			metric = &result.SelectingNodeLatency
+		case schedulermetric.PredicateEvaluation:
+			metric = &result.PredicateEvaluationLatency
+		case schedulermetric.PriorityEvaluation:
+			metric = &result.PriorityEvaluationLatency
+		case schedulermetric.PreemptionEvaluation:
+			metric = &result.PreemptionEvaluationLatency
 		case schedulermetric.Binding:
 			metric = &result.BindingLatency
 		}
@@ -540,7 +546,7 @@ func VerifySchedulerLatency(c clientset.Interface) (*SchedulingMetrics, error) {
 
 func ResetSchedulerMetrics(c clientset.Interface) error {
 	responseText, err := sendRestRequestToScheduler(c, "DELETE")
-	if err != nil || responseText != "metrics reset\n" {
+	if err != nil {
 		return fmt.Errorf("Unexpected response: %q", responseText)
 	}
 	return nil
