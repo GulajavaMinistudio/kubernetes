@@ -173,7 +173,7 @@ def shutdown():
     '''
     try:
         if os.path.isfile(kubeconfig_path):
-            kubectl('delete', 'node', gethostname().lower())
+            kubectl('delete', 'node', get_node_name())
     except CalledProcessError:
         hookenv.log('Failed to unregister node.')
     service_stop('snap.kubelet.daemon')
@@ -314,7 +314,7 @@ def send_data(tls, kube_control):
     sans = [
         hookenv.unit_public_ip(),
         ingress_ip,
-        gethostname()
+        get_node_name()
     ]
 
     # Create a path safe name by removing path characters from the unit name.
@@ -747,10 +747,10 @@ def launch_default_ingress_controller():
         'ingress-ssl-chain-completion')
     context['ingress_image'] = config.get('nginx-image')
     if context['ingress_image'] == "" or context['ingress_image'] == "auto":
-        images = {'amd64': 'quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.15.0', # noqa
-                  'arm64': 'quay.io/kubernetes-ingress-controller/nginx-ingress-controller-arm64:0.15.0', # noqa
-                  's390x': 'quay.io/kubernetes-ingress-controller/nginx-ingress-controller-s390x:0.15.0', # noqa
-                  'ppc64el': 'quay.io/kubernetes-ingress-controller/nginx-ingress-controller-ppc64le:0.15.0', # noqa
+        images = {'amd64': 'quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.16.1', # noqa
+                  'arm64': 'quay.io/kubernetes-ingress-controller/nginx-ingress-controller-arm64:0.16.1', # noqa
+                  's390x': 'quay.io/kubernetes-ingress-controller/nginx-ingress-controller-s390x:0.16.1', # noqa
+                  'ppc64el': 'quay.io/kubernetes-ingress-controller/nginx-ingress-controller-ppc64le:0.16.1', # noqa
                   }
         context['ingress_image'] = images.get(context['arch'], images['amd64'])
     if get_version('kubelet') < (1, 9):
@@ -1058,9 +1058,9 @@ def get_node_name():
     elif is_state('endpoint.openstack.ready'):
         cloud_provider = 'openstack'
     if cloud_provider == 'aws':
-        return getfqdn()
+        return getfqdn().lower()
     else:
-        return gethostname()
+        return gethostname().lower()
 
 
 class ApplyNodeLabelFailed(Exception):

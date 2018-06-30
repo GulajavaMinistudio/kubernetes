@@ -304,6 +304,11 @@ func (o *GetOptions) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) e
 		return o.watch(f, cmd, args)
 	}
 
+	// openapi printing is mutually exclusive with server side printing
+	if o.PrintWithOpenAPICols && o.ServerPrint {
+		fmt.Fprintf(o.IOStreams.ErrOut, "warning: --%s requested, --%s will be ignored\n", useOpenAPIPrintColumnFlagLabel, useServerPrintColumns)
+	}
+
 	r := f.NewBuilder().
 		Unstructured().
 		NamespaceParam(o.Namespace).DefaultNamespace().AllNamespaces(o.AllNamespaces).
@@ -318,6 +323,10 @@ func (o *GetOptions) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) e
 		Latest().
 		Flatten().
 		TransformRequests(func(req *rest.Request) {
+			// We need full objects if printing with openapi columns
+			if o.PrintWithOpenAPICols {
+				return
+			}
 			if o.ServerPrint && o.IsHumanReadablePrinter && !o.Sort {
 				group := metav1beta1.GroupName
 				version := metav1beta1.SchemeGroupVersion.Version
@@ -712,6 +721,7 @@ func (o *GetOptions) printGeneric(r *resource.Result) error {
 
 func addOpenAPIPrintColumnFlags(cmd *cobra.Command, opt *GetOptions) {
 	cmd.Flags().BoolVar(&opt.PrintWithOpenAPICols, useOpenAPIPrintColumnFlagLabel, opt.PrintWithOpenAPICols, "If true, use x-kubernetes-print-column metadata (if present) from the OpenAPI schema for displaying a resource.")
+	cmd.Flags().MarkDeprecated(useOpenAPIPrintColumnFlagLabel, "deprecated in favor of server-side printing")
 }
 
 func addServerPrintColumnFlags(cmd *cobra.Command, opt *GetOptions) {
