@@ -15,6 +15,7 @@ go_test(
         "//staging/src/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//staging/src/k8s.io/apimachinery/pkg/runtime:go_default_library",
         "//staging/src/k8s.io/apimachinery/pkg/runtime/serializer:go_default_library",
+        "//staging/src/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
         "//staging/src/k8s.io/apiserver/pkg/apis/example:go_default_library",
         "//staging/src/k8s.io/apiserver/pkg/apis/example/v1:go_default_library",
         "//staging/src/k8s.io/apiserver/pkg/storage/etcd/testing/testingcert:go_default_library",
@@ -44,6 +45,8 @@ go_library(
         "//vendor/github.com/coreos/etcd/client:go_default_library",
         "//vendor/github.com/coreos/etcd/clientv3:go_default_library",
         "//vendor/github.com/coreos/etcd/pkg/transport:go_default_library",
+        "//vendor/github.com/grpc-ecosystem/go-grpc-prometheus:go_default_library",
+        "//vendor/google.golang.org/grpc:go_default_library",
     ],
 )
 
