@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,11 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v1alpha3
 
 import (
 	"net/url"
-	"strings"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,8 +41,6 @@ const (
 	DefaultKubernetesVersion = "stable-1.11"
 	// DefaultAPIBindPort defines default API port
 	DefaultAPIBindPort = 6443
-	// DefaultAuthorizationModes defines default authorization modes
-	DefaultAuthorizationModes = "Node,RBAC"
 	// DefaultCertificatesDir defines default certificate directory
 	DefaultCertificatesDir = "/etc/kubernetes/pki"
 	// DefaultImageRepository defines default image registry
@@ -57,14 +54,6 @@ const (
 
 	// DefaultEtcdDataDir defines default location of etcd where static pods will save data to
 	DefaultEtcdDataDir = "/var/lib/etcd"
-	// DefaultEtcdClusterSize defines the default cluster size when using the etcd-operator
-	DefaultEtcdClusterSize = 3
-	// DefaultEtcdOperatorVersion defines the default version of the etcd-operator to use
-	DefaultEtcdOperatorVersion = "v0.6.0"
-	// DefaultEtcdCertDir represents the directory where PKI assets are stored for self-hosted etcd
-	DefaultEtcdCertDir = "/etc/kubernetes/pki/etcd"
-	// DefaultEtcdClusterServiceName is the default name of the service backing the etcd cluster
-	DefaultEtcdClusterServiceName = "etcd-cluster"
 	// DefaultProxyBindAddressv4 is the default bind address when the advertise address is v4
 	DefaultProxyBindAddressv4 = "0.0.0.0"
 	// DefaultProxyBindAddressv6 is the default bind address when the advertise address is v6
@@ -104,48 +93,36 @@ func SetDefaults_MasterConfiguration(obj *MasterConfiguration) {
 		obj.Networking.DNSDomain = DefaultServiceDNSDomain
 	}
 
-	if len(obj.AuthorizationModes) == 0 {
-		obj.AuthorizationModes = strings.Split(DefaultAuthorizationModes, ",")
-	}
-
 	if obj.CertificatesDir == "" {
 		obj.CertificatesDir = DefaultCertificatesDir
-	}
-
-	if obj.TokenTTL == nil {
-		obj.TokenTTL = &metav1.Duration{
-			Duration: constants.DefaultTokenDuration,
-		}
-	}
-
-	if obj.CRISocket == "" {
-		obj.CRISocket = DefaultCRISocket
-	}
-
-	if len(obj.TokenUsages) == 0 {
-		obj.TokenUsages = constants.DefaultTokenUsages
-	}
-
-	if len(obj.TokenGroups) == 0 {
-		obj.TokenGroups = constants.DefaultTokenGroups
 	}
 
 	if obj.ImageRepository == "" {
 		obj.ImageRepository = DefaultImageRepository
 	}
 
-	if obj.Etcd.DataDir == "" {
-		obj.Etcd.DataDir = DefaultEtcdDataDir
-	}
-
 	if obj.ClusterName == "" {
 		obj.ClusterName = DefaultClusterName
 	}
 
-	SetDefaultsEtcdSelfHosted(obj)
+	SetDefaults_NodeRegistrationOptions(&obj.NodeRegistration)
+	SetDefaults_BootstrapTokens(obj)
 	SetDefaults_KubeletConfiguration(obj)
+	SetDefaults_Etcd(obj)
 	SetDefaults_ProxyConfiguration(obj)
 	SetDefaults_AuditPolicyConfiguration(obj)
+}
+
+// SetDefaults_Etcd assigns default values for the Proxy
+func SetDefaults_Etcd(obj *MasterConfiguration) {
+	if obj.Etcd.External == nil && obj.Etcd.Local == nil {
+		obj.Etcd.Local = &LocalEtcd{}
+	}
+	if obj.Etcd.Local != nil {
+		if obj.Etcd.Local.DataDir == "" {
+			obj.Etcd.Local.DataDir = DefaultEtcdDataDir
+		}
+	}
 }
 
 // SetDefaults_ProxyConfiguration assigns default values for the Proxy
@@ -175,9 +152,6 @@ func SetDefaults_NodeConfiguration(obj *NodeConfiguration) {
 	if len(obj.DiscoveryToken) == 0 && len(obj.DiscoveryFile) == 0 {
 		obj.DiscoveryToken = obj.Token
 	}
-	if obj.CRISocket == "" {
-		obj.CRISocket = DefaultCRISocket
-	}
 	// Make sure file URLs become paths
 	if len(obj.DiscoveryFile) != 0 {
 		u, err := url.Parse(obj.DiscoveryFile)
@@ -193,27 +167,8 @@ func SetDefaults_NodeConfiguration(obj *NodeConfiguration) {
 	if obj.ClusterName == "" {
 		obj.ClusterName = DefaultClusterName
 	}
-}
 
-// SetDefaultsEtcdSelfHosted sets defaults for self-hosted etcd if used
-func SetDefaultsEtcdSelfHosted(obj *MasterConfiguration) {
-	if obj.Etcd.SelfHosted != nil {
-		if obj.Etcd.SelfHosted.ClusterServiceName == "" {
-			obj.Etcd.SelfHosted.ClusterServiceName = DefaultEtcdClusterServiceName
-		}
-
-		if obj.Etcd.SelfHosted.EtcdVersion == "" {
-			obj.Etcd.SelfHosted.EtcdVersion = constants.DefaultEtcdVersion
-		}
-
-		if obj.Etcd.SelfHosted.OperatorVersion == "" {
-			obj.Etcd.SelfHosted.OperatorVersion = DefaultEtcdOperatorVersion
-		}
-
-		if obj.Etcd.SelfHosted.CertificatesDir == "" {
-			obj.Etcd.SelfHosted.CertificatesDir = DefaultEtcdCertDir
-		}
-	}
+	SetDefaults_NodeRegistrationOptions(&obj.NodeRegistration)
 }
 
 // SetDefaults_KubeletConfiguration assigns default values to kubelet
@@ -265,6 +220,12 @@ func SetDefaults_KubeletConfiguration(obj *MasterConfiguration) {
 	}
 }
 
+func SetDefaults_NodeRegistrationOptions(obj *NodeRegistrationOptions) {
+	if obj.CRISocket == "" {
+		obj.CRISocket = DefaultCRISocket
+	}
+}
+
 // SetDefaults_AuditPolicyConfiguration sets default values for the AuditPolicyConfiguration
 func SetDefaults_AuditPolicyConfiguration(obj *MasterConfiguration) {
 	if obj.AuditPolicyConfiguration.LogDir == "" {
@@ -272,5 +233,37 @@ func SetDefaults_AuditPolicyConfiguration(obj *MasterConfiguration) {
 	}
 	if obj.AuditPolicyConfiguration.LogMaxAge == nil {
 		obj.AuditPolicyConfiguration.LogMaxAge = &DefaultAuditPolicyLogMaxAge
+	}
+}
+
+// SetDefaults_BootstrapTokens sets the defaults for the .BootstrapTokens field
+// If the slice is empty, it's defaulted with one token. Otherwise it just loops
+// through the slice and sets the defaults for the omitempty fields that are TTL,
+// Usages and Groups. Token is NOT defaulted with a random one in the API defaulting
+// layer, but set to a random value later at runtime if not set before.
+func SetDefaults_BootstrapTokens(obj *MasterConfiguration) {
+
+	if obj.BootstrapTokens == nil || len(obj.BootstrapTokens) == 0 {
+		obj.BootstrapTokens = []BootstrapToken{{}}
+	}
+
+	for _, bt := range obj.BootstrapTokens {
+		SetDefaults_BootstrapToken(&bt)
+	}
+}
+
+// SetDefaults_BootstrapToken sets the defaults for an individual Bootstrap Token
+func SetDefaults_BootstrapToken(bt *BootstrapToken) {
+	if bt.TTL == nil {
+		bt.TTL = &metav1.Duration{
+			Duration: constants.DefaultTokenDuration,
+		}
+	}
+	if len(bt.Usages) == 0 {
+		bt.Usages = constants.DefaultTokenUsages
+	}
+
+	if len(bt.Groups) == 0 {
+		bt.Groups = constants.DefaultTokenGroups
 	}
 }
