@@ -23,12 +23,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
-	"k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/scheme"
-	kubeadmscheme "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/scheme"
-	kubeadmapiv1alpha3 "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/v1alpha3"
 	kubeadmconstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
-	"k8s.io/kubernetes/cmd/kubeadm/app/util"
 	"k8s.io/kubernetes/cmd/kubeadm/app/util/apiclient"
+	configutil "k8s.io/kubernetes/cmd/kubeadm/app/util/config"
 )
 
 // UploadConfiguration saves the MasterConfiguration used for later reference (when upgrading for instance)
@@ -36,17 +33,23 @@ func UploadConfiguration(cfg *kubeadmapi.MasterConfiguration, client clientset.I
 
 	fmt.Printf("[uploadconfig] storing the configuration used in ConfigMap %q in the %q Namespace\n", kubeadmconstants.MasterConfigurationConfigMap, metav1.NamespaceSystem)
 
-	// Convert cfg to the external version as that's the only version of the API that can be deserialized later
-	externalcfg := &kubeadmapiv1alpha3.MasterConfiguration{}
-	kubeadmscheme.Scheme.Convert(cfg, externalcfg, nil)
-
+	// We don't want to mutate the cfg itself, so create a copy of it using .DeepCopy of it first
+	cfgToUpload := cfg.DeepCopy()
 	// Removes sensitive info from the data that will be stored in the config map
-	externalcfg.BootstrapTokens = nil
+	cfgToUpload.BootstrapTokens = nil
 	// Clear the NodeRegistration object.
-	externalcfg.NodeRegistration = kubeadmapiv1alpha3.NodeRegistrationOptions{}
+	cfgToUpload.NodeRegistration = kubeadmapi.NodeRegistrationOptions{}
+	// TODO: Reset the .ComponentConfig struct like this:
+	// cfgToUpload.ComponentConfigs = kubeadmapi.ComponentConfigs{}
+	// in order to not upload any other components' config to the kubeadm-config
+	// ConfigMap. The components store their config in their own ConfigMaps.
+	// Before this line can be uncommented util/config.loadConfigurationBytes()
+	// needs to support reading the different components' ConfigMaps first.
 
-	cfgYaml, err := util.MarshalToYamlForCodecs(externalcfg, kubeadmapiv1alpha3.SchemeGroupVersion, scheme.Codecs)
+	// Marshal the object into YAML
+	cfgYaml, err := configutil.MarshalKubeadmConfigObject(cfgToUpload)
 	if err != nil {
+		fmt.Println("err", err.Error())
 		return err
 	}
 
