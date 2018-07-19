@@ -77,7 +77,9 @@ filegroup(
         "//cmd/kubeadm/app/util/etcd:all-srcs",
         "//cmd/kubeadm/app/util/kubeconfig:all-srcs",
         "//cmd/kubeadm/app/util/pubkeypin:all-srcs",
+        "//cmd/kubeadm/app/util/runtime:all-srcs",
         "//cmd/kubeadm/app/util/staticpod:all-srcs",
+        "//cmd/kubeadm/app/util/system:all-srcs",
     ],
     tags = ["automanaged"],
 )
