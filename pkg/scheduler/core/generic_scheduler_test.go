@@ -611,10 +611,11 @@ func TestZeroRequest(t *testing.T) {
 	large2 := large
 	large2.NodeName = "machine2"
 	tests := []struct {
-		pod   *v1.Pod
-		pods  []*v1.Pod
-		nodes []*v1.Node
-		name  string
+		pod           *v1.Pod
+		pods          []*v1.Pod
+		nodes         []*v1.Node
+		name          string
+		expectedScore int
 	}{
 		// The point of these next two tests is to show you get the same priority for a zero-request pod
 		// as for a pod with the defaults requests, both when the zero-request pod is already on the machine
@@ -627,6 +628,7 @@ func TestZeroRequest(t *testing.T) {
 				{Spec: large1}, {Spec: noResources1},
 				{Spec: large2}, {Spec: small2},
 			},
+			expectedScore: 25,
 		},
 		{
 			pod:   &v1.Pod{Spec: small},
@@ -636,6 +638,7 @@ func TestZeroRequest(t *testing.T) {
 				{Spec: large1}, {Spec: noResources1},
 				{Spec: large2}, {Spec: small2},
 			},
+			expectedScore: 25,
 		},
 		// The point of this test is to verify that we're not just getting the same score no matter what we schedule.
 		{
@@ -646,10 +649,10 @@ func TestZeroRequest(t *testing.T) {
 				{Spec: large1}, {Spec: noResources1},
 				{Spec: large2}, {Spec: small2},
 			},
+			expectedScore: 23,
 		},
 	}
 
-	const expectedPriority int = 25
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// This should match the configuration in defaultPriorities() in
@@ -683,14 +686,8 @@ func TestZeroRequest(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 			for _, hp := range list {
-				if test.name == "test priority of larger pod with machine with zero-request pod" {
-					if hp.Score == expectedPriority {
-						t.Errorf("expected non-%d for all priorities, got list %#v", expectedPriority, list)
-					}
-				} else {
-					if hp.Score != expectedPriority {
-						t.Errorf("expected %d for all priorities, got list %#v", expectedPriority, list)
-					}
+				if hp.Score != test.expectedScore {
+					t.Errorf("expected %d for all priorities, got list %#v", test.expectedScore, list)
 				}
 			}
 		})
@@ -1305,6 +1302,30 @@ func TestPreempt(t *testing.T) {
 			expectedNode: "machine1",
 			expectedPods: []string{"m1.1", "m1.2"},
 		},
+		{
+			name: "One scheduler extender allows only machine1, but it is not interested in given pod, otherwise machine1 would have been chosen",
+			pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod1", UID: types.UID("pod1")}, Spec: v1.PodSpec{
+				Containers: veryLargeContainers,
+				Priority:   &highPriority},
+			},
+			pods: []*v1.Pod{
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.1", UID: types.UID("m1.1")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &midPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "m1.2", UID: types.UID("m1.2")}, Spec: v1.PodSpec{Containers: smallContainers, Priority: &lowPriority, NodeName: "machine1"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
+
+				{ObjectMeta: metav1.ObjectMeta{Name: "m2.1", UID: types.UID("m2.1")}, Spec: v1.PodSpec{Containers: largeContainers, Priority: &midPriority, NodeName: "machine2"}, Status: v1.PodStatus{Phase: v1.PodRunning}},
+			},
+			extenders: []*FakeExtender{
+				{
+					predicates:   []fitPredicate{machine1PredicateExtender},
+					unInterested: true,
+				},
+				{
+					predicates: []fitPredicate{truePredicateExtender},
+				},
+			},
+			expectedNode: "machine3",
+			expectedPods: []string{},
+		},
 	}
 
 	for _, test := range tests {
@@ -1349,7 +1370,7 @@ func TestPreempt(t *testing.T) {
 				t.Errorf("unexpected error in preemption: %v", err)
 			}
 			if (node != nil && node.Name != test.expectedNode) || (node == nil && len(test.expectedNode) != 0) {
-				t.Errorf("expected node: %v, got: %v", test.expectedNode, node)
+				t.Errorf("expected node: %v, got: %v", test.expectedNode, node.GetName())
 			}
 			if len(victims) != len(test.expectedPods) {
 				t.Errorf("expected %v pods, got %v.", len(test.expectedPods), len(victims))
