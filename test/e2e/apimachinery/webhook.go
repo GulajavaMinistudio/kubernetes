@@ -576,7 +576,7 @@ func testWebhook(f *framework.Framework) {
 	pod = hangingPod(f)
 	_, err = client.CoreV1().Pods(f.Namespace.Name).Create(pod)
 	Expect(err).NotTo(BeNil())
-	expectedTimeoutErr := "Timeout: request did not complete within requested timeout 30s"
+	expectedTimeoutErr := "request did not complete within"
 	if !strings.Contains(err.Error(), expectedTimeoutErr) {
 		framework.Failf("expect timeout error %q, got %q", expectedTimeoutErr, err.Error())
 	}
@@ -1100,7 +1100,7 @@ func testCustomResourceWebhook(f *framework.Framework, crd *apiextensionsv1beta1
 			},
 		},
 	}
-	_, err := customResourceClient.Create(crInstance)
+	_, err := customResourceClient.Create(crInstance, metav1.CreateOptions{})
 	Expect(err).NotTo(BeNil())
 	expectedErrMsg := "the custom resource contains unwanted data"
 	if !strings.Contains(err.Error(), expectedErrMsg) {
@@ -1123,7 +1123,7 @@ func testMutatingCustomResourceWebhook(f *framework.Framework, crd *apiextension
 			},
 		},
 	}
-	mutatedCR, err := customResourceClient.Create(cr)
+	mutatedCR, err := customResourceClient.Create(cr, metav1.CreateOptions{})
 	Expect(err).To(BeNil())
 	expectedCRData := map[string]interface{}{
 		"mutation-start":   "yes",
