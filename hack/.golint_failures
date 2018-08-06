@@ -474,6 +474,7 @@ staging/src/k8s.io/apimachinery/pkg/api/apitesting/roundtrip
 staging/src/k8s.io/apimachinery/pkg/api/meta
 staging/src/k8s.io/apimachinery/pkg/api/validation
 staging/src/k8s.io/apimachinery/pkg/api/validation/path
+staging/src/k8s.io/apimachinery/pkg/apis/config/v1alpha1
 staging/src/k8s.io/apimachinery/pkg/apis/meta/fuzzer
 staging/src/k8s.io/apimachinery/pkg/apis/meta/internalversion
 staging/src/k8s.io/apimachinery/pkg/apis/meta/v1/unstructured
@@ -530,6 +531,7 @@ staging/src/k8s.io/apiserver/pkg/apis/audit
 staging/src/k8s.io/apiserver/pkg/apis/audit/v1alpha1
 staging/src/k8s.io/apiserver/pkg/apis/audit/v1beta1
 staging/src/k8s.io/apiserver/pkg/apis/audit/validation
+staging/src/k8s.io/apiserver/pkg/apis/config/v1alpha1
 staging/src/k8s.io/apiserver/pkg/apis/example
 staging/src/k8s.io/apiserver/pkg/apis/example/v1
 staging/src/k8s.io/apiserver/pkg/apis/example2
