@@ -11,10 +11,13 @@ filegroup(
     name = "all-srcs",
     srcs = [
         ":package-srcs",
+        "//test/images/apparmor-loader:all-srcs",
+        "//test/images/echoserver:all-srcs",
         "//test/images/entrypoint-tester:all-srcs",
         "//test/images/fakegitserver:all-srcs",
         "//test/images/liveness:all-srcs",
         "//test/images/logs-generator:all-srcs",
+        "//test/images/metadata-concealment:all-srcs",
         "//test/images/mounttest:all-srcs",
         "//test/images/net:all-srcs",
         "//test/images/netexec:all-srcs",

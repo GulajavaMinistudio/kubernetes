@@ -22,11 +22,11 @@ import (
 )
 
 const (
-	dockerHubRegistry = "docker.io"
-	e2eRegistry       = "gcr.io/kubernetes-e2e-test-images"
-	gcRegistry        = "k8s.gcr.io"
-	PrivateRegistry   = "gcr.io/k8s-authenticated-test"
-	sampleRegistry    = "gcr.io/google-samples"
+	dockerLibraryRegistry = "docker.io/library"
+	e2eRegistry           = "gcr.io/kubernetes-e2e-test-images"
+	gcRegistry            = "k8s.gcr.io"
+	PrivateRegistry       = "gcr.io/k8s-authenticated-test"
+	sampleRegistry        = "gcr.io/google-samples"
 )
 
 type ImageConfig struct {
@@ -51,12 +51,12 @@ func (i *ImageConfig) SetVersion(version string) {
 var (
 	AdmissionWebhook         = ImageConfig{e2eRegistry, "webhook", "1.12v2", false}
 	APIServer                = ImageConfig{e2eRegistry, "sample-apiserver", "1.0", false}
-	AppArmorLoader           = ImageConfig{gcRegistry, "apparmor-loader", "0.1", false}
-	BusyBox                  = ImageConfig{dockerHubRegistry, "busybox", "1.29", false}
-	CheckMetadataConcealment = ImageConfig{gcRegistry, "check-metadata-concealment", "v0.0.3", false}
+	AppArmorLoader           = ImageConfig{e2eRegistry, "apparmor-loader", "1.0", false}
+	BusyBox                  = ImageConfig{dockerLibraryRegistry, "busybox", "1.29", false}
+	CheckMetadataConcealment = ImageConfig{e2eRegistry, "metadata-concealment", "1.0", false}
 	CudaVectorAdd            = ImageConfig{e2eRegistry, "cuda-vector-add", "1.0", false}
 	Dnsutils                 = ImageConfig{e2eRegistry, "dnsutils", "1.1", false}
-	EchoServer               = ImageConfig{gcRegistry, "echoserver", "1.10", false}
+	EchoServer               = ImageConfig{e2eRegistry, "echoserver", "2.1", false}
 	EntrypointTester         = ImageConfig{e2eRegistry, "entrypoint-tester", "1.0", false}
 	Fakegitserver            = ImageConfig{e2eRegistry, "fakegitserver", "1.0", false}
 	GBFrontend               = ImageConfig{sampleRegistry, "gb-frontend", "v6", false}
@@ -74,8 +74,8 @@ var (
 	Net                      = ImageConfig{e2eRegistry, "net", "1.0", false}
 	Netexec                  = ImageConfig{e2eRegistry, "netexec", "1.0", false}
 	Nettest                  = ImageConfig{e2eRegistry, "nettest", "1.0", false}
-	Nginx                    = ImageConfig{dockerHubRegistry, "nginx", "1.14-alpine", false}
-	NginxNew                 = ImageConfig{dockerHubRegistry, "nginx", "1.15-alpine", false}
+	Nginx                    = ImageConfig{dockerLibraryRegistry, "nginx", "1.14-alpine", false}
+	NginxNew                 = ImageConfig{dockerLibraryRegistry, "nginx", "1.15-alpine", false}
 	Nonewprivs               = ImageConfig{e2eRegistry, "nonewprivs", "1.0", false}
 	NoSnatTest               = ImageConfig{e2eRegistry, "no-snat-test", "1.0", false}
 	NoSnatTestProxy          = ImageConfig{e2eRegistry, "no-snat-test-proxy", "1.0", false}
@@ -88,10 +88,10 @@ var (
 	ResourceController  = ImageConfig{e2eRegistry, "resource-consumer/controller", "1.0", false}
 	ServeHostname       = ImageConfig{e2eRegistry, "serve-hostname", "1.1", false}
 	TestWebserver       = ImageConfig{e2eRegistry, "test-webserver", "1.0", false}
-	VolumeNFSServer     = ImageConfig{e2eRegistry, "volume-nfs", "0.8", false}
-	VolumeISCSIServer   = ImageConfig{e2eRegistry, "volume-iscsi", "0.2", false}
-	VolumeGlusterServer = ImageConfig{e2eRegistry, "volume-gluster", "0.5", false}
-	VolumeRBDServer     = ImageConfig{e2eRegistry, "volume-rbd", "0.2", false}
+	VolumeNFSServer     = ImageConfig{e2eRegistry, "volume/nfs", "1.0", false}
+	VolumeISCSIServer   = ImageConfig{e2eRegistry, "volume/iscsi", "1.0", false}
+	VolumeGlusterServer = ImageConfig{e2eRegistry, "volume/gluster", "1.0", false}
+	VolumeRBDServer     = ImageConfig{e2eRegistry, "volume/rbd", "1.0", false}
 )
 
 func GetE2EImage(image ImageConfig) string {
