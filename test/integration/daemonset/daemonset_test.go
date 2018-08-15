@@ -39,6 +39,7 @@ import (
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/controller"
@@ -51,6 +52,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/factory"
 	labelsutil "k8s.io/kubernetes/pkg/util/labels"
 	"k8s.io/kubernetes/pkg/util/metrics"
+	"k8s.io/kubernetes/staging/src/k8s.io/client-go/util/retry"
 	"k8s.io/kubernetes/test/integration/framework"
 )
 
@@ -74,6 +76,7 @@ func setup(t *testing.T) (*httptest.Server, framework.CloseFunc, *daemon.DaemonS
 		informers.Core().V1().Pods(),
 		informers.Core().V1().Nodes(),
 		clientset.NewForConfigOrDie(restclient.AddUserAgent(&config, "daemonset-controller")),
+		flowcontrol.NewBackOff(5*time.Second, 15*time.Minute),
 	)
 	if err != nil {
 		t.Fatalf("error creating DaemonSets controller: %v", err)
@@ -461,6 +464,22 @@ func validateFailedPlacementEvent(eventClient corev1typed.EventInterface, t *tes
 	}
 }
 
+func updateDS(t *testing.T, dsClient appstyped.DaemonSetInterface, dsName string, updateFunc func(*apps.DaemonSet)) *apps.DaemonSet {
+	var ds *apps.DaemonSet
+	if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		newDS, err := dsClient.Get(dsName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		updateFunc(newDS)
+		ds, err = dsClient.Update(newDS)
+		return err
+	}); err != nil {
+		t.Fatalf("Failed to update DaemonSet: %v", err)
+	}
+	return ds
+}
+
 func forEachFeatureGate(t *testing.T, tf func(t *testing.T)) {
 	for _, fg := range featureGates() {
 		func() {
@@ -832,7 +851,7 @@ func TestLaunchWithHashCollision(t *testing.T) {
 	// Wait for the DaemonSet to be created before proceeding
 	err = waitForDaemonSetAndControllerRevisionCreated(clientset, ds.Name, ds.Namespace)
 	if err != nil {
-		t.Fatalf("Failed to create DeamonSet: %v", err)
+		t.Fatalf("Failed to create DaemonSet: %v", err)
 	}
 
 	ds, err = dsClient.Get(ds.Name, metav1.GetOptions{})
@@ -875,10 +894,9 @@ func TestLaunchWithHashCollision(t *testing.T) {
 
 	// Make an update of the DaemonSet which we know will create a hash collision when
 	// the next ControllerRevision is created.
-	_, err = dsClient.Update(ds)
-	if err != nil {
-		t.Fatalf("Failed to update DaemonSet: %v", err)
-	}
+	ds = updateDS(t, dsClient, ds.Name, func(updateDS *apps.DaemonSet) {
+		updateDS.Spec.Template.Spec.TerminationGracePeriodSeconds = &one
+	})
 
 	// Wait for any pod with the latest Spec to exist
 	err = wait.PollImmediate(100*time.Millisecond, 10*time.Second, func() (bool, error) {
