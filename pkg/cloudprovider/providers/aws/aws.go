@@ -741,15 +741,6 @@ func (p *awsSDKProvider) KeyManagement(regionName string) (KMS, error) {
 	return kmsClient, nil
 }
 
-// stringPointerArray creates a slice of string pointers from a slice of strings
-// Deprecated: consider using aws.StringSlice - but note the slightly different behaviour with a nil input
-func stringPointerArray(orig []string) []*string {
-	if orig == nil {
-		return nil
-	}
-	return aws.StringSlice(orig)
-}
-
 func newEc2Filter(name string, values ...string) *ec2.Filter {
 	filter := &ec2.Filter{
 		Name: aws.String(name),
@@ -1254,6 +1245,7 @@ func (c *Cloud) NodeAddresses(ctx context.Context, name types.NodeName) ([]v1.No
 			glog.V(4).Info("Could not determine private DNS from AWS metadata.")
 		} else {
 			addresses = append(addresses, v1.NodeAddress{Type: v1.NodeInternalDNS, Address: internalDNS})
+			addresses = append(addresses, v1.NodeAddress{Type: v1.NodeHostName, Address: internalDNS})
 		}
 
 		externalDNS, err := c.metadata.GetMetadata("public-hostname")
@@ -1316,6 +1308,7 @@ func extractNodeAddresses(instance *ec2.Instance) ([]v1.NodeAddress, error) {
 	privateDNSName := aws.StringValue(instance.PrivateDnsName)
 	if privateDNSName != "" {
 		addresses = append(addresses, v1.NodeAddress{Type: v1.NodeInternalDNS, Address: privateDNSName})
+		addresses = append(addresses, v1.NodeAddress{Type: v1.NodeHostName, Address: privateDNSName})
 	}
 
 	publicDNSName := aws.StringValue(instance.PublicDnsName)
