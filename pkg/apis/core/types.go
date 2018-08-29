@@ -35,6 +35,8 @@ const (
 	NamespaceSystem string = "kube-system"
 	// NamespacePublic is the namespace where we place public info (ConfigMaps)
 	NamespacePublic string = "kube-public"
+	// NamespaceNodeLease is the namespace where we place node lease objects (used for node heartbeats)
+	NamespaceNodeLease string = "kube-node-lease"
 	// TerminationMessagePathDefault means the default path to capture the application termination message running in a container
 	TerminationMessagePathDefault string = "/dev/termination-log"
 )
@@ -411,6 +413,16 @@ type PersistentVolumeClaimSpec struct {
 	// This is an alpha feature and may change in the future.
 	// +optional
 	VolumeMode *PersistentVolumeMode
+	// This field requires the VolumeSnapshotDataSource alpha feature gate to be
+	// enabled and currently VolumeSnapshot is the only supported data source.
+	// If the provisioner can support VolumeSnapshot data source, it will create
+	// a new volume and data will be restored to the volume at the same time.
+	// If the provisioner does not support VolumeSnapshot data source, volume will
+	// not be created and the failure will be reported as an event.
+	// In the future, we plan to support more data source types and the behavior
+	// of the provisioner may change.
+	// +optional
+	DataSource *TypedLocalObjectReference
 }
 
 type PersistentVolumeClaimConditionType string
@@ -562,6 +574,8 @@ const (
 	ProtocolTCP Protocol = "TCP"
 	// ProtocolUDP is the UDP protocol.
 	ProtocolUDP Protocol = "UDP"
+	// ProtocolSCTP is the SCTP protocol.
+	ProtocolSCTP Protocol = "SCTP"
 )
 
 // Represents a Persistent Disk resource in Google Compute Engine.
@@ -1568,7 +1582,7 @@ type ContainerPort struct {
 	HostPort int32
 	// Required: This must be a valid port number, 0 < x < 65536.
 	ContainerPort int32
-	// Required: Supports "TCP" and "UDP".
+	// Required: Supports "TCP", "UDP" and "SCTP"
 	// +optional
 	Protocol Protocol
 	// Optional: What host IP to bind the external port to.
@@ -3173,7 +3187,7 @@ type ServicePort struct {
 	// the 'Name' field in EndpointPort objects.
 	Name string
 
-	// The IP protocol for this port.  Supports "TCP" and "UDP".
+	// The IP protocol for this port.  Supports "TCP", "UDP", and "SCTP".
 	Protocol Protocol
 
 	// The port that will be exposed on the service.
@@ -3953,6 +3967,16 @@ type ObjectReference struct {
 // LocalObjectReference contains enough information to let you locate the referenced object inside the same namespace.
 type LocalObjectReference struct {
 	//TODO: Add other useful fields.  apiVersion, kind, uid?
+	Name string
+}
+
+// TypedLocalObjectReference contains enough information to let you locate the typed referenced object inside the same namespace.
+type TypedLocalObjectReference struct {
+	// APIGroup is the group for the resource being referenced
+	APIGroup string
+	// Kind is the type of resource being referenced
+	Kind string
+	// Name is the name of resource being referenced
 	Name string
 }
 

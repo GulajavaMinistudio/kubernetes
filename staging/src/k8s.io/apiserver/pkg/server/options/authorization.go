@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/golang/glog"
 	"github.com/spf13/pflag"
 
 	"k8s.io/apiserver/pkg/authorization/authorizer"
@@ -27,7 +28,7 @@ import (
 	"k8s.io/apiserver/pkg/authorization/path"
 	"k8s.io/apiserver/pkg/authorization/union"
 	"k8s.io/apiserver/pkg/server"
-	authorizationclient "k8s.io/client-go/kubernetes/typed/authorization/v1beta1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -41,6 +42,9 @@ type DelegatingAuthorizationOptions struct {
 	// RemoteKubeConfigFile is the file to use to connect to a "normal" kube API server which hosts the
 	// SubjectAccessReview.authorization.k8s.io endpoint for checking tokens.
 	RemoteKubeConfigFile string
+	// RemoteKubeConfigFileOptional is specifying whether not specifying the kubeconfig or
+	// a missing in-cluster config will be fatal.
+	RemoteKubeConfigFileOptional bool
 
 	// AllowCacheTTL is the length of time that a successful authorization response will be cached
 	AllowCacheTTL time.Duration
@@ -72,9 +76,13 @@ func (s *DelegatingAuthorizationOptions) AddFlags(fs *pflag.FlagSet) {
 		return
 	}
 
+	var optionalKubeConfigSentence string
+	if s.RemoteKubeConfigFileOptional {
+		optionalKubeConfigSentence = " This is optional. If empty, all requests not skipped by authorization are forbidden."
+	}
 	fs.StringVar(&s.RemoteKubeConfigFile, "authorization-kubeconfig", s.RemoteKubeConfigFile,
 		"kubeconfig file pointing at the 'core' kubernetes server with enough rights to create "+
-			" subjectaccessreviews.authorization.k8s.io.")
+			"subjectaccessreviews.authorization.k8s.io."+optionalKubeConfigSentence)
 
 	fs.DurationVar(&s.AllowCacheTTL, "authorization-webhook-cache-authorized-ttl",
 		s.AllowCacheTTL,
@@ -95,15 +103,16 @@ func (s *DelegatingAuthorizationOptions) ApplyTo(c *server.AuthorizationInfo) er
 		return nil
 	}
 
-	a, err := s.ToAuthorization()
+	client, err := s.getClient()
 	if err != nil {
 		return err
 	}
-	c.Authorizer = a
-	return nil
+
+	c.Authorizer, err = s.toAuthorizer(client)
+	return err
 }
 
-func (s *DelegatingAuthorizationOptions) ToAuthorization() (authorizer.Authorizer, error) {
+func (s *DelegatingAuthorizationOptions) toAuthorizer(client kubernetes.Interface) (authorizer.Authorizer, error) {
 	var authorizers []authorizer.Authorizer
 
 	if len(s.AlwaysAllowPaths) > 0 {
@@ -114,25 +123,25 @@ func (s *DelegatingAuthorizationOptions) ToAuthorization() (authorizer.Authorize
 		authorizers = append(authorizers, a)
 	}
 
-	sarClient, err := s.newSubjectAccessReview()
-	if err != nil {
-		return nil, err
+	if client == nil {
+		glog.Warningf("No authorization-kubeconfig provided, so SubjectAccessReview of authorization tokens won't work.")
+	} else {
+		cfg := authorizerfactory.DelegatingAuthorizerConfig{
+			SubjectAccessReviewClient: client.AuthorizationV1beta1().SubjectAccessReviews(),
+			AllowCacheTTL:             s.AllowCacheTTL,
+			DenyCacheTTL:              s.DenyCacheTTL,
+		}
+		delegatedAuthorizer, err := cfg.New()
+		if err != nil {
+			return nil, err
+		}
+		authorizers = append(authorizers, delegatedAuthorizer)
 	}
-	cfg := authorizerfactory.DelegatingAuthorizerConfig{
-		SubjectAccessReviewClient: sarClient,
-		AllowCacheTTL:             s.AllowCacheTTL,
-		DenyCacheTTL:              s.DenyCacheTTL,
-	}
-	a, err := cfg.New()
-	if err != nil {
-		return nil, err
-	}
-	authorizers = append(authorizers, a)
 
 	return union.New(authorizers...), nil
 }
 
-func (s *DelegatingAuthorizationOptions) newSubjectAccessReview() (authorizationclient.SubjectAccessReviewInterface, error) {
+func (s *DelegatingAuthorizationOptions) getClient() (kubernetes.Interface, error) {
 	var clientConfig *rest.Config
 	var err error
 	if len(s.RemoteKubeConfigFile) > 0 {
@@ -140,11 +149,13 @@ func (s *DelegatingAuthorizationOptions) newSubjectAccessReview() (authorization
 		loader := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{})
 
 		clientConfig, err = loader.ClientConfig()
-
 	} else {
 		// without the remote kubeconfig file, try to use the in-cluster config.  Most addon API servers will
 		// use this path
 		clientConfig, err = rest.InClusterConfig()
+		if err == rest.ErrNotInCluster && s.RemoteKubeConfigFileOptional {
+			return nil, nil
+		}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get delegated authorization kubeconfig: %v", err)
@@ -154,10 +165,5 @@ func (s *DelegatingAuthorizationOptions) newSubjectAccessReview() (authorization
 	clientConfig.QPS = 200
 	clientConfig.Burst = 400
 
-	client, err := authorizationclient.NewForConfig(clientConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	return client.SubjectAccessReviews(), nil
+	return kubernetes.NewForConfig(clientConfig)
 }

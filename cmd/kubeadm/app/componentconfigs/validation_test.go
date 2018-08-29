@@ -25,7 +25,7 @@ import (
 	"k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
 	kubeadmconstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	"k8s.io/kubernetes/pkg/kubelet/apis/kubeletconfig"
-	"k8s.io/kubernetes/pkg/proxy/apis/kubeproxyconfig"
+	kubeproxyconfig "k8s.io/kubernetes/pkg/proxy/apis/config"
 	utilpointer "k8s.io/utils/pointer"
 )
 
@@ -307,6 +307,7 @@ func TestValidateKubeletConfiguration(t *testing.T) {
 						RegistryBurst:               10,
 						RegistryPullQPS:             5,
 						HairpinMode:                 "promiscuous-bridge",
+						NodeLeaseDurationSeconds:    40,
 					},
 				},
 			},
