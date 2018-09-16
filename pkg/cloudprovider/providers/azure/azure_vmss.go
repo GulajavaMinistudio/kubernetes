@@ -128,6 +128,15 @@ func (ss *scaleSet) getVmssVM(nodeName string) (ssName, instanceID string, vm co
 	return ssName, instanceID, *(cachedVM.(*compute.VirtualMachineScaleSetVM)), nil
 }
 
+func (ss *scaleSet) GetProvisioningStateByNodeName(name string) (provisioningState string, err error) {
+	_, _, vm, err := ss.getVmssVM(name)
+	if err != nil {
+		return provisioningState, err
+	}
+
+	return *vm.ProvisioningState, nil
+}
+
 // getCachedVirtualMachineByInstanceID gets scaleSetVMInfo from cache.
 // The node must belong to one of scale sets.
 func (ss *scaleSet) getVmssVMByInstanceID(resourceGroup, scaleSetName, instanceID string) (vm compute.VirtualMachineScaleSetVM, err error) {
@@ -524,13 +533,14 @@ func (ss *scaleSet) GetPrimaryInterface(nodeName string) (network.Interface, err
 }
 
 // getScaleSetWithRetry gets scale set with exponential backoff retry
-func (ss *scaleSet) getScaleSetWithRetry(name string) (compute.VirtualMachineScaleSet, bool, error) {
+func (ss *scaleSet) getScaleSetWithRetry(service *v1.Service, name string) (compute.VirtualMachineScaleSet, bool, error) {
 	var result compute.VirtualMachineScaleSet
 	var exists bool
 
 	err := wait.ExponentialBackoff(ss.requestBackoff(), func() (bool, error) {
 		cached, retryErr := ss.vmssCache.Get(name)
 		if retryErr != nil {
+			ss.Event(service, v1.EventTypeWarning, "GetVirtualMachineScaleSet", retryErr.Error())
 			glog.Errorf("backoff: failure for scale set %q, will retry,err=%v", name, retryErr)
 			return false, nil
 		}
@@ -581,24 +591,24 @@ func (ss *scaleSet) getPrimaryIPConfigForScaleSet(config *compute.VirtualMachine
 }
 
 // createOrUpdateVMSSWithRetry invokes ss.VirtualMachineScaleSetsClient.CreateOrUpdate with exponential backoff retry.
-func (ss *scaleSet) createOrUpdateVMSSWithRetry(virtualMachineScaleSet compute.VirtualMachineScaleSet) error {
+func (ss *scaleSet) createOrUpdateVMSSWithRetry(service *v1.Service, virtualMachineScaleSet compute.VirtualMachineScaleSet) error {
 	return wait.ExponentialBackoff(ss.requestBackoff(), func() (bool, error) {
 		ctx, cancel := getContextWithCancel()
 		defer cancel()
 		resp, err := ss.VirtualMachineScaleSetsClient.CreateOrUpdate(ctx, ss.ResourceGroup, *virtualMachineScaleSet.Name, virtualMachineScaleSet)
 		glog.V(10).Infof("VirtualMachineScaleSetsClient.CreateOrUpdate(%s): end", *virtualMachineScaleSet.Name)
-		return processHTTPRetryResponse(resp, err)
+		return ss.processHTTPRetryResponse(service, "CreateOrUpdateVMSS", resp, err)
 	})
 }
 
 // updateVMSSInstancesWithRetry invokes ss.VirtualMachineScaleSetsClient.UpdateInstances with exponential backoff retry.
-func (ss *scaleSet) updateVMSSInstancesWithRetry(scaleSetName string, vmInstanceIDs compute.VirtualMachineScaleSetVMInstanceRequiredIDs) error {
+func (ss *scaleSet) updateVMSSInstancesWithRetry(service *v1.Service, scaleSetName string, vmInstanceIDs compute.VirtualMachineScaleSetVMInstanceRequiredIDs) error {
 	return wait.ExponentialBackoff(ss.requestBackoff(), func() (bool, error) {
 		ctx, cancel := getContextWithCancel()
 		defer cancel()
 		resp, err := ss.VirtualMachineScaleSetsClient.UpdateInstances(ctx, ss.ResourceGroup, scaleSetName, vmInstanceIDs)
 		glog.V(10).Infof("VirtualMachineScaleSetsClient.UpdateInstances(%s): end", scaleSetName)
-		return processHTTPRetryResponse(resp, err)
+		return ss.processHTTPRetryResponse(service, "CreateOrUpdateVMSSInstance", resp, err)
 	})
 }
 
@@ -643,9 +653,10 @@ func (ss *scaleSet) getNodesScaleSets(nodes []*v1.Node) (map[string]sets.String,
 
 // ensureHostsInVMSetPool ensures the given Node's primary IP configurations are
 // participating in the vmSet's LoadBalancer Backend Pool.
-func (ss *scaleSet) ensureHostsInVMSetPool(serviceName string, backendPoolID string, vmSetName string, instanceIDs []string, isInternal bool) error {
+func (ss *scaleSet) ensureHostsInVMSetPool(service *v1.Service, backendPoolID string, vmSetName string, instanceIDs []string, isInternal bool) error {
 	glog.V(3).Infof("ensuring hosts %q of scaleset %q in LB backendpool %q", instanceIDs, vmSetName, backendPoolID)
-	virtualMachineScaleSet, exists, err := ss.getScaleSetWithRetry(vmSetName)
+	serviceName := getServiceName(service)
+	virtualMachineScaleSet, exists, err := ss.getScaleSetWithRetry(service, vmSetName)
 	if err != nil {
 		glog.Errorf("ss.getScaleSetWithRetry(%s) for service %q failed: %v", vmSetName, serviceName, err)
 		return err
@@ -713,7 +724,7 @@ func (ss *scaleSet) ensureHostsInVMSetPool(serviceName string, backendPoolID str
 		glog.V(10).Infof("VirtualMachineScaleSetsClient.CreateOrUpdate(%q): end", vmSetName)
 		if ss.CloudProviderBackoff && shouldRetryHTTPRequest(resp, err) {
 			glog.V(2).Infof("VirtualMachineScaleSetsClient.CreateOrUpdate for service (%s): scale set (%s) - updating, err=%v", serviceName, vmSetName, err)
-			retryErr := ss.createOrUpdateVMSSWithRetry(virtualMachineScaleSet)
+			retryErr := ss.createOrUpdateVMSSWithRetry(service, virtualMachineScaleSet)
 			if retryErr != nil {
 				err = retryErr
 				glog.V(2).Infof("VirtualMachineScaleSetsClient.CreateOrUpdate for service (%s) abort backoff: scale set (%s) - updating", serviceName, vmSetName)
@@ -734,7 +745,7 @@ func (ss *scaleSet) ensureHostsInVMSetPool(serviceName string, backendPoolID str
 	glog.V(10).Infof("VirtualMachineScaleSetsClient.CreateOrUpdate(%q): end", vmSetName)
 	if ss.CloudProviderBackoff && shouldRetryHTTPRequest(instanceResp, err) {
 		glog.V(2).Infof("VirtualMachineScaleSetsClient.UpdateInstances for service (%s): scale set (%s) - updating, err=%v", serviceName, vmSetName, err)
-		retryErr := ss.updateVMSSInstancesWithRetry(vmSetName, vmInstanceIDs)
+		retryErr := ss.updateVMSSInstancesWithRetry(service, vmSetName, vmInstanceIDs)
 		if retryErr != nil {
 			err = retryErr
 			glog.V(2).Infof("VirtualMachineScaleSetsClient.UpdateInstances for service (%s) abort backoff: scale set (%s) - updating", serviceName, vmSetName)
@@ -749,7 +760,8 @@ func (ss *scaleSet) ensureHostsInVMSetPool(serviceName string, backendPoolID str
 
 // EnsureHostsInPool ensures the given Node's primary IP configurations are
 // participating in the specified LoadBalancer Backend Pool.
-func (ss *scaleSet) EnsureHostsInPool(serviceName string, nodes []*v1.Node, backendPoolID string, vmSetName string, isInternal bool) error {
+func (ss *scaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, backendPoolID string, vmSetName string, isInternal bool) error {
+	serviceName := getServiceName(service)
 	scalesets, standardNodes, err := ss.getNodesScaleSets(nodes)
 	if err != nil {
 		glog.Errorf("getNodesScaleSets() for service %q failed: %v", serviceName, err)
@@ -769,7 +781,7 @@ func (ss *scaleSet) EnsureHostsInPool(serviceName string, nodes []*v1.Node, back
 			instanceIDs.Insert("*")
 		}
 
-		err := ss.ensureHostsInVMSetPool(serviceName, backendPoolID, ssName, instanceIDs.List(), isInternal)
+		err := ss.ensureHostsInVMSetPool(service, backendPoolID, ssName, instanceIDs.List(), isInternal)
 		if err != nil {
 			glog.Errorf("ensureHostsInVMSetPool() with scaleSet %q for service %q failed: %v", ssName, serviceName, err)
 			return err
@@ -777,7 +789,7 @@ func (ss *scaleSet) EnsureHostsInPool(serviceName string, nodes []*v1.Node, back
 	}
 
 	if ss.useStandardLoadBalancer() && len(standardNodes) > 0 {
-		err := ss.availabilitySet.EnsureHostsInPool(serviceName, standardNodes, backendPoolID, "", isInternal)
+		err := ss.availabilitySet.EnsureHostsInPool(service, standardNodes, backendPoolID, "", isInternal)
 		if err != nil {
 			glog.Errorf("availabilitySet.EnsureHostsInPool() for service %q failed: %v", serviceName, err)
 			return err
@@ -788,9 +800,9 @@ func (ss *scaleSet) EnsureHostsInPool(serviceName string, nodes []*v1.Node, back
 }
 
 // ensureScaleSetBackendPoolDeleted ensures the loadBalancer backendAddressPools deleted from the specified scaleset.
-func (ss *scaleSet) ensureScaleSetBackendPoolDeleted(poolID, ssName string) error {
+func (ss *scaleSet) ensureScaleSetBackendPoolDeleted(service *v1.Service, poolID, ssName string) error {
 	glog.V(3).Infof("ensuring backend pool %q deleted from scaleset %q", poolID, ssName)
-	virtualMachineScaleSet, exists, err := ss.getScaleSetWithRetry(ssName)
+	virtualMachineScaleSet, exists, err := ss.getScaleSetWithRetry(service, ssName)
 	if err != nil {
 		glog.Errorf("ss.ensureScaleSetBackendPoolDeleted(%s, %s) getScaleSetWithRetry(%s) failed: %v", poolID, ssName, ssName, err)
 		return err
@@ -842,7 +854,7 @@ func (ss *scaleSet) ensureScaleSetBackendPoolDeleted(poolID, ssName string) erro
 	glog.V(10).Infof("VirtualMachineScaleSetsClient.CreateOrUpdate(%q): end", ssName)
 	if ss.CloudProviderBackoff && shouldRetryHTTPRequest(resp, err) {
 		glog.V(2).Infof("VirtualMachineScaleSetsClient.CreateOrUpdate: scale set (%s) - updating, err=%v", ssName, err)
-		retryErr := ss.createOrUpdateVMSSWithRetry(virtualMachineScaleSet)
+		retryErr := ss.createOrUpdateVMSSWithRetry(service, virtualMachineScaleSet)
 		if retryErr != nil {
 			err = retryErr
 			glog.V(2).Infof("VirtualMachineScaleSetsClient.CreateOrUpdate abort backoff: scale set (%s) - updating", ssName)
@@ -863,7 +875,7 @@ func (ss *scaleSet) ensureScaleSetBackendPoolDeleted(poolID, ssName string) erro
 	glog.V(10).Infof("VirtualMachineScaleSetsClient.UpdateInstances(%q): end", ssName)
 	if ss.CloudProviderBackoff && shouldRetryHTTPRequest(instanceResp, err) {
 		glog.V(2).Infof("VirtualMachineScaleSetsClient.UpdateInstances scale set (%s) - updating, err=%v", ssName, err)
-		retryErr := ss.updateVMSSInstancesWithRetry(ssName, vmInstanceIDs)
+		retryErr := ss.updateVMSSInstancesWithRetry(service, ssName, vmInstanceIDs)
 		if retryErr != nil {
 			err = retryErr
 			glog.V(2).Infof("VirtualMachineScaleSetsClient.UpdateInstances abort backoff: scale set (%s) - updating", ssName)
@@ -883,7 +895,7 @@ func (ss *scaleSet) ensureScaleSetBackendPoolDeleted(poolID, ssName string) erro
 		glog.V(10).Infof("VirtualMachineScaleSetsClient.CreateOrUpdate(%q): end", ssName)
 		if ss.CloudProviderBackoff && shouldRetryHTTPRequest(resp, err) {
 			glog.V(2).Infof("VirtualMachineScaleSetsClient.CreateOrUpdate: scale set (%s) - updating, err=%v", ssName, err)
-			retryErr := ss.createOrUpdateVMSSWithRetry(virtualMachineScaleSet)
+			retryErr := ss.createOrUpdateVMSSWithRetry(service, virtualMachineScaleSet)
 			if retryErr != nil {
 				glog.V(2).Infof("VirtualMachineScaleSetsClient.CreateOrUpdate abort backoff: scale set (%s) - updating", ssName)
 			}
@@ -894,7 +906,7 @@ func (ss *scaleSet) ensureScaleSetBackendPoolDeleted(poolID, ssName string) erro
 }
 
 // EnsureBackendPoolDeleted ensures the loadBalancer backendAddressPools deleted from the specified vmSet.
-func (ss *scaleSet) EnsureBackendPoolDeleted(poolID, vmSetName string, backendAddressPools *[]network.BackendAddressPool) error {
+func (ss *scaleSet) EnsureBackendPoolDeleted(service *v1.Service, poolID, vmSetName string, backendAddressPools *[]network.BackendAddressPool) error {
 	if backendAddressPools == nil {
 		return nil
 	}
@@ -925,7 +937,7 @@ func (ss *scaleSet) EnsureBackendPoolDeleted(poolID, vmSetName string, backendAd
 			continue
 		}
 
-		err := ss.ensureScaleSetBackendPoolDeleted(poolID, ssName)
+		err := ss.ensureScaleSetBackendPoolDeleted(service, poolID, ssName)
 		if err != nil {
 			glog.Errorf("ensureScaleSetBackendPoolDeleted() with scaleSet %q failed: %v", ssName, err)
 			return err

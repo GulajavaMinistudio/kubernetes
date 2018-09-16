@@ -129,6 +129,8 @@ type testCase struct {
 	testCMClient      *cmfake.FakeCustomMetricsClient
 	testEMClient      *emfake.FakeExternalMetricsClient
 	testScaleClient   *scalefake.FakeScaleClient
+
+	recommendations []timestampedRecommendation
 }
 
 // Needs to be called under a lock.
@@ -292,8 +294,9 @@ func (tc *testCase) prepareTestClient(t *testing.T) (*fake.Clientset, *metricsfa
 					Phase: podPhase,
 					Conditions: []v1.PodCondition{
 						{
-							Type:   v1.PodReady,
-							Status: podReadiness,
+							Type:               v1.PodReady,
+							Status:             podReadiness,
+							LastTransitionTime: podStartTime,
 						},
 					},
 					StartTime: &podStartTime,
@@ -474,6 +477,7 @@ func (tc *testCase) prepareTestClient(t *testing.T) (*fake.Clientset, *metricsfa
 					Labels:    labelSet,
 				},
 				Timestamp: metav1.Time{Time: time.Now()},
+				Window:    metav1.Duration{Duration: time.Minute},
 				Containers: []metricsapi.ContainerMetrics{
 					{
 						Name: "container",
@@ -657,22 +661,27 @@ func (tc *testCase) setupController(t *testing.T) (*HorizontalController, inform
 		return true, obj, nil
 	})
 
-	replicaCalc := NewReplicaCalculator(metricsClient, testClient.Core(), defaultTestingTolerance, defaultTestingCpuTaintAfterStart, defaultTestingDelayOfInitialReadinessStatus)
-
 	informerFactory := informers.NewSharedInformerFactory(testClient, controller.NoResyncPeriodFunc())
-	defaultDownscaleForbiddenWindow := 5 * time.Minute
+	defaultDownscalestabilizationWindow := 5 * time.Minute
 
 	hpaController := NewHorizontalController(
 		eventClient.Core(),
 		testScaleClient,
 		testClient.Autoscaling(),
 		testrestmapper.TestOnlyStaticRESTMapper(legacyscheme.Scheme),
-		replicaCalc,
+		metricsClient,
 		informerFactory.Autoscaling().V1().HorizontalPodAutoscalers(),
+		informerFactory.Core().V1().Pods(),
 		controller.NoResyncPeriodFunc(),
-		defaultDownscaleForbiddenWindow,
+		defaultDownscalestabilizationWindow,
+		defaultTestingTolerance,
+		defaultTestingCpuInitializationPeriod,
+		defaultTestingDelayOfInitialReadinessStatus,
 	)
 	hpaController.hpaListerSynced = alwaysReady
+	if tc.recommendations != nil {
+		hpaController.recommendations["test-namespace/test-hpa"] = tc.recommendations
+	}
 
 	return hpaController, informerFactory
 }
@@ -2078,8 +2087,7 @@ func TestNoBackoffUpscaleCMNoBackoffCpu(t *testing.T) {
 	tc.runTest(t)
 }
 
-func TestBackoffDownscale(t *testing.T) {
-	time := metav1.Time{Time: time.Now().Add(-4 * time.Minute)}
+func TestStabilizeDownscale(t *testing.T) {
 	tc := testCase{
 		minReplicas:             1,
 		maxReplicas:             5,
@@ -2089,16 +2097,19 @@ func TestBackoffDownscale(t *testing.T) {
 		reportedLevels:          []uint64{50, 50, 50},
 		reportedCPURequests:     []resource.Quantity{resource.MustParse("0.1"), resource.MustParse("0.1"), resource.MustParse("0.1")},
 		useMetricsAPI:           true,
-		lastScaleTime:           &time,
 		expectedConditions: statusOkWithOverrides(autoscalingv2.HorizontalPodAutoscalerCondition{
 			Type:   autoscalingv2.AbleToScale,
 			Status: v1.ConditionTrue,
 			Reason: "ReadyForNewScale",
 		}, autoscalingv2.HorizontalPodAutoscalerCondition{
 			Type:   autoscalingv2.AbleToScale,
-			Status: v1.ConditionFalse,
-			Reason: "BackoffDownscale",
+			Status: v1.ConditionTrue,
+			Reason: "ScaleDownStabilized",
 		}),
+		recommendations: []timestampedRecommendation{
+			{10, time.Now().Add(-10 * time.Minute)},
+			{4, time.Now().Add(-1 * time.Minute)},
+		},
 	}
 	tc.runTest(t)
 }
@@ -2216,11 +2227,12 @@ func TestScaleDownRCImmediately(t *testing.T) {
 }
 
 func TestAvoidUncessaryUpdates(t *testing.T) {
+	now := metav1.Time{Time: time.Now().Add(-time.Hour)}
 	tc := testCase{
 		minReplicas:             2,
 		maxReplicas:             6,
-		initialReplicas:         3,
-		expectedDesiredReplicas: 3,
+		initialReplicas:         2,
+		expectedDesiredReplicas: 2,
 		CPUTarget:               30,
 		CPUCurrent:              40,
 		verifyCPUCurrent:        true,
@@ -2228,41 +2240,95 @@ func TestAvoidUncessaryUpdates(t *testing.T) {
 		reportedCPURequests:     []resource.Quantity{resource.MustParse("1.0"), resource.MustParse("1.0"), resource.MustParse("1.0")},
 		reportedPodStartTime:    []metav1.Time{coolCpuCreationTime(), hotCpuCreationTime(), hotCpuCreationTime()},
 		useMetricsAPI:           true,
+		lastScaleTime:           &now,
 	}
 	testClient, _, _, _, _ := tc.prepareTestClient(t)
 	tc.testClient = testClient
-	var savedHPA *autoscalingv1.HorizontalPodAutoscaler
 	testClient.PrependReactor("list", "horizontalpodautoscalers", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		tc.Lock()
 		defer tc.Unlock()
+		// fake out the verification logic and mark that we're done processing
+		go func() {
+			// wait a tick and then mark that we're finished (otherwise, we have no
+			// way to indicate that we're finished, because the function decides not to do anything)
+			time.Sleep(1 * time.Second)
+			tc.statusUpdated = true
+			tc.processed <- "test-hpa"
+		}()
 
-		if savedHPA != nil {
-			// fake out the verification logic and mark that we're done processing
-			go func() {
-				// wait a tick and then mark that we're finished (otherwise, we have no
-				// way to indicate that we're finished, because the function decides not to do anything)
-				time.Sleep(1 * time.Second)
-				tc.statusUpdated = true
-				tc.processed <- "test-hpa"
-			}()
-			return true, &autoscalingv1.HorizontalPodAutoscalerList{
-				Items: []autoscalingv1.HorizontalPodAutoscaler{*savedHPA},
-			}, nil
+		quantity := resource.MustParse("400m")
+		obj := &autoscalingv2.HorizontalPodAutoscalerList{
+			Items: []autoscalingv2.HorizontalPodAutoscaler{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-hpa",
+						Namespace: "test-namespace",
+						SelfLink:  "experimental/v1/namespaces/test-namespace/horizontalpodautoscalers/test-hpa",
+					},
+					Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+						ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+							Kind:       "ReplicationController",
+							Name:       "test-rc",
+							APIVersion: "v1",
+						},
+
+						MinReplicas: &tc.minReplicas,
+						MaxReplicas: tc.maxReplicas,
+					},
+					Status: autoscalingv2.HorizontalPodAutoscalerStatus{
+						CurrentReplicas: tc.initialReplicas,
+						DesiredReplicas: tc.initialReplicas,
+						LastScaleTime:   tc.lastScaleTime,
+						CurrentMetrics: []autoscalingv2.MetricStatus{
+							{
+								Type: autoscalingv2.ResourceMetricSourceType,
+								Resource: &autoscalingv2.ResourceMetricStatus{
+									Name: v1.ResourceCPU,
+									Current: autoscalingv2.MetricValueStatus{
+										AverageValue:       &quantity,
+										AverageUtilization: &tc.CPUCurrent,
+									},
+								},
+							},
+						},
+						Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
+							{
+								Type:               autoscalingv2.AbleToScale,
+								Status:             v1.ConditionTrue,
+								LastTransitionTime: *tc.lastScaleTime,
+								Reason:             "ReadyForNewScale",
+								Message:            "recommended size matches current size",
+							},
+							{
+								Type:               autoscalingv2.ScalingActive,
+								Status:             v1.ConditionTrue,
+								LastTransitionTime: *tc.lastScaleTime,
+								Reason:             "ValidMetricFound",
+								Message:            "the HPA was able to successfully calculate a replica count from cpu resource utilization (percentage of request)",
+							},
+							{
+								Type:               autoscalingv2.ScalingLimited,
+								Status:             v1.ConditionTrue,
+								LastTransitionTime: *tc.lastScaleTime,
+								Reason:             "TooFewReplicas",
+								Message:            "the desired replica count is more than the maximum replica count",
+							},
+						},
+					},
+				},
+			},
+		}
+		// and... convert to autoscaling v1 to return the right type
+		objv1, err := unsafeConvertToVersionVia(obj, autoscalingv1.SchemeGroupVersion)
+		if err != nil {
+			return true, nil, err
 		}
 
-		// fallthrough
-		return false, nil, nil
+		return true, objv1, nil
 	})
 	testClient.PrependReactor("update", "horizontalpodautoscalers", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		tc.Lock()
 		defer tc.Unlock()
-
-		if savedHPA == nil {
-			// save the HPA and return it
-			savedHPA = action.(core.UpdateAction).GetObject().(*autoscalingv1.HorizontalPodAutoscaler)
-			return true, savedHPA, nil
-		}
-
 		assert.Fail(t, "should not have attempted to update the HPA when nothing changed")
 		// mark that we've processed this HPA
 		tc.processed <- ""
@@ -2270,17 +2336,6 @@ func TestAvoidUncessaryUpdates(t *testing.T) {
 	})
 
 	controller, informerFactory := tc.setupController(t)
-
-	// fake an initial processing loop to populate savedHPA
-	initialHPAs, err := testClient.Autoscaling().HorizontalPodAutoscalers("test-namespace").List(metav1.ListOptions{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if err := controller.reconcileAutoscaler(&initialHPAs.Items[0]); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// actually run the test
 	tc.runTestWithController(t, controller, informerFactory)
 }
 
@@ -2348,6 +2403,87 @@ func TestConvertDesiredReplicasWithRules(t *testing.T) {
 
 		assert.Equal(t, ctc.expectedConvertedDesiredReplicas, actualConvertedDesiredReplicas, ctc.annotation)
 		assert.Equal(t, ctc.expectedCondition, actualCondition, ctc.annotation)
+	}
+}
+
+func TestNormalizeDesiredReplicas(t *testing.T) {
+	tests := []struct {
+		name                         string
+		key                          string
+		recommendations              []timestampedRecommendation
+		prenormalizedDesiredReplicas int32
+		expectedStabilizedReplicas   int32
+		expectedLogLength            int
+	}{
+		{
+			"empty log",
+			"",
+			[]timestampedRecommendation{},
+			5,
+			5,
+			1,
+		},
+		{
+			"stabilize",
+			"",
+			[]timestampedRecommendation{
+				{4, time.Now().Add(-2 * time.Minute)},
+				{5, time.Now().Add(-1 * time.Minute)},
+			},
+			3,
+			5,
+			3,
+		},
+		{
+			"no stabilize",
+			"",
+			[]timestampedRecommendation{
+				{1, time.Now().Add(-2 * time.Minute)},
+				{2, time.Now().Add(-1 * time.Minute)},
+			},
+			3,
+			3,
+			3,
+		},
+		{
+			"no stabilize - old recommendations",
+			"",
+			[]timestampedRecommendation{
+				{10, time.Now().Add(-10 * time.Minute)},
+				{9, time.Now().Add(-9 * time.Minute)},
+			},
+			3,
+			3,
+			2,
+		},
+		{
+			"stabilize - old recommendations",
+			"",
+			[]timestampedRecommendation{
+				{10, time.Now().Add(-10 * time.Minute)},
+				{4, time.Now().Add(-1 * time.Minute)},
+				{5, time.Now().Add(-2 * time.Minute)},
+				{9, time.Now().Add(-9 * time.Minute)},
+			},
+			3,
+			5,
+			4,
+		},
+	}
+	for _, tc := range tests {
+		hc := HorizontalController{
+			downscaleStabilisationWindow: 5 * time.Minute,
+			recommendations: map[string][]timestampedRecommendation{
+				tc.key: tc.recommendations,
+			},
+		}
+		r := hc.stabilizeRecommendation(tc.key, tc.prenormalizedDesiredReplicas)
+		if r != tc.expectedStabilizedReplicas {
+			t.Errorf("[%s] got %d stabilized replicas, expected %d", tc.name, r, tc.expectedStabilizedReplicas)
+		}
+		if len(hc.recommendations[tc.key]) != tc.expectedLogLength {
+			t.Errorf("[%s] after  stabilization recommendations log has %d entries, expected %d", tc.name, len(hc.recommendations[tc.key]), tc.expectedLogLength)
+		}
 	}
 }
 

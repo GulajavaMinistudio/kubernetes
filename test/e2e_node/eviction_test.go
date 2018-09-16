@@ -30,7 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	nodeutil "k8s.io/kubernetes/pkg/api/v1/node"
-	"k8s.io/kubernetes/pkg/kubelet/apis/kubeletconfig"
+	kubeletconfig "k8s.io/kubernetes/pkg/kubelet/apis/config"
 	stats "k8s.io/kubernetes/pkg/kubelet/apis/stats/v1alpha1"
 	"k8s.io/kubernetes/pkg/kubelet/eviction"
 	kubeletmetrics "k8s.io/kubernetes/pkg/kubelet/metrics"
@@ -289,16 +289,6 @@ var _ = framework.KubeDescribe("PriorityMemoryEvictionOrdering [Slow] [Serial] [
 	highPriorityClassName := f.BaseName + "-high-priority"
 	highPriority := int32(999999999)
 
-	BeforeEach(func() {
-		_, err := f.ClientSet.SchedulingV1beta1().PriorityClasses().Create(&schedulerapi.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: highPriorityClassName}, Value: highPriority})
-		Expect(err == nil || errors.IsAlreadyExists(err)).To(BeTrue())
-	})
-
-	AfterEach(func() {
-		err := f.ClientSet.SchedulingV1beta1().PriorityClasses().Delete(highPriorityClassName, &metav1.DeleteOptions{})
-		Expect(err).NotTo(HaveOccurred())
-	})
-
 	Context(fmt.Sprintf(testContextFmt, expectedNodeCondition), func() {
 		tempSetCurrentKubeletConfig(f, func(initialConfig *kubeletconfig.KubeletConfiguration) {
 			memoryConsumed := resource.MustParse("600Mi")
@@ -309,6 +299,14 @@ var _ = framework.KubeDescribe("PriorityMemoryEvictionOrdering [Slow] [Serial] [
 			}
 			initialConfig.EvictionHard = map[string]string{"memory.available": fmt.Sprintf("%d", availableBytes-uint64(memoryConsumed.Value()))}
 			initialConfig.EvictionMinimumReclaim = map[string]string{}
+		})
+		BeforeEach(func() {
+			_, err := f.ClientSet.SchedulingV1beta1().PriorityClasses().Create(&schedulerapi.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: highPriorityClassName}, Value: highPriority})
+			Expect(err == nil || errors.IsAlreadyExists(err)).To(BeTrue())
+		})
+		AfterEach(func() {
+			err := f.ClientSet.SchedulingV1beta1().PriorityClasses().Delete(highPriorityClassName, &metav1.DeleteOptions{})
+			Expect(err).NotTo(HaveOccurred())
 		})
 		specs := []podEvictSpec{
 			{
@@ -348,16 +346,6 @@ var _ = framework.KubeDescribe("PriorityLocalStorageEvictionOrdering [Slow] [Ser
 	highPriorityClassName := f.BaseName + "-high-priority"
 	highPriority := int32(999999999)
 
-	BeforeEach(func() {
-		_, err := f.ClientSet.SchedulingV1beta1().PriorityClasses().Create(&schedulerapi.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: highPriorityClassName}, Value: highPriority})
-		Expect(err == nil || errors.IsAlreadyExists(err)).To(BeTrue())
-	})
-
-	AfterEach(func() {
-		err := f.ClientSet.SchedulingV1beta1().PriorityClasses().Delete(highPriorityClassName, &metav1.DeleteOptions{})
-		Expect(err).NotTo(HaveOccurred())
-	})
-
 	Context(fmt.Sprintf(testContextFmt, expectedNodeCondition), func() {
 		tempSetCurrentKubeletConfig(f, func(initialConfig *kubeletconfig.KubeletConfiguration) {
 			diskConsumed := resource.MustParse("350Mi")
@@ -368,6 +356,14 @@ var _ = framework.KubeDescribe("PriorityLocalStorageEvictionOrdering [Slow] [Ser
 			}
 			initialConfig.EvictionHard = map[string]string{"nodefs.available": fmt.Sprintf("%d", availableBytes-uint64(diskConsumed.Value()))}
 			initialConfig.EvictionMinimumReclaim = map[string]string{}
+		})
+		BeforeEach(func() {
+			_, err := f.ClientSet.SchedulingV1beta1().PriorityClasses().Create(&schedulerapi.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: highPriorityClassName}, Value: highPriority})
+			Expect(err == nil || errors.IsAlreadyExists(err)).To(BeTrue())
+		})
+		AfterEach(func() {
+			err := f.ClientSet.SchedulingV1beta1().PriorityClasses().Delete(highPriorityClassName, &metav1.DeleteOptions{})
+			Expect(err).NotTo(HaveOccurred())
 		})
 		specs := []podEvictSpec{
 			{

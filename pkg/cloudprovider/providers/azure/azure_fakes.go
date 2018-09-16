@@ -874,11 +874,11 @@ func (f *fakeVMSet) GetVMSetNames(service *v1.Service, nodes []*v1.Node) (availa
 	return nil, fmt.Errorf("unimplemented")
 }
 
-func (f *fakeVMSet) EnsureHostsInPool(serviceName string, nodes []*v1.Node, backendPoolID string, vmSetName string, isInternal bool) error {
+func (f *fakeVMSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, backendPoolID string, vmSetName string, isInternal bool) error {
 	return fmt.Errorf("unimplemented")
 }
 
-func (f *fakeVMSet) EnsureBackendPoolDeleted(poolID, vmSetName string, backendAddressPools *[]network.BackendAddressPool) error {
+func (f *fakeVMSet) EnsureBackendPoolDeleted(service *v1.Service, poolID, vmSetName string, backendAddressPools *[]network.BackendAddressPool) error {
 	return fmt.Errorf("unimplemented")
 }
 
@@ -892,4 +892,8 @@ func (f *fakeVMSet) DetachDiskByName(diskName, diskURI string, nodeName types.No
 
 func (f *fakeVMSet) GetDataDisks(nodeName types.NodeName) ([]compute.DataDisk, error) {
 	return nil, fmt.Errorf("unimplemented")
+}
+
+func (f *fakeVMSet) GetProvisioningStateByNodeName(name string) (string, error) {
+	return "", fmt.Errorf("unimplemented")
 }

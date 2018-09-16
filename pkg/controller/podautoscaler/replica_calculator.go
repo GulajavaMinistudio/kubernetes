@@ -26,35 +26,33 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
-	v1coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	metricsclient "k8s.io/kubernetes/pkg/controller/podautoscaler/metrics"
 )
 
 const (
-	// TODO(jbartosik): use actual value.
-	cpuSampleWindow = time.Minute
 	// defaultTestingTolerance is default value for calculating when to
 	// scale up/scale down.
 	defaultTestingTolerance                     = 0.1
-	defaultTestingCpuTaintAfterStart            = 2 * time.Minute
+	defaultTestingCpuInitializationPeriod       = 2 * time.Minute
 	defaultTestingDelayOfInitialReadinessStatus = 10 * time.Second
 )
 
 type ReplicaCalculator struct {
 	metricsClient                 metricsclient.MetricsClient
-	podsGetter                    v1coreclient.PodsGetter
+	podLister                     corelisters.PodLister
 	tolerance                     float64
-	cpuTaintAfterStart            time.Duration
+	cpuInitializationPeriod       time.Duration
 	delayOfInitialReadinessStatus time.Duration
 }
 
-func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, podsGetter v1coreclient.PodsGetter, tolerance float64, cpuTaintAfterStart, delayOfInitialReadinessStatus time.Duration) *ReplicaCalculator {
+func NewReplicaCalculator(metricsClient metricsclient.MetricsClient, podLister corelisters.PodLister, tolerance float64, cpuInitializationPeriod, delayOfInitialReadinessStatus time.Duration) *ReplicaCalculator {
 	return &ReplicaCalculator{
 		metricsClient:                 metricsClient,
-		podsGetter:                    podsGetter,
+		podLister:                     podLister,
 		tolerance:                     tolerance,
-		cpuTaintAfterStart:            cpuTaintAfterStart,
+		cpuInitializationPeriod:       cpuInitializationPeriod,
 		delayOfInitialReadinessStatus: delayOfInitialReadinessStatus,
 	}
 }
@@ -66,20 +64,19 @@ func (c *ReplicaCalculator) GetResourceReplicas(currentReplicas int32, targetUti
 	if err != nil {
 		return 0, 0, 0, time.Time{}, fmt.Errorf("unable to get metrics for resource %s: %v", resource, err)
 	}
-
-	podList, err := c.podsGetter.Pods(namespace).List(metav1.ListOptions{LabelSelector: selector.String()})
+	podList, err := c.podLister.Pods(namespace).List(selector)
 	if err != nil {
 		return 0, 0, 0, time.Time{}, fmt.Errorf("unable to get pods while calculating replica count: %v", err)
 	}
 
-	itemsLen := len(podList.Items)
+	itemsLen := len(podList)
 	if itemsLen == 0 {
 		return 0, 0, 0, time.Time{}, fmt.Errorf("no pods returned by selector while calculating replica count")
 	}
 
-	readyPodCount, ignoredPods, missingPods := groupPods(podList.Items, metrics, resource, c.cpuTaintAfterStart, c.delayOfInitialReadinessStatus)
+	readyPodCount, ignoredPods, missingPods := groupPods(podList, metrics, resource, c.cpuInitializationPeriod, c.delayOfInitialReadinessStatus)
 	removeMetricsForPods(metrics, ignoredPods)
-	requests, err := calculatePodRequests(podList.Items, resource)
+	requests, err := calculatePodRequests(podList, resource)
 	if err != nil {
 		return 0, 0, 0, time.Time{}, err
 	}
@@ -108,12 +105,12 @@ func (c *ReplicaCalculator) GetResourceReplicas(currentReplicas int32, targetUti
 		if usageRatio < 1.0 {
 			// on a scale-down, treat missing pods as using 100% of the resource request
 			for podName := range missingPods {
-				metrics[podName] = requests[podName]
+				metrics[podName] = metricsclient.PodMetric{Value: requests[podName]}
 			}
 		} else if usageRatio > 1.0 {
 			// on a scale-up, treat missing pods as using 0% of the resource request
 			for podName := range missingPods {
-				metrics[podName] = 0
+				metrics[podName] = metricsclient.PodMetric{Value: 0}
 			}
 		}
 	}
@@ -121,7 +118,7 @@ func (c *ReplicaCalculator) GetResourceReplicas(currentReplicas int32, targetUti
 	if rebalanceIgnored {
 		// on a scale-up, treat unready pods as using 0% of the resource request
 		for podName := range ignoredPods {
-			metrics[podName] = 0
+			metrics[podName] = metricsclient.PodMetric{Value: 0}
 		}
 	}
 
@@ -169,16 +166,17 @@ func (c *ReplicaCalculator) GetMetricReplicas(currentReplicas int32, targetUtili
 
 // calcPlainMetricReplicas calculates the desired replicas for plain (i.e. non-utilization percentage) metrics.
 func (c *ReplicaCalculator) calcPlainMetricReplicas(metrics metricsclient.PodMetricsInfo, currentReplicas int32, targetUtilization int64, namespace string, selector labels.Selector, resource v1.ResourceName) (replicaCount int32, utilization int64, err error) {
-	podList, err := c.podsGetter.Pods(namespace).List(metav1.ListOptions{LabelSelector: selector.String()})
+
+	podList, err := c.podLister.Pods(namespace).List(selector)
 	if err != nil {
 		return 0, 0, fmt.Errorf("unable to get pods while calculating replica count: %v", err)
 	}
 
-	if len(podList.Items) == 0 {
+	if len(podList) == 0 {
 		return 0, 0, fmt.Errorf("no pods returned by selector while calculating replica count")
 	}
 
-	readyPodCount, ignoredPods, missingPods := groupPods(podList.Items, metrics, resource, c.cpuTaintAfterStart, c.delayOfInitialReadinessStatus)
+	readyPodCount, ignoredPods, missingPods := groupPods(podList, metrics, resource, c.cpuInitializationPeriod, c.delayOfInitialReadinessStatus)
 	removeMetricsForPods(metrics, ignoredPods)
 
 	if len(metrics) == 0 {
@@ -203,12 +201,12 @@ func (c *ReplicaCalculator) calcPlainMetricReplicas(metrics metricsclient.PodMet
 		if usageRatio < 1.0 {
 			// on a scale-down, treat missing pods as using 100% of the resource request
 			for podName := range missingPods {
-				metrics[podName] = targetUtilization
+				metrics[podName] = metricsclient.PodMetric{Value: targetUtilization}
 			}
 		} else {
 			// on a scale-up, treat missing pods as using 0% of the resource request
 			for podName := range missingPods {
-				metrics[podName] = 0
+				metrics[podName] = metricsclient.PodMetric{Value: 0}
 			}
 		}
 	}
@@ -216,7 +214,7 @@ func (c *ReplicaCalculator) calcPlainMetricReplicas(metrics metricsclient.PodMet
 	if rebalanceIgnored {
 		// on a scale-up, treat unready pods as using 0% of the resource request
 		for podName := range ignoredPods {
-			metrics[podName] = 0
+			metrics[podName] = metricsclient.PodMetric{Value: 0}
 		}
 	}
 
@@ -263,19 +261,19 @@ func (c *ReplicaCalculator) GetObjectMetricReplicas(currentReplicas int32, targe
 // of this function. Make this function generic, so we don't repeat the same
 // logic in multiple places.
 func (c *ReplicaCalculator) getReadyPodsCount(namespace string, selector labels.Selector) (int64, error) {
-	podList, err := c.podsGetter.Pods(namespace).List(metav1.ListOptions{LabelSelector: selector.String()})
+	podList, err := c.podLister.Pods(namespace).List(selector)
 	if err != nil {
 		return 0, fmt.Errorf("unable to get pods while calculating replica count: %v", err)
 	}
 
-	if len(podList.Items) == 0 {
+	if len(podList) == 0 {
 		return 0, fmt.Errorf("no pods returned by selector while calculating replica count")
 	}
 
 	readyPodCount := 0
 
-	for _, pod := range podList.Items {
-		if pod.Status.Phase == v1.PodRunning && podutil.IsPodReady(&pod) {
+	for _, pod := range podList {
+		if pod.Status.Phase == v1.PodRunning && podutil.IsPodReady(pod) {
 			readyPodCount++
 		}
 	}
@@ -342,14 +340,15 @@ func (c *ReplicaCalculator) GetExternalPerPodMetricReplicas(currentReplicas int3
 	return replicaCount, utilization, timestamp, nil
 }
 
-func groupPods(pods []v1.Pod, metrics metricsclient.PodMetricsInfo, resource v1.ResourceName, cpuTaintAfterStart, delayOfInitialReadinessStatus time.Duration) (readyPodCount int, ignoredPods sets.String, missingPods sets.String) {
+func groupPods(pods []*v1.Pod, metrics metricsclient.PodMetricsInfo, resource v1.ResourceName, cpuInitializationPeriod, delayOfInitialReadinessStatus time.Duration) (readyPodCount int, ignoredPods sets.String, missingPods sets.String) {
 	missingPods = sets.NewString()
 	ignoredPods = sets.NewString()
 	for _, pod := range pods {
 		if pod.DeletionTimestamp != nil || pod.Status.Phase == v1.PodFailed {
 			continue
 		}
-		if _, found := metrics[pod.Name]; !found {
+		metric, found := metrics[pod.Name]
+		if !found {
 			missingPods.Insert(pod.Name)
 			continue
 		}
@@ -359,10 +358,13 @@ func groupPods(pods []v1.Pod, metrics metricsclient.PodMetricsInfo, resource v1.
 			if condition == nil || pod.Status.StartTime == nil {
 				ignorePod = true
 			} else {
-				if condition.Status == v1.ConditionTrue {
-					ignorePod = pod.Status.StartTime.Add(cpuTaintAfterStart + cpuSampleWindow).After(time.Now())
+				// Pod still within possible initialisation period.
+				if pod.Status.StartTime.Add(cpuInitializationPeriod).After(time.Now()) {
+					// Ignore sample if pod is unready or one window of metric wasn't collected since last state transition.
+					ignorePod = condition.Status == v1.ConditionFalse || metric.Timestamp.Before(condition.LastTransitionTime.Time.Add(metric.Window))
 				} else {
-					ignorePod = pod.Status.StartTime.Add(delayOfInitialReadinessStatus).After(condition.LastTransitionTime.Time)
+					// Ignore metric if pod is unready and it has never been ready.
+					ignorePod = condition.Status == v1.ConditionFalse && pod.Status.StartTime.Add(delayOfInitialReadinessStatus).After(condition.LastTransitionTime.Time)
 				}
 			}
 			if ignorePod {
@@ -370,13 +372,12 @@ func groupPods(pods []v1.Pod, metrics metricsclient.PodMetricsInfo, resource v1.
 				continue
 			}
 		}
-
 		readyPodCount++
 	}
 	return
 }
 
-func calculatePodRequests(pods []v1.Pod, resource v1.ResourceName) (map[string]int64, error) {
+func calculatePodRequests(pods []*v1.Pod, resource v1.ResourceName) (map[string]int64, error) {
 	requests := make(map[string]int64, len(pods))
 	for _, pod := range pods {
 		podSum := int64(0)

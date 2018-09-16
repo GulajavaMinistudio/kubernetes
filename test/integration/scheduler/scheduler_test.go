@@ -140,6 +140,7 @@ func TestSchedulerCreationFromConfigMap(t *testing.T) {
 				"GeneralPredicates",
 				"MatchInterPodAffinity",
 				"MaxAzureDiskVolumeCount",
+				"MaxCSIVolumeCountPred",
 				"MaxEBSVolumeCount",
 				"MaxGCEPDVolumeCount",
 				"NoDiskConflict",
@@ -154,6 +155,7 @@ func TestSchedulerCreationFromConfigMap(t *testing.T) {
 				"NodePreferAvoidPodsPriority",
 				"SelectorSpreadPriority",
 				"TaintTolerationPriority",
+				"ImageLocalityPriority",
 			),
 		},
 		{
@@ -182,6 +184,7 @@ func TestSchedulerCreationFromConfigMap(t *testing.T) {
 		eventBroadcaster := record.NewBroadcaster()
 		eventBroadcaster.StartRecordingToSink(&clientv1core.EventSinkImpl{Interface: clientSet.CoreV1().Events("")})
 
+		defaultBindTimeout := int64(30)
 		ss := &schedulerappconfig.Config{
 			ComponentConfig: kubeschedulerconfig.KubeSchedulerConfiguration{
 				HardPodAffinitySymmetricWeight: v1.DefaultHardPodAffinitySymmetricWeight,
@@ -194,6 +197,7 @@ func TestSchedulerCreationFromConfigMap(t *testing.T) {
 						},
 					},
 				},
+				BindTimeoutSeconds: &defaultBindTimeout,
 			},
 			Client:          clientSet,
 			InformerFactory: informerFactory,
@@ -243,6 +247,7 @@ func TestSchedulerCreationFromNonExistentConfigMap(t *testing.T) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartRecordingToSink(&clientv1core.EventSinkImpl{Interface: clientSet.CoreV1().Events("")})
 
+	defaultBindTimeout := int64(30)
 	ss := &schedulerappconfig.Config{
 		ComponentConfig: kubeschedulerconfig.KubeSchedulerConfiguration{
 			SchedulerName: v1.DefaultSchedulerName,
@@ -255,6 +260,7 @@ func TestSchedulerCreationFromNonExistentConfigMap(t *testing.T) {
 				},
 			},
 			HardPodAffinitySymmetricWeight: v1.DefaultHardPodAffinitySymmetricWeight,
+			BindTimeoutSeconds:             &defaultBindTimeout,
 		},
 		Client:          clientSet,
 		InformerFactory: informerFactory,

@@ -31,9 +31,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	core "k8s.io/client-go/testing"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	"k8s.io/kubernetes/pkg/controller"
 	metricsclient "k8s.io/kubernetes/pkg/controller/podautoscaler/metrics"
 	cmapi "k8s.io/metrics/pkg/apis/custom_metrics/v1beta2"
 	emapi "k8s.io/metrics/pkg/apis/external_metrics/v1beta1"
@@ -194,6 +196,7 @@ func (tc *replicaCalcTestCase) prepareTestMetricsClient() *metricsfake.Clientset
 						Labels:    map[string]string{"name": podNamePrefix},
 					},
 					Timestamp:  metav1.Time{Time: tc.timestamp},
+					Window:     metav1.Duration{Duration: time.Minute},
 					Containers: make([]metricsapi.ContainerMetrics, numContainersPerPod),
 				}
 
@@ -337,7 +340,17 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 	testClient, testMetricsClient, testCMClient, testEMClient := tc.prepareTestClient(t)
 	metricsClient := metricsclient.NewRESTMetricsClient(testMetricsClient.MetricsV1beta1(), testCMClient, testEMClient)
 
-	replicaCalc := NewReplicaCalculator(metricsClient, testClient.Core(), defaultTestingTolerance, defaultTestingCpuTaintAfterStart, defaultTestingDelayOfInitialReadinessStatus)
+	informerFactory := informers.NewSharedInformerFactory(testClient, controller.NoResyncPeriodFunc())
+	informer := informerFactory.Core().V1().Pods()
+
+	replicaCalc := NewReplicaCalculator(metricsClient, informer.Lister(), defaultTestingTolerance, defaultTestingCpuInitializationPeriod, defaultTestingDelayOfInitialReadinessStatus)
+
+	stop := make(chan struct{})
+	defer close(stop)
+	informerFactory.Start(stop)
+	if !controller.WaitForCacheSync("HPA", stop, informer.Informer().HasSynced) {
+		return
+	}
 
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: map[string]string{"name": podNamePrefix},
@@ -1223,25 +1236,25 @@ func TestReplicaCalcComputedToleranceAlgImplementation(t *testing.T) {
 func TestGroupPods(t *testing.T) {
 	tests := []struct {
 		name                string
-		pods                []v1.Pod
+		pods                []*v1.Pod
 		metrics             metricsclient.PodMetricsInfo
 		resource            v1.ResourceName
 		expectReadyPodCount int
-		expectUnreadyPods   sets.String
+		expectIgnoredPods   sets.String
 		expectMissingPods   sets.String
 	}{
 		{
 			"void",
-			[]v1.Pod{},
+			[]*v1.Pod{},
 			metricsclient.PodMetricsInfo{},
-			v1.ResourceName(""),
+			v1.ResourceCPU,
 			0,
 			sets.NewString(),
 			sets.NewString(),
 		},
 		{
-			"a ready pod",
-			[]v1.Pod{
+			"count in a ready pod - memory",
+			[]*v1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "bentham",
@@ -1252,16 +1265,16 @@ func TestGroupPods(t *testing.T) {
 				},
 			},
 			metricsclient.PodMetricsInfo{
-				"bentham": 1,
+				"bentham": metricsclient.PodMetric{Value: 1, Timestamp: time.Now(), Window: time.Minute},
 			},
-			v1.ResourceName("hedons"),
+			v1.ResourceMemory,
 			1,
 			sets.NewString(),
 			sets.NewString(),
 		},
 		{
-			"an unready pod",
-			[]v1.Pod{
+			"ignore a pod without ready condition - CPU",
+			[]*v1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "lucretius",
@@ -1275,7 +1288,7 @@ func TestGroupPods(t *testing.T) {
 				},
 			},
 			metricsclient.PodMetricsInfo{
-				"lucretius": 1,
+				"lucretius": metricsclient.PodMetric{Value: 1},
 			},
 			v1.ResourceCPU,
 			0,
@@ -1283,11 +1296,101 @@ func TestGroupPods(t *testing.T) {
 			sets.NewString(),
 		},
 		{
-			"a ready cpu pod",
-			[]v1.Pod{
+			"count in a ready pod with fresh metrics during initialization period - CPU",
+			[]*v1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: "niccolo",
+						Name: "bentham",
+					},
+					Status: v1.PodStatus{
+						Phase: v1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now().Add(-1 * time.Minute),
+						},
+						Conditions: []v1.PodCondition{
+							{
+								Type:               v1.PodReady,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-30 * time.Second)},
+								Status:             v1.ConditionTrue,
+							},
+						},
+					},
+				},
+			},
+			metricsclient.PodMetricsInfo{
+				"bentham": metricsclient.PodMetric{Value: 1, Timestamp: time.Now(), Window: 30 * time.Second},
+			},
+			v1.ResourceCPU,
+			1,
+			sets.NewString(),
+			sets.NewString(),
+		},
+		{
+			"ignore a ready pod without fresh metrics during initialization period - CPU",
+			[]*v1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "bentham",
+					},
+					Status: v1.PodStatus{
+						Phase: v1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now().Add(-1 * time.Minute),
+						},
+						Conditions: []v1.PodCondition{
+							{
+								Type:               v1.PodReady,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-30 * time.Second)},
+								Status:             v1.ConditionTrue,
+							},
+						},
+					},
+				},
+			},
+			metricsclient.PodMetricsInfo{
+				"bentham": metricsclient.PodMetric{Value: 1, Timestamp: time.Now(), Window: 60 * time.Second},
+			},
+			v1.ResourceCPU,
+			0,
+			sets.NewString("bentham"),
+			sets.NewString(),
+		},
+		{
+			"ignore an unready pod during initialization period - CPU",
+			[]*v1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "lucretius",
+					},
+					Status: v1.PodStatus{
+						Phase: v1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now().Add(-10 * time.Minute),
+						},
+						Conditions: []v1.PodCondition{
+							{
+								Type:               v1.PodReady,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-9*time.Minute - 54*time.Second)},
+								Status:             v1.ConditionFalse,
+							},
+						},
+					},
+				},
+			},
+			metricsclient.PodMetricsInfo{
+				"lucretius": metricsclient.PodMetric{Value: 1},
+			},
+			v1.ResourceCPU,
+			0,
+			sets.NewString("lucretius"),
+			sets.NewString(),
+		},
+		{
+			"count in a ready pod without fresh metrics after initialization period - CPU",
+			[]*v1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "bentham",
 					},
 					Status: v1.PodStatus{
 						Phase: v1.PodSucceeded,
@@ -1305,7 +1408,68 @@ func TestGroupPods(t *testing.T) {
 				},
 			},
 			metricsclient.PodMetricsInfo{
-				"niccolo": 1,
+				"bentham": metricsclient.PodMetric{Value: 1, Timestamp: time.Now().Add(-2 * time.Minute), Window: time.Minute},
+			},
+			v1.ResourceCPU,
+			1,
+			sets.NewString(),
+			sets.NewString(),
+		},
+
+		{
+			"count in an unready pod that was ready after initialization period - CPU",
+			[]*v1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "lucretius",
+					},
+					Status: v1.PodStatus{
+						Phase: v1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now().Add(-10 * time.Minute),
+						},
+						Conditions: []v1.PodCondition{
+							{
+								Type:               v1.PodReady,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-9 * time.Minute)},
+								Status:             v1.ConditionFalse,
+							},
+						},
+					},
+				},
+			},
+			metricsclient.PodMetricsInfo{
+				"lucretius": metricsclient.PodMetric{Value: 1},
+			},
+			v1.ResourceCPU,
+			1,
+			sets.NewString(),
+			sets.NewString(),
+		},
+		{
+			"ignore pod that has never been ready after initialization period - CPU",
+			[]*v1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "lucretius",
+					},
+					Status: v1.PodStatus{
+						Phase: v1.PodSucceeded,
+						StartTime: &metav1.Time{
+							Time: time.Now().Add(-10 * time.Minute),
+						},
+						Conditions: []v1.PodCondition{
+							{
+								Type:               v1.PodReady,
+								LastTransitionTime: metav1.Time{Time: time.Now().Add(-9*time.Minute - 50*time.Second)},
+								Status:             v1.ConditionFalse,
+							},
+						},
+					},
+				},
+			},
+			metricsclient.PodMetricsInfo{
+				"lucretius": metricsclient.PodMetric{Value: 1},
 			},
 			v1.ResourceCPU,
 			1,
@@ -1314,7 +1478,7 @@ func TestGroupPods(t *testing.T) {
 		},
 		{
 			"a missing pod",
-			[]v1.Pod{
+			[]*v1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "epicurus",
@@ -1334,8 +1498,8 @@ func TestGroupPods(t *testing.T) {
 			sets.NewString("epicurus"),
 		},
 		{
-			"all together",
-			[]v1.Pod{
+			"several pods",
+			[]*v1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "lucretius",
@@ -1378,8 +1542,8 @@ func TestGroupPods(t *testing.T) {
 				},
 			},
 			metricsclient.PodMetricsInfo{
-				"lucretius": 1,
-				"niccolo":   1,
+				"lucretius": metricsclient.PodMetric{Value: 1},
+				"niccolo":   metricsclient.PodMetric{Value: 1},
 			},
 			v1.ResourceCPU,
 			1,
@@ -1388,12 +1552,12 @@ func TestGroupPods(t *testing.T) {
 		},
 	}
 	for _, tc := range tests {
-		readyPodCount, unreadyPods, missingPods := groupPods(tc.pods, tc.metrics, tc.resource, defaultTestingCpuTaintAfterStart, defaultTestingDelayOfInitialReadinessStatus)
+		readyPodCount, ignoredPods, missingPods := groupPods(tc.pods, tc.metrics, tc.resource, defaultTestingCpuInitializationPeriod, defaultTestingDelayOfInitialReadinessStatus)
 		if readyPodCount != tc.expectReadyPodCount {
 			t.Errorf("%s got readyPodCount %d, expected %d", tc.name, readyPodCount, tc.expectReadyPodCount)
 		}
-		if !unreadyPods.Equal(tc.expectUnreadyPods) {
-			t.Errorf("%s got unreadyPods %v, expected %v", tc.name, unreadyPods, tc.expectUnreadyPods)
+		if !ignoredPods.Equal(tc.expectIgnoredPods) {
+			t.Errorf("%s got unreadyPods %v, expected %v", tc.name, ignoredPods, tc.expectIgnoredPods)
 		}
 		if !missingPods.Equal(tc.expectMissingPods) {
 			t.Errorf("%s got missingPods %v, expected %v", tc.name, missingPods, tc.expectMissingPods)
