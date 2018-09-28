@@ -1,5 +1,3 @@
-// +build windows
-
 /*
 Copyright 2018 The Kubernetes Authors.
 
@@ -16,11 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha2
+package kubelet
 
 const (
-	// DefaultCACertPath defines default location of CA certificate on Windows
-	DefaultCACertPath = "C:/etc/kubernetes/pki/ca.crt"
-	// DefaultCRISocket defines the default cri socket
-	DefaultCRISocket = "tcp://localhost:2375"
+	NetworkNotReadyErrorMsg = "network is not ready"
 )

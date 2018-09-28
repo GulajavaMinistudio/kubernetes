@@ -29,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubetypes "k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	utilversion "k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/client-go/tools/record"
 	ref "k8s.io/client-go/tools/reference"
 	"k8s.io/client-go/util/flowcontrol"
@@ -46,7 +47,6 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/types"
 	"k8s.io/kubernetes/pkg/kubelet/util/cache"
 	"k8s.io/kubernetes/pkg/kubelet/util/format"
-	utilversion "k8s.io/kubernetes/pkg/util/version"
 )
 
 const (
@@ -466,6 +466,10 @@ func (m *kubeGenericRuntimeManager) computePodActions(pod *v1.Pod, podStatus *ku
 	if createPodSandbox {
 		if !shouldRestartOnFailure(pod) && attempt != 0 {
 			// Should not restart the pod, just return.
+			// we should not create a sandbox for a pod if it is already done.
+			// if all containers are done and should not be started, there is no need to create a new sandbox.
+			// this stops confusing logs on pods whose containers all have exit codes, but we recreate a sandbox before terminating it.
+			changes.CreateSandbox = false
 			return changes
 		}
 		if len(pod.Spec.InitContainers) != 0 {
