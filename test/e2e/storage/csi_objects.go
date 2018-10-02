@@ -47,10 +47,10 @@ import (
 )
 
 var csiImageVersions = map[string]string{
-	"hostpathplugin":   "canary", // TODO (verult) update tag once new hostpathplugin release is cut
-	"csi-attacher":     "v0.2.0",
-	"csi-provisioner":  "v0.2.1",
-	"driver-registrar": "v0.3.0",
+	"hostpathplugin":   "v0.4.0",
+	"csi-attacher":     "v0.4.0",
+	"csi-provisioner":  "v0.4.0",
+	"driver-registrar": "v0.4.0",
 }
 
 func csiContainerImage(image string) string {
@@ -197,6 +197,87 @@ func csiClusterRoleBindings(
 		if err != nil {
 			framework.ExpectNoError(err, "Failed to create %s role binding: %v", binding.GetName(), err)
 		}
+	}
+}
+
+func csiControllerRole(
+	client clientset.Interface,
+	config framework.VolumeTestConfig,
+	teardown bool,
+) string {
+	action := "Creating"
+	if teardown {
+		action = "Deleting"
+	}
+
+	By(fmt.Sprintf("%v CSI controller role", action))
+
+	role, err := manifest.RoleFromManifest("test/e2e/testing-manifests/storage-csi/controller-role.yaml", config.Namespace)
+	framework.ExpectNoError(err, "Failed to create Role from manifest")
+
+	client.RbacV1().Roles(role.Namespace).Delete(role.Name, nil)
+	err = wait.Poll(2*time.Second, 10*time.Minute, func() (bool, error) {
+		_, err := client.RbacV1().Roles(role.Namespace).Get(role.Name, metav1.GetOptions{})
+		return apierrs.IsNotFound(err), nil
+	})
+	framework.ExpectNoError(err, "Timed out waiting for deletion: %v", err)
+
+	if teardown {
+		return role.Name
+	}
+
+	_, err = client.RbacV1().Roles(role.Namespace).Create(role)
+	if err != nil {
+		framework.ExpectNoError(err, "Failed to create %s role binding: %v", role.Name, err)
+	}
+	return role.Name
+}
+
+func csiControllerRoleBinding(
+	client clientset.Interface,
+	config framework.VolumeTestConfig,
+	teardown bool,
+	roleName string,
+	sa *v1.ServiceAccount,
+) {
+	bindingString := "Binding"
+	if teardown {
+		bindingString = "Unbinding"
+	}
+	By(fmt.Sprintf("%v roles %v to the CSI service account %v", bindingString, roleName, sa.GetName()))
+	roleBindingClient := client.RbacV1().RoleBindings(config.Namespace)
+	binding := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: config.Prefix + "-" + roleName + "-" + config.Namespace + "-role-binding",
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      sa.GetName(),
+				Namespace: sa.GetNamespace(),
+			},
+		},
+		RoleRef: rbacv1.RoleRef{
+			Kind:     "Role",
+			Name:     roleName,
+			APIGroup: "rbac.authorization.k8s.io",
+		},
+	}
+
+	roleBindingClient.Delete(binding.GetName(), &metav1.DeleteOptions{})
+	err := wait.Poll(2*time.Second, 10*time.Minute, func() (bool, error) {
+		_, err := roleBindingClient.Get(binding.GetName(), metav1.GetOptions{})
+		return apierrs.IsNotFound(err), nil
+	})
+	framework.ExpectNoError(err, "Timed out waiting for deletion: %v", err)
+
+	if teardown {
+		return
+	}
+
+	_, err = roleBindingClient.Create(binding)
+	if err != nil {
+		framework.ExpectNoError(err, "Failed to create %s role binding: %v", binding.GetName(), err)
 	}
 }
 
