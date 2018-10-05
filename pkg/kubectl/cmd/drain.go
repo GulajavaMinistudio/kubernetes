@@ -23,7 +23,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jonboulle/clockwork"
 	"github.com/spf13/cobra"
 
 	corev1 "k8s.io/api/core/v1"
@@ -32,7 +31,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/json"
@@ -64,12 +62,10 @@ type DrainOptions struct {
 	GracePeriodSeconds int
 	IgnoreDaemonsets   bool
 	Timeout            time.Duration
-	backOff            clockwork.Clock
 	DeleteLocalData    bool
 	Selector           string
 	PodSelector        string
 	nodeInfos          []*resource.Info
-	typer              runtime.ObjectTyper
 
 	genericclioptions.IOStreams
 }
@@ -198,7 +194,6 @@ func NewDrainOptions(f cmdutil.Factory, ioStreams genericclioptions.IOStreams) *
 		PrintFlags: genericclioptions.NewPrintFlags("drained").WithTypeSetter(scheme.Scheme),
 
 		IOStreams:          ioStreams,
-		backOff:            clockwork.NewRealClock(),
 		GracePeriodSeconds: -1,
 	}
 }

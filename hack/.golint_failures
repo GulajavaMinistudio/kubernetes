@@ -7,6 +7,7 @@ cmd/kube-controller-manager/app
 cmd/kube-proxy/app
 cmd/kubeadm/app
 cmd/kubeadm/app/apis/kubeadm/v1alpha3
+cmd/kubeadm/app/apis/kubeadm/v1beta1
 cmd/kubeadm/app/util/config
 cmd/kubeadm/app/util/system
 cmd/kubelet/app
@@ -391,7 +392,6 @@ pkg/volume/csi/fake
 pkg/volume/empty_dir
 pkg/volume/fc
 pkg/volume/flocker
-pkg/volume/gce_pd
 pkg/volume/git_repo
 pkg/volume/host_path
 pkg/volume/iscsi
@@ -528,12 +528,9 @@ staging/src/k8s.io/apiserver/pkg/admission
 staging/src/k8s.io/apiserver/pkg/admission/configuration
 staging/src/k8s.io/apiserver/pkg/admission/initializer
 staging/src/k8s.io/apiserver/pkg/admission/plugin/initialization
-staging/src/k8s.io/apiserver/pkg/admission/plugin/namespace/lifecycle
 staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/config/apis/webhookadmission
 staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/config/apis/webhookadmission/v1alpha1
-staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/mutating
 staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/testcerts
-staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/validating
 staging/src/k8s.io/apiserver/pkg/apis/apiserver
 staging/src/k8s.io/apiserver/pkg/apis/apiserver/v1alpha1
 staging/src/k8s.io/apiserver/pkg/apis/audit
