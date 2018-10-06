@@ -17,6 +17,7 @@ limitations under the License.
 package predicates
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -143,10 +144,10 @@ func (pfactory *PredicateMetadataFactory) GetMetadata(pod *v1.Pod, nodeNameToInf
 		return nil
 	}
 	predicateMetadata := &predicateMetadata{
-		pod:           pod,
-		podBestEffort: isPodBestEffort(pod),
-		podRequest:    GetResourceRequest(pod),
-		podPorts:      schedutil.GetContainerPorts(pod),
+		pod:                                    pod,
+		podBestEffort:                          isPodBestEffort(pod),
+		podRequest:                             GetResourceRequest(pod),
+		podPorts:                               schedutil.GetContainerPorts(pod),
 		topologyPairsPotentialAffinityPods:     incomingPodAffinityMap,
 		topologyPairsPotentialAntiAffinityPods: incomingPodAntiAffinityMap,
 		topologyPairsAntiAffinityPodsMap:       existingPodAntiAffinityMap,
@@ -487,7 +488,7 @@ func getTPMapMatchingIncomingAffinityAntiAffinity(pod *v1.Pod, nodeInfoMap map[s
 			appendResult(node.Name, nodeTopologyPairsAffinityPodsMaps, nodeTopologyPairsAntiAffinityPodsMaps)
 		}
 	}
-	workqueue.Parallelize(16, len(allNodeNames), processNode)
+	workqueue.ParallelizeUntil(context.TODO(), 16, len(allNodeNames), processNode)
 	return topologyPairsAffinityPodsMaps, topologyPairsAntiAffinityPodsMaps, firstError
 }
 
