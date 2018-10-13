@@ -35,11 +35,11 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions/resource"
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/apply"
-	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/util/openapi"
 	"k8s.io/kubernetes/pkg/kubectl/scheme"
 	"k8s.io/kubernetes/pkg/kubectl/util/i18n"
+	"k8s.io/kubernetes/pkg/kubectl/util/templates"
 	"k8s.io/utils/exec"
 )
 
@@ -226,10 +226,11 @@ type Object interface {
 // InfoObject is an implementation of the Object interface. It gets all
 // the information from the Info object.
 type InfoObject struct {
-	LocalObj runtime.Object
-	Info     *resource.Info
-	Encoder  runtime.Encoder
-	OpenAPI  openapi.Resources
+	LocalObj       runtime.Object
+	Info           *resource.Info
+	Encoder        runtime.Encoder
+	OpenAPI        openapi.Resources
+	DryRunVerifier *apply.DryRunVerifier
 }
 
 var _ Object = &InfoObject{}
@@ -261,12 +262,13 @@ func (obj InfoObject) Merged() (runtime.Object, error) {
 	// This is using the patcher from apply, to keep the same behavior.
 	// We plan on replacing this with server-side apply when it becomes available.
 	patcher := &apply.Patcher{
-		Mapping:       obj.Info.Mapping,
-		Helper:        resource.NewHelper(obj.Info.Client, obj.Info.Mapping),
-		Overwrite:     true,
-		BackOff:       clockwork.NewRealClock(),
-		ServerDryRun:  true,
-		OpenapiSchema: obj.OpenAPI,
+		DryRunVerifier: obj.DryRunVerifier,
+		Mapping:        obj.Info.Mapping,
+		Helper:         resource.NewHelper(obj.Info.Client, obj.Info.Mapping),
+		Overwrite:      true,
+		BackOff:        clockwork.NewRealClock(),
+		ServerDryRun:   true,
+		OpenapiSchema:  obj.OpenAPI,
 	}
 
 	_, result, err := patcher.Patch(obj.Info.Object, modified, obj.Info.Source, obj.Info.Namespace, obj.Info.Name, nil)
@@ -330,6 +332,21 @@ func RunDiff(f cmdutil.Factory, diff *DiffProgram, options *DiffOptions) error {
 		return err
 	}
 
+	discovery, err := f.ToDiscoveryClient()
+	if err != nil {
+		return err
+	}
+
+	dynamic, err := f.DynamicClient()
+	if err != nil {
+		return err
+	}
+
+	dryRunVerifier := &apply.DryRunVerifier{
+		Finder:        cmdutil.NewCRDFinder(cmdutil.CRDFromDynamic(dynamic)),
+		OpenAPIGetter: discovery,
+	}
+
 	differ, err := NewDiffer("LIVE", "MERGED")
 	if err != nil {
 		return err
@@ -367,10 +384,11 @@ func RunDiff(f cmdutil.Factory, diff *DiffProgram, options *DiffOptions) error {
 		}
 
 		obj := InfoObject{
-			LocalObj: local,
-			Info:     info,
-			Encoder:  scheme.DefaultJSONEncoder(),
-			OpenAPI:  schema,
+			LocalObj:       local,
+			Info:           info,
+			Encoder:        scheme.DefaultJSONEncoder(),
+			OpenAPI:        schema,
+			DryRunVerifier: dryRunVerifier,
 		}
 
 		return differ.Diff(obj, printer)
