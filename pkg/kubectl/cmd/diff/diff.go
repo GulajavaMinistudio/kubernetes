@@ -26,7 +26,6 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/jonboulle/clockwork"
 	"github.com/spf13/cobra"
-
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -50,7 +49,7 @@ var (
 
 		Output is always YAML.
 
-		KUBERNETES_EXTERNAL_DIFF environment variable can be used to select your own
+		KUBECTL_EXTERNAL_DIFF environment variable can be used to select your own
 		diff command. By default, the "diff" command available in your path will be
 		run with "-u" (unicode) and "-N" (treat new files as empty) options.`))
 	diffExample = templates.Examples(i18n.T(`
@@ -98,7 +97,7 @@ func NewCmdDiff(f cmdutil.Factory, streams genericclioptions.IOStreams) *cobra.C
 }
 
 // DiffProgram finds and run the diff program. The value of
-// KUBERNETES_EXTERNAL_DIFF environment variable will be used a diff
+// KUBECTL_EXTERNAL_DIFF environment variable will be used a diff
 // program. By default, `diff(1)` will be used.
 type DiffProgram struct {
 	Exec exec.Interface
@@ -107,7 +106,7 @@ type DiffProgram struct {
 
 func (d *DiffProgram) getCommand(args ...string) exec.Cmd {
 	diff := ""
-	if envDiff := os.Getenv("KUBERNETES_EXTERNAL_DIFF"); envDiff != "" {
+	if envDiff := os.Getenv("KUBECTL_EXTERNAL_DIFF"); envDiff != "" {
 		diff = envDiff
 	} else {
 		diff = "diff"
@@ -123,8 +122,7 @@ func (d *DiffProgram) getCommand(args ...string) exec.Cmd {
 
 // Run runs the detected diff program. `from` and `to` are the directory to diff.
 func (d *DiffProgram) Run(from, to string) error {
-	d.getCommand(from, to).Run() // Ignore diff return code
-	return nil
+	return d.getCommand(from, to).Run()
 }
 
 // Printer is used to print an object.
@@ -226,11 +224,10 @@ type Object interface {
 // InfoObject is an implementation of the Object interface. It gets all
 // the information from the Info object.
 type InfoObject struct {
-	LocalObj       runtime.Object
-	Info           *resource.Info
-	Encoder        runtime.Encoder
-	OpenAPI        openapi.Resources
-	DryRunVerifier *apply.DryRunVerifier
+	LocalObj runtime.Object
+	Info     *resource.Info
+	Encoder  runtime.Encoder
+	OpenAPI  openapi.Resources
 }
 
 var _ Object = &InfoObject{}
@@ -262,13 +259,12 @@ func (obj InfoObject) Merged() (runtime.Object, error) {
 	// This is using the patcher from apply, to keep the same behavior.
 	// We plan on replacing this with server-side apply when it becomes available.
 	patcher := &apply.Patcher{
-		DryRunVerifier: obj.DryRunVerifier,
-		Mapping:        obj.Info.Mapping,
-		Helper:         resource.NewHelper(obj.Info.Client, obj.Info.Mapping),
-		Overwrite:      true,
-		BackOff:        clockwork.NewRealClock(),
-		ServerDryRun:   true,
-		OpenapiSchema:  obj.OpenAPI,
+		Mapping:       obj.Info.Mapping,
+		Helper:        resource.NewHelper(obj.Info.Client, obj.Info.Mapping),
+		Overwrite:     true,
+		BackOff:       clockwork.NewRealClock(),
+		ServerDryRun:  true,
+		OpenapiSchema: obj.OpenAPI,
 	}
 
 	_, result, err := patcher.Patch(obj.Info.Object, modified, obj.Info.Source, obj.Info.Namespace, obj.Info.Name, nil)
@@ -375,6 +371,10 @@ func RunDiff(f cmdutil.Factory, diff *DiffProgram, options *DiffOptions) error {
 			return err
 		}
 
+		if err := dryRunVerifier.HasSupport(info.Mapping.GroupVersionKind); err != nil {
+			return err
+		}
+
 		local := info.Object.DeepCopyObject()
 		if err := info.Get(); err != nil {
 			if !errors.IsNotFound(err) {
@@ -384,11 +384,10 @@ func RunDiff(f cmdutil.Factory, diff *DiffProgram, options *DiffOptions) error {
 		}
 
 		obj := InfoObject{
-			LocalObj:       local,
-			Info:           info,
-			Encoder:        scheme.DefaultJSONEncoder(),
-			OpenAPI:        schema,
-			DryRunVerifier: dryRunVerifier,
+			LocalObj: local,
+			Info:     info,
+			Encoder:  scheme.DefaultJSONEncoder(),
+			OpenAPI:  schema,
 		}
 
 		return differ.Diff(obj, printer)
@@ -397,8 +396,5 @@ func RunDiff(f cmdutil.Factory, diff *DiffProgram, options *DiffOptions) error {
 		return err
 	}
 
-	// Error ignore on purpose. diff(1) for example, returns an error if there is any diff.
-	_ = differ.Run(diff)
-
-	return nil
+	return differ.Run(diff)
 }
