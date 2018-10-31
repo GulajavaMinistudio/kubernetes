@@ -188,7 +188,7 @@ func NewCmdConfigPrintDefault(out io.Writer) *cobra.Command {
 func getDefaultComponentConfigAPIObjectBytes(apiObject string) ([]byte, error) {
 	registration, ok := componentconfigs.Known[componentconfigs.RegistrationKind(apiObject)]
 	if !ok {
-		return []byte{}, fmt.Errorf("--component-configs needs to contain some of %v", getSupportedComponentConfigAPIObjects())
+		return []byte{}, errors.Errorf("--component-configs needs to contain some of %v", getSupportedComponentConfigAPIObjects())
 	}
 	return getDefaultComponentConfigBytes(registration)
 }
@@ -208,7 +208,7 @@ func getDefaultAPIObjectBytes(apiObject string) ([]byte, error) {
 		// Is this a component config?
 		registration, ok := componentconfigs.Known[componentconfigs.RegistrationKind(apiObject)]
 		if !ok {
-			return []byte{}, fmt.Errorf("--api-object needs to be one of %v", getAllAPIObjectNames())
+			return []byte{}, errors.Errorf("--api-object needs to be one of %v", getAllAPIObjectNames())
 		}
 		return getDefaultComponentConfigBytes(registration)
 	}
@@ -277,7 +277,7 @@ func getDefaultNodeConfigBytes() ([]byte, error) {
 		Discovery: kubeadmapiv1beta1.Discovery{
 			BootstrapToken: &kubeadmapiv1beta1.BootstrapTokenDiscovery{
 				Token:                    placeholderToken.Token.String(),
-				APIServerEndpoints:       []string{"kube-apiserver:6443"},
+				APIServerEndpoint:        "kube-apiserver:6443",
 				UnsafeSkipCAVerification: true, // TODO: UnsafeSkipCAVerification: true needs to be set for validation to pass, but shouldn't be recommended as the default
 			},
 		},
@@ -339,7 +339,7 @@ func NewCmdConfigMigrate(out io.Writer) *cobra.Command {
 				fmt.Fprint(out, string(outputBytes))
 			} else {
 				if err := ioutil.WriteFile(newCfgPath, outputBytes, 0644); err != nil {
-					kubeadmutil.CheckErr(fmt.Errorf("failed to write the new configuration to the file %q: %v", newCfgPath, err))
+					kubeadmutil.CheckErr(errors.Wrapf(err, "failed to write the new configuration to the file %q", newCfgPath))
 				}
 			}
 		},
@@ -545,7 +545,7 @@ func NewImagesPull(runtime utilruntime.ContainerRuntime, images []string) *Image
 func (ip *ImagesPull) PullAll() error {
 	for _, image := range ip.images {
 		if err := ip.runtime.PullImage(image); err != nil {
-			return fmt.Errorf("failed to pull image %q: %v", image, err)
+			return errors.Wrapf(err, "failed to pull image %q", image)
 		}
 		fmt.Printf("[config/images] Pulled %s\n", image)
 	}

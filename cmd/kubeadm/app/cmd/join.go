@@ -177,9 +177,14 @@ func NewCmdJoin(out io.Writer) *cobra.Command {
 				cfg.Discovery.File = fd
 			} else {
 				cfg.Discovery.BootstrapToken = btd
-				cfg.Discovery.BootstrapToken.APIServerEndpoints = args
 				if len(cfg.Discovery.BootstrapToken.Token) == 0 {
 					cfg.Discovery.BootstrapToken.Token = token
+				}
+				if len(args) > 0 {
+					if len(cfgPath) == 0 && len(args) > 1 {
+						glog.Warningf("[join] WARNING: More than one API server endpoint supplied on command line %v. Using the first one.", args)
+					}
+					cfg.Discovery.BootstrapToken.APIServerEndpoint = args[0]
 				}
 			}
 
@@ -514,7 +519,7 @@ func (j *Join) BootstrapKubelet(tlsBootstrapCfg *clientcmdapi.Config) error {
 
 	bootstrapClient, err := kubeconfigutil.ClientSetFromFile(bootstrapKubeConfigFile)
 	if err != nil {
-		return fmt.Errorf("couldn't create client from kubeconfig file %q", bootstrapKubeConfigFile)
+		return errors.Errorf("couldn't create client from kubeconfig file %q", bootstrapKubeConfigFile)
 	}
 
 	// Configure the kubelet. In this short timeframe, kubeadm is trying to stop/restart the kubelet
@@ -597,7 +602,7 @@ func (j *Join) PostInstallControlPlane(initConfiguration *kubeadmapi.InitConfigu
 
 	glog.V(1).Info("[join] uploading currently used configuration to the cluster")
 	if err := uploadconfigphase.UploadConfiguration(initConfiguration, client); err != nil {
-		return errors.Wrap(err, "error uploading configuration: %v")
+		return errors.Wrap(err, "error uploading configuration")
 	}
 
 	glog.V(1).Info("[join] marking the master with right label")
