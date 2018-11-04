@@ -24,7 +24,6 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
-	"time"
 
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
@@ -48,7 +47,6 @@ import (
 	clusterinfophase "k8s.io/kubernetes/cmd/kubeadm/app/phases/bootstraptoken/clusterinfo"
 	nodebootstraptokenphase "k8s.io/kubernetes/cmd/kubeadm/app/phases/bootstraptoken/node"
 	certsphase "k8s.io/kubernetes/cmd/kubeadm/app/phases/certs"
-	etcdphase "k8s.io/kubernetes/cmd/kubeadm/app/phases/etcd"
 	kubeletphase "k8s.io/kubernetes/cmd/kubeadm/app/phases/kubelet"
 	markmasterphase "k8s.io/kubernetes/cmd/kubeadm/app/phases/markmaster"
 	patchnodephase "k8s.io/kubernetes/cmd/kubeadm/app/phases/patchnode"
@@ -58,7 +56,6 @@ import (
 	kubeadmutil "k8s.io/kubernetes/cmd/kubeadm/app/util"
 	"k8s.io/kubernetes/cmd/kubeadm/app/util/apiclient"
 	configutil "k8s.io/kubernetes/cmd/kubeadm/app/util/config"
-	dryrunutil "k8s.io/kubernetes/cmd/kubeadm/app/util/dryrun"
 	kubeconfigutil "k8s.io/kubernetes/cmd/kubeadm/app/util/kubeconfig"
 	utilsexec "k8s.io/utils/exec"
 )
@@ -129,6 +126,8 @@ type initData struct {
 	dryRunDir             string
 	externalCA            bool
 	client                clientset.Interface
+	waiter                apiclient.Waiter
+	outputWriter          io.Writer
 }
 
 // NewCmdInit returns "kubeadm init" command.
@@ -168,12 +167,14 @@ func NewCmdInit(out io.Writer) *cobra.Command {
 	initRunner.AppendPhase(phases.NewCertsPhase())
 	initRunner.AppendPhase(phases.NewKubeConfigPhase())
 	initRunner.AppendPhase(phases.NewControlPlanePhase())
+	initRunner.AppendPhase(phases.NewEtcdPhase())
+	initRunner.AppendPhase(phases.NewWaitControlPlanePhase())
 	// TODO: add other phases to the runner.
 
 	// sets the data builder function, that will be used by the runner
 	// both when running the entire workflow or single phases
 	initRunner.SetDataInitializer(func() (workflow.RunData, error) {
-		return newInitData(cmd, options)
+		return newInitData(cmd, options, out)
 	})
 
 	// binds the Runner to kubeadm init command by altering
@@ -214,7 +215,7 @@ func AddInitConfigFlags(flagSet *flag.FlagSet, cfg *kubeadmapiv1beta1.InitConfig
 		`The path where to save and store the certificates.`,
 	)
 	flagSet.StringSliceVar(
-		&cfg.APIServerCertSANs, "apiserver-cert-extra-sans", cfg.APIServerCertSANs,
+		&cfg.APIServer.CertSANs, "apiserver-cert-extra-sans", cfg.APIServer.CertSANs,
 		`Optional extra Subject Alternative Names (SANs) to use for the API Server serving certificate. Can be both IP addresses and DNS names.`,
 	)
 	flagSet.StringVar(
@@ -270,7 +271,7 @@ func newInitOptions() *initOptions {
 // newInitData returns a new initData struct to be used for the execution of the kubeadm init workflow.
 // This func takes care of validating initOptions passed to the command, and then it converts
 // options into the internal InitConfiguration type that is used as input all the phases in the kubeadm init workflow
-func newInitData(cmd *cobra.Command, options *initOptions) (initData, error) {
+func newInitData(cmd *cobra.Command, options *initOptions, out io.Writer) (initData, error) {
 	// Re-apply defaults to the public kubeadm API (this will set only values not exposed/not set as a flags)
 	kubeadmscheme.Scheme.Default(options.externalcfg)
 
@@ -324,6 +325,7 @@ func newInitData(cmd *cobra.Command, options *initOptions) (initData, error) {
 		dryRunDir:             dryRunDir,
 		ignorePreflightErrors: ignorePreflightErrorsSet,
 		externalCA:            externalCA,
+		outputWriter:          out,
 	}, nil
 }
 
@@ -389,6 +391,11 @@ func (d initData) ExternalCA() bool {
 	return d.externalCA
 }
 
+// OutputWriter returns the io.Writer used to write output to by this command.
+func (d initData) OutputWriter() io.Writer {
+	return d.outputWriter
+}
+
 // Client returns a Kubernetes client to be used by kubeadm.
 // This function is implemented as a singleton, thus avoiding to recreate the client when it is used by different phases.
 // Important. This function must be called after the admin.conf kubeconfig file is created.
@@ -434,40 +441,16 @@ func runInit(i *initData, out io.Writer) error {
 
 	adminKubeConfigPath := filepath.Join(kubeConfigDir, kubeadmconstants.AdminKubeConfigFileName)
 
-	// Add etcd static pod spec only if external etcd is not configured
-	if i.cfg.Etcd.External == nil {
-		glog.V(1).Infof("[init] no external etcd found. Creating manifest for local etcd static pod")
-		if err := etcdphase.CreateLocalEtcdStaticPodManifestFile(manifestDir, i.cfg); err != nil {
-			return errors.Wrap(err, "error creating local etcd static pod manifest file")
-		}
-	}
-
-	// If we're dry-running, print the generated manifests
-	if err := printFilesIfDryRunning(i.dryRun, manifestDir); err != nil {
-		return errors.Wrap(err, "error printing files on dryrun")
-	}
-
-	// Create a Kubernetes client and wait for the API server to be healthy (if not dryrunning)
-	glog.V(1).Infof("creating Kubernetes client")
-	client, err := createClient(i.cfg, i.dryRun)
+	// TODO: client and waiter are temporary until the rest of the phases that use them
+	// are removed from this function.
+	client, err := i.Client()
 	if err != nil {
-		return errors.Wrap(err, "error creating client")
+		return errors.Wrap(err, "failed to create client")
 	}
-
-	// waiter holds the apiclient.Waiter implementation of choice, responsible for querying the API server in various ways and waiting for conditions to be fulfilled
-	glog.V(1).Infof("[init] waiting for the API server to be healthy")
-	waiter := getWaiter(i, client)
-
-	fmt.Printf("[init] waiting for the kubelet to boot up the control plane as Static Pods from directory %q \n", kubeadmconstants.GetStaticPodDirectory())
-
-	if err := waitForKubeletAndFunc(waiter, waiter.WaitForAPI); err != nil {
-		ctx := map[string]string{
-			"Error": fmt.Sprintf("%v", err),
-		}
-
-		kubeletFailTempl.Execute(out, ctx)
-
-		return errors.New("couldn't initialize a Kubernetes cluster")
+	// TODO: NewControlPlaneWaiter should be converted to private after the self-hosting phase is removed.
+	waiter, err := phases.NewControlPlaneWaiter(i.dryRun, client, i.outputWriter)
+	if err != nil {
+		return errors.Wrap(err, "failed to create waiter")
 	}
 
 	// Upload currently used configuration to the cluster
@@ -602,18 +585,6 @@ func printJoinCommand(out io.Writer, adminKubeConfigPath, token string, skipToke
 	return initDoneTempl.Execute(out, ctx)
 }
 
-// createClient creates a clientset.Interface object
-func createClient(cfg *kubeadmapi.InitConfiguration, dryRun bool) (clientset.Interface, error) {
-	if dryRun {
-		// If we're dry-running; we should create a faked client that answers some GETs in order to be able to do the full init flow and just logs the rest of requests
-		dryRunGetter := apiclient.NewInitDryRunGetter(cfg.NodeRegistration.Name, cfg.Networking.ServiceSubnet)
-		return apiclient.NewDryRunClient(dryRunGetter, os.Stdout), nil
-	}
-
-	// If we're acting for real, we should create a connection to the API server and wait for it to come up
-	return kubeconfigutil.ClientSetFromFile(kubeadmconstants.GetAdminKubeConfigPath())
-}
-
 // getDirectoriesToUse returns the (in order) certificates, kubeconfig and Static Pod manifest directories, followed by a possible error
 // This behaves differently when dry-running vs the normal flow
 func getDirectoriesToUse(dryRun bool, dryRunDir string, defaultPkiDir string) (string, string, string, string, error) {
@@ -623,68 +594,4 @@ func getDirectoriesToUse(dryRun bool, dryRunDir string, defaultPkiDir string) (s
 	}
 
 	return defaultPkiDir, kubeadmconstants.KubernetesDir, kubeadmconstants.GetStaticPodDirectory(), kubeadmconstants.KubeletRunDirectory, nil
-}
-
-// printFilesIfDryRunning prints the Static Pod manifests to stdout and informs about the temporary directory to go and lookup
-func printFilesIfDryRunning(dryRun bool, manifestDir string) error {
-	if !dryRun {
-		return nil
-	}
-
-	fmt.Printf("[dryrun] wrote certificates, kubeconfig files and control plane manifests to the %q directory\n", manifestDir)
-	fmt.Println("[dryrun] the certificates or kubeconfig files would not be printed due to their sensitive nature")
-	fmt.Printf("[dryrun] please examine the %q directory for details about what would be written\n", manifestDir)
-
-	// Print the contents of the upgraded manifests and pretend like they were in /etc/kubernetes/manifests
-	files := []dryrunutil.FileToPrint{}
-	// Print static pod manifests
-	for _, component := range kubeadmconstants.MasterComponents {
-		realPath := kubeadmconstants.GetStaticPodFilepath(component, manifestDir)
-		outputPath := kubeadmconstants.GetStaticPodFilepath(component, kubeadmconstants.GetStaticPodDirectory())
-		files = append(files, dryrunutil.NewFileToPrint(realPath, outputPath))
-	}
-	// Print kubelet config manifests
-	kubeletConfigFiles := []string{kubeadmconstants.KubeletConfigurationFileName, kubeadmconstants.KubeletEnvFileName}
-	for _, filename := range kubeletConfigFiles {
-		realPath := filepath.Join(manifestDir, filename)
-		outputPath := filepath.Join(kubeadmconstants.KubeletRunDirectory, filename)
-		files = append(files, dryrunutil.NewFileToPrint(realPath, outputPath))
-	}
-
-	return dryrunutil.PrintDryRunFiles(files, os.Stdout)
-}
-
-// getWaiter gets the right waiter implementation for the right occasion
-func getWaiter(ctx *initData, client clientset.Interface) apiclient.Waiter {
-	if ctx.dryRun {
-		return dryrunutil.NewWaiter()
-	}
-
-	// We know that the images should be cached locally already as we have pulled them using
-	// crictl in the preflight checks. Hence we can have a pretty short timeout for the kubelet
-	// to start creating Static Pods.
-	timeout := 4 * time.Minute
-	return apiclient.NewKubeWaiter(client, timeout, os.Stdout)
-}
-
-// waitForKubeletAndFunc waits primarily for the function f to execute, even though it might take some time. If that takes a long time, and the kubelet
-// /healthz continuously are unhealthy, kubeadm will error out after a period of exponential backoff
-func waitForKubeletAndFunc(waiter apiclient.Waiter, f func() error) error {
-	errorChan := make(chan error)
-
-	go func(errC chan error, waiter apiclient.Waiter) {
-		// This goroutine can only make kubeadm init fail. If this check succeeds, it won't do anything special
-		if err := waiter.WaitForHealthyKubelet(40*time.Second, fmt.Sprintf("http://localhost:%d/healthz", kubeadmconstants.KubeletHealthzPort)); err != nil {
-			errC <- err
-		}
-	}(errorChan, waiter)
-
-	go func(errC chan error, waiter apiclient.Waiter) {
-		// This main goroutine sends whatever the f function returns (error or not) to the channel
-		// This in order to continue on success (nil error), or just fail if the function returns an error
-		errC <- f()
-	}(errorChan, waiter)
-
-	// This call is blocking until one of the goroutines sends to errorChan
-	return <-errorChan
 }
