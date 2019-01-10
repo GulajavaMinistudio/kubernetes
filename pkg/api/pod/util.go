@@ -293,11 +293,21 @@ func dropDisabledFields(
 		}
 	}
 
+	if !utilfeature.DefaultFeatureGate.Enabled(features.PodShareProcessNamespace) && !shareProcessNamespaceInUse(oldPodSpec) {
+		if podSpec.SecurityContext != nil {
+			podSpec.SecurityContext.ShareProcessNamespace = nil
+		}
+	}
+
 	if !utilfeature.DefaultFeatureGate.Enabled(features.PodPriority) && !podPriorityInUse(oldPodSpec) {
 		// Set to nil pod's priority fields if the feature is disabled and the old pod
 		// does not specify any values for these fields.
 		podSpec.Priority = nil
 		podSpec.PriorityClassName = ""
+	}
+
+	if !utilfeature.DefaultFeatureGate.Enabled(features.PodReadinessGates) && !podReadinessGatesInUse(oldPodSpec) {
+		podSpec.ReadinessGates = nil
 	}
 
 	if !utilfeature.DefaultFeatureGate.Enabled(features.LocalStorageCapacityIsolation) && !emptyDirSizeLimitInUse(oldPodSpec) {
@@ -454,12 +464,33 @@ func appArmorInUse(podAnnotations map[string]string) bool {
 	return false
 }
 
+func shareProcessNamespaceInUse(podSpec *api.PodSpec) bool {
+	if podSpec == nil {
+		return false
+	}
+	if podSpec.SecurityContext != nil && podSpec.SecurityContext.ShareProcessNamespace != nil {
+		return true
+	}
+	return false
+}
+
 // podPriorityInUse returns true if the pod spec is non-nil and has Priority or PriorityClassName set.
 func podPriorityInUse(podSpec *api.PodSpec) bool {
 	if podSpec == nil {
 		return false
 	}
 	if podSpec.Priority != nil || podSpec.PriorityClassName != "" {
+		return true
+	}
+	return false
+}
+
+// podReadinessGatesInUse returns true if the pod spec is non-nil and has ReadinessGates
+func podReadinessGatesInUse(podSpec *api.PodSpec) bool {
+	if podSpec == nil {
+		return false
+	}
+	if podSpec.ReadinessGates != nil {
 		return true
 	}
 	return false

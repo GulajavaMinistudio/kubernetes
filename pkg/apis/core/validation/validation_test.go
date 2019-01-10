@@ -553,32 +553,6 @@ func TestValidateLocalVolumes(t *testing.T) {
 	}
 }
 
-func TestValidateLocalVolumesDisabled(t *testing.T) {
-	scenarios := map[string]struct {
-		isExpectedFailure bool
-		volume            *core.PersistentVolume
-	}{
-		"feature disabled valid local volume": {
-			isExpectedFailure: true,
-			volume: testVolume("valid-local-volume", "",
-				testLocalVolume("/foo", simpleVolumeNodeAffinity("foo", "bar"))),
-		},
-	}
-
-	for name, scenario := range scenarios {
-		t.Run(name+" PersistentLocalVolumes disabled", func(t *testing.T) {
-			defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.PersistentLocalVolumes, false)()
-			errs := ValidatePersistentVolume(scenario.volume)
-			if len(errs) == 0 && scenario.isExpectedFailure {
-				t.Errorf("Unexpected success for scenario: %s", name)
-			}
-			if len(errs) > 0 && !scenario.isExpectedFailure {
-				t.Errorf("Unexpected failure for scenario: %s - %+v", name, errs)
-			}
-		})
-	}
-}
-
 func testVolumeWithNodeAffinity(affinity *core.VolumeNodeAffinity) *core.PersistentVolume {
 	return testVolume("test-affinity-volume", "",
 		core.PersistentVolumeSpec{
@@ -749,21 +723,12 @@ func TestAlphaVolumeSnapshotDataSource(t *testing.T) {
 		*testVolumeSnapshotDataSourceInSpec("test_snapshot", "VolumeSnapshot", "storage.k8s.io"),
 	}
 
-	// Enable alpha feature VolumeSnapshotDataSource
-	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeSnapshotDataSource, true)()
 	for _, tc := range successTestCases {
 		if errs := ValidatePersistentVolumeClaimSpec(&tc, field.NewPath("spec")); len(errs) != 0 {
 			t.Errorf("expected success: %v", errs)
 		}
 	}
 	for _, tc := range failedTestCases {
-		if errs := ValidatePersistentVolumeClaimSpec(&tc, field.NewPath("spec")); len(errs) == 0 {
-			t.Errorf("expected failure: %v", errs)
-		}
-	}
-	// Disable alpha feature VolumeSnapshotDataSource
-	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeSnapshotDataSource, false)()
-	for _, tc := range successTestCases {
 		if errs := ValidatePersistentVolumeClaimSpec(&tc, field.NewPath("spec")); len(errs) == 0 {
 			t.Errorf("expected failure: %v", errs)
 		}
@@ -5774,8 +5739,6 @@ func TestValidatePodDNSConfig(t *testing.T) {
 }
 
 func TestValidatePodReadinessGates(t *testing.T) {
-	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.PodReadinessGates, true)()
-
 	successCases := []struct {
 		desc           string
 		readinessGates []core.PodReadinessGate
@@ -5917,7 +5880,6 @@ func TestValidatePodSpec(t *testing.T) {
 	maxGroupID := int64(2147483647)
 
 	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.PodPriority, true)()
-	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.PodShareProcessNamespace, true)()
 	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.RuntimeClass, true)()
 
 	successCases := []core.PodSpec{
@@ -6250,25 +6212,6 @@ func TestValidatePodSpec(t *testing.T) {
 	for k, v := range failureCases {
 		if errs := ValidatePodSpec(&v, field.NewPath("field")); len(errs) == 0 {
 			t.Errorf("expected failure for %q", k)
-		}
-	}
-
-	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.PodShareProcessNamespace, false)()
-
-	featuregatedCases := map[string]core.PodSpec{
-		"set ShareProcessNamespace": {
-			Volumes:       []core.Volume{{Name: "vol", VolumeSource: core.VolumeSource{EmptyDir: &core.EmptyDirVolumeSource{}}}},
-			Containers:    []core.Container{{Name: "ctr", Image: "image", ImagePullPolicy: "IfNotPresent", TerminationMessagePolicy: "File"}},
-			RestartPolicy: core.RestartPolicyAlways,
-			DNSPolicy:     core.DNSClusterFirst,
-			SecurityContext: &core.PodSecurityContext{
-				ShareProcessNamespace: &[]bool{true}[0],
-			},
-		},
-	}
-	for k, v := range featuregatedCases {
-		if errs := ValidatePodSpec(&v, field.NewPath("field")); len(errs) == 0 {
-			t.Errorf("expected failure due to gated feature: %q", k)
 		}
 	}
 }

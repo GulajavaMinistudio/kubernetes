@@ -821,24 +821,6 @@ func (c *configFactory) CreateFromConfig(policy schedulerapi.Policy) (*Config, e
 	return c.CreateFromKeys(predicateKeys, priorityKeys, extenders)
 }
 
-// getBinderFunc returns an func which returns an extender that supports bind or a default binder based on the given pod.
-func (c *configFactory) getBinderFunc(extenders []algorithm.SchedulerExtender) func(pod *v1.Pod) Binder {
-	var extenderBinder algorithm.SchedulerExtender
-	for i := range extenders {
-		if extenders[i].IsBinder() {
-			extenderBinder = extenders[i]
-			break
-		}
-	}
-	defaultBinder := &binder{c.client}
-	return func(pod *v1.Pod) Binder {
-		if extenderBinder != nil && extenderBinder.IsInterested(pod) {
-			return extenderBinder
-		}
-		return defaultBinder
-	}
-}
-
 // Creates a scheduler from a set of registered fit predicate keys and priority keys.
 func (c *configFactory) CreateFromKeys(predicateKeys, priorityKeys sets.String, extenders []algorithm.SchedulerExtender) (*Config, error) {
 	klog.V(2).Infof("Creating scheduler with fit predicates '%v' and priority functions '%v'", predicateKeys, priorityKeys)
@@ -893,21 +875,37 @@ func (c *configFactory) CreateFromKeys(predicateKeys, priorityKeys sets.String, 
 		// The scheduler only needs to consider schedulable nodes.
 		NodeLister:          &nodeLister{c.nodeLister},
 		Algorithm:           algo,
-		GetBinder:           c.getBinderFunc(extenders),
+		GetBinder:           getBinderFunc(c.client, extenders),
 		PodConditionUpdater: &podConditionUpdater{c.client},
 		PodPreemptor:        &podPreemptor{c.client},
 		PluginSet:           c.pluginSet,
 		WaitForCacheSync: func() bool {
 			return cache.WaitForCacheSync(c.StopEverything, c.scheduledPodsHasSynced)
 		},
-		NextPod: func() *v1.Pod {
-			return c.getNextPod()
-		},
+		NextPod:         internalqueue.MakeNextPodFunc(c.podQueue),
 		Error:           c.MakeDefaultErrorFunc(podBackoff, c.podQueue),
 		StopEverything:  c.StopEverything,
 		VolumeBinder:    c.volumeBinder,
 		SchedulingQueue: c.podQueue,
 	}, nil
+}
+
+// getBinderFunc returns a func which returns an extender that supports bind or a default binder based on the given pod.
+func getBinderFunc(client clientset.Interface, extenders []algorithm.SchedulerExtender) func(pod *v1.Pod) Binder {
+	var extenderBinder algorithm.SchedulerExtender
+	for i := range extenders {
+		if extenders[i].IsBinder() {
+			extenderBinder = extenders[i]
+			break
+		}
+	}
+	defaultBinder := &binder{client}
+	return func(pod *v1.Pod) Binder {
+		if extenderBinder != nil && extenderBinder.IsInterested(pod) {
+			return extenderBinder
+		}
+		return defaultBinder
+	}
 }
 
 type nodeLister struct {
@@ -969,16 +967,6 @@ func (c *configFactory) getPluginArgs() (*PluginFactoryArgs, error) {
 		VolumeBinder:                   c.volumeBinder,
 		HardPodAffinitySymmetricWeight: c.hardPodAffinitySymmetricWeight,
 	}, nil
-}
-
-func (c *configFactory) getNextPod() *v1.Pod {
-	pod, err := c.podQueue.Pop()
-	if err == nil {
-		klog.V(4).Infof("About to try and schedule pod %v/%v", pod.Namespace, pod.Name)
-		return pod
-	}
-	klog.Errorf("Error while retrieving next pod from scheduling queue: %v", err)
-	return nil
 }
 
 // assignedPod selects pods that are assigned (scheduled and running).

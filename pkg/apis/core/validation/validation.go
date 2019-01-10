@@ -1714,9 +1714,6 @@ func ValidatePersistentVolume(pv *core.PersistentVolume) field.ErrorList {
 			allErrs = append(allErrs, field.Forbidden(specPath.Child("local"), "may not specify more than 1 volume type"))
 		} else {
 			numVolumes++
-			if !utilfeature.DefaultFeatureGate.Enabled(features.PersistentLocalVolumes) {
-				allErrs = append(allErrs, field.Forbidden(specPath.Child("local"), "Local volumes are disabled by feature-gate"))
-			}
 			allErrs = append(allErrs, validateLocalVolumeSource(pv.Spec.Local, specPath.Child("local"))...)
 
 			// NodeAffinity is required
@@ -1834,9 +1831,7 @@ func ValidatePersistentVolumeClaimSpec(spec *core.PersistentVolumeClaimSpec, fld
 		allErrs = append(allErrs, field.NotSupported(fldPath.Child("volumeMode"), *spec.VolumeMode, supportedVolumeModes.List()))
 	}
 
-	if spec.DataSource != nil && !utilfeature.DefaultFeatureGate.Enabled(features.VolumeSnapshotDataSource) {
-		allErrs = append(allErrs, field.Forbidden(fldPath.Child("dataSource"), "VolumeSnapshotDataSource is disabled by feature-gate"))
-	} else if spec.DataSource != nil {
+	if spec.DataSource != nil {
 		if len(spec.DataSource.Name) == 0 {
 			allErrs = append(allErrs, field.Required(fldPath.Child("dataSource", "name"), ""))
 		}
@@ -2674,9 +2669,6 @@ const (
 
 func validateReadinessGates(readinessGates []core.PodReadinessGate, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
-	if !utilfeature.DefaultFeatureGate.Enabled(features.PodReadinessGates) && len(readinessGates) > 0 {
-		return append(allErrs, field.Forbidden(fldPath, "PodReadinessGates is disabled by feature gate"))
-	}
 	for i, value := range readinessGates {
 		for _, msg := range validation.IsQualifiedName(string(value.ConditionType)) {
 			allErrs = append(allErrs, field.Invalid(fldPath.Index(i).Child("conditionType"), string(value.ConditionType), msg))
@@ -3439,12 +3431,8 @@ func ValidatePodSecurityContext(securityContext *core.PodSecurityContext, spec *
 				allErrs = append(allErrs, field.Invalid(fldPath.Child("supplementalGroups").Index(g), gid, msg))
 			}
 		}
-		if securityContext.ShareProcessNamespace != nil {
-			if !utilfeature.DefaultFeatureGate.Enabled(features.PodShareProcessNamespace) {
-				allErrs = append(allErrs, field.Forbidden(fldPath.Child("shareProcessNamespace"), "Process Namespace Sharing is disabled by PodShareProcessNamespace feature-gate"))
-			} else if securityContext.HostPID && *securityContext.ShareProcessNamespace {
-				allErrs = append(allErrs, field.Invalid(fldPath.Child("shareProcessNamespace"), *securityContext.ShareProcessNamespace, "ShareProcessNamespace and HostPID cannot both be enabled"))
-			}
+		if securityContext.ShareProcessNamespace != nil && securityContext.HostPID && *securityContext.ShareProcessNamespace {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("shareProcessNamespace"), *securityContext.ShareProcessNamespace, "ShareProcessNamespace and HostPID cannot both be enabled"))
 		}
 
 		if len(securityContext.Sysctls) != 0 {
