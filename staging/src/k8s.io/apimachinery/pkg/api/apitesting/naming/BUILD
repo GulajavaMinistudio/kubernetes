@@ -2,17 +2,14 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
     name = "go_default_library",
-    srcs = [
-        "aws_ebs.go",
-        "gce_pd.go",
-        "in_tree_volume.go",
-        "openstack_cinder.go",
-    ],
-    importmap = "k8s.io/kubernetes/vendor/k8s.io/csi-translation-lib/plugins",
-    importpath = "k8s.io/csi-translation-lib/plugins",
+    srcs = ["naming.go"],
+    importmap = "k8s.io/kubernetes/vendor/k8s.io/apimachinery/pkg/api/apitesting/naming",
+    importpath = "k8s.io/apimachinery/pkg/api/apitesting/naming",
     visibility = ["//visibility:public"],
     deps = [
-        "//staging/src/k8s.io/api/core/v1:go_default_library",
+        "//staging/src/k8s.io/apimachinery/pkg/runtime:go_default_library",
+        "//staging/src/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
+        "//staging/src/k8s.io/apimachinery/pkg/util/errors:go_default_library",
         "//staging/src/k8s.io/apimachinery/pkg/util/sets:go_default_library",
     ],
 )
