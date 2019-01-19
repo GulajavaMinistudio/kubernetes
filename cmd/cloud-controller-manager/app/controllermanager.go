@@ -145,7 +145,8 @@ func Run(c *cloudcontrollerconfig.CompletedConfig, stopCh <-chan struct{}) error
 	if c.SecureServing != nil {
 		unsecuredMux := genericcontrollermanager.NewBaseHandler(&c.ComponentConfig.Generic.Debugging, checks...)
 		handler := genericcontrollermanager.BuildHandlerChain(unsecuredMux, &c.Authorization, &c.Authentication)
-		if err := c.SecureServing.Serve(handler, 0, stopCh); err != nil {
+		// TODO: handle stoppedCh returned by c.SecureServing.Serve
+		if _, err := c.SecureServing.Serve(handler, 0, stopCh); err != nil {
 			return err
 		}
 	}
@@ -213,6 +214,10 @@ func startControllers(c *cloudcontrollerconfig.CompletedConfig, stopCh <-chan st
 	if cloud != nil {
 		// Initialize the cloud provider with a reference to the clientBuilder
 		cloud.Initialize(c.ClientBuilder, stopCh)
+		// Set the informer on the user cloud object
+		if informerUserCloud, ok := cloud.(cloudprovider.InformerUser); ok {
+			informerUserCloud.SetInformers(c.SharedInformers)
+		}
 	}
 
 	for controllerName, initFn := range controllers {
