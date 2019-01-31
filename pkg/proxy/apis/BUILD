@@ -7,13 +7,8 @@ load(
 
 go_library(
     name = "go_default_library",
-    srcs = ["prometheus.go"],
-    importpath = "k8s.io/kubernetes/pkg/util/workqueue/prometheus",
-    deps = [
-        "//staging/src/k8s.io/client-go/util/workqueue:go_default_library",
-        "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
-        "//vendor/k8s.io/klog:go_default_library",
-    ],
+    srcs = ["well_known_labels.go"],
+    importpath = "k8s.io/kubernetes/pkg/proxy/apis",
 )
 
 filegroup(
@@ -25,6 +20,9 @@ filegroup(
 
 filegroup(
     name = "all-srcs",
-    srcs = [":package-srcs"],
+    srcs = [
+        ":package-srcs",
+        "//pkg/proxy/apis/config:all-srcs",
+    ],
     tags = ["automanaged"],
 )
