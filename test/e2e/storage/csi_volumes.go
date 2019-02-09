@@ -44,7 +44,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/util/rand"
-	kubeletapis "k8s.io/kubernetes/pkg/kubelet/apis"
 )
 
 // List of testDrivers to be executed in below loop
@@ -63,6 +62,7 @@ var csiTestSuites = []func() testsuites.TestSuite{
 	testsuites.InitVolumeModeTestSuite,
 	testsuites.InitSubPathTestSuite,
 	testsuites.InitProvisioningTestSuite,
+	testsuites.InitSnapshottableTestSuite,
 }
 
 func csiTunePattern(patterns []testpatterns.TestPattern) []testpatterns.TestPattern {
@@ -450,7 +450,7 @@ func testTopologyNegative(cs clientset.Interface, suffix, namespace string, dela
 
 	test := createGCEPDStorageClassTest()
 	test.DelayBinding = delayBinding
-	test.NodeSelector = map[string]string{kubeletapis.LabelZoneFailureDomain: podZone}
+	test.NodeSelector = map[string]string{v1.LabelZoneFailureDomain: podZone}
 	test.ExpectUnschedulable = true
 
 	class := newStorageClass(test, namespace, suffix)
