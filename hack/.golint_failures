@@ -2,7 +2,6 @@ cmd/cloud-controller-manager/app/apis/config/v1alpha1
 cmd/kube-apiserver/app
 cmd/kube-controller-manager/app
 cmd/kube-proxy/app
-cmd/kubeadm/app
 cmd/kubeadm/app/apis/kubeadm/v1alpha3
 cmd/kubeadm/app/apis/kubeadm/v1beta1
 cmd/kubeadm/app/util/config
@@ -687,7 +686,6 @@ test/e2e/framework/providers/aws
 test/e2e/framework/providers/azure
 test/e2e/framework/providers/gce
 test/e2e/framework/providers/kubemark
-test/e2e/framework/timer
 test/e2e/instrumentation
 test/e2e/instrumentation/logging
 test/e2e/instrumentation/monitoring

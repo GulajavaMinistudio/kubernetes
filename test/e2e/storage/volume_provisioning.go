@@ -43,8 +43,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/authentication/serviceaccount"
 	clientset "k8s.io/client-go/kubernetes"
+	volumehelpers "k8s.io/cloud-provider/volume/helpers"
 	storageutil "k8s.io/kubernetes/pkg/apis/storage/v1/util"
-	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/providers/gce"
 	"k8s.io/kubernetes/test/e2e/storage/testsuites"
@@ -75,7 +75,7 @@ func checkZonesFromLabelAndAffinity(pv *v1.PersistentVolume, zones sets.String, 
 		framework.Failf("label %s not found on PV", v1.LabelZoneFailureDomain)
 	}
 
-	zonesFromLabel, err := volumeutil.LabelZonesToSet(pvLabel)
+	zonesFromLabel, err := volumehelpers.LabelZonesToSet(pvLabel)
 	if err != nil {
 		framework.Failf("unable to parse zone labels %s: %v", pvLabel, err)
 	}
@@ -814,7 +814,7 @@ var _ = utils.SIGDescribe("Dynamic Provisioning", func() {
 		It("should create and delete persistent volumes [fast]", func() {
 			By("creating a Gluster DP server Pod")
 			pod := startGlusterDpServerPod(c, ns)
-			serverUrl := "https://" + pod.Status.PodIP + ":8081"
+			serverUrl := "http://" + pod.Status.PodIP + ":8081"
 			By("creating a StorageClass")
 			test := testsuites.StorageClassTest{
 				Name:         "Gluster Dynamic provisioner test",
@@ -1063,7 +1063,11 @@ func newStorageClass(t testsuites.StorageClassTest, ns string, suffix string) *s
 	if t.DelayBinding {
 		bindingMode = storage.VolumeBindingWaitForFirstConsumer
 	}
-	return getStorageClass(pluginName, t.Parameters, &bindingMode, ns, suffix)
+	sc := getStorageClass(pluginName, t.Parameters, &bindingMode, ns, suffix)
+	if t.AllowVolumeExpansion {
+		sc.AllowVolumeExpansion = &t.AllowVolumeExpansion
+	}
+	return sc
 }
 
 func getStorageClass(
