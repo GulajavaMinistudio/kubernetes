@@ -59,9 +59,9 @@ type applyFlags struct {
 	imagePullTimeout   time.Duration
 }
 
-// SessionIsInteractive returns true if the session is of an interactive type (the default, can be opted out of with -y, -f or --dry-run)
-func (f *applyFlags) SessionIsInteractive() bool {
-	return !f.nonInteractiveMode
+// sessionIsInteractive returns true if the session is of an interactive type (the default, can be opted out of with -y, -f or --dry-run)
+func (f *applyFlags) sessionIsInteractive() bool {
+	return !(f.nonInteractiveMode || f.dryRun || f.force)
 }
 
 // NewCmdApply returns the cobra command for `kubeadm upgrade apply`
@@ -140,7 +140,7 @@ func NewCmdApply(apf *applyPlanFlags) *cobra.Command {
 // - Gets the configuration from the kubeadm-config ConfigMap in the cluster
 // - Enforces all version skew policies
 // - Asks the user if they really want to upgrade
-// - Makes sure the control plane images are available locally on the master(s)
+// - Makes sure the control plane images are available locally on the control-plane(s)
 // - Upgrades the control plane components
 // - Applies the other resources that'd be created with kubeadm init as well, like
 //   - Creating the RBAC rules for the bootstrap tokens and the cluster-info ConfigMap
@@ -185,8 +185,8 @@ func runApply(flags *applyFlags) error {
 		return errors.Wrap(err, "[upgrade/version] FATAL")
 	}
 
-	// If the current session is interactive, ask the user whether they really want to upgrade
-	if flags.SessionIsInteractive() {
+	// If the current session is interactive, ask the user whether they really want to upgrade.
+	if flags.sessionIsInteractive() {
 		if err := InteractivelyConfirmUpgrade("Are you sure you want to proceed with the upgrade?"); err != nil {
 			return err
 		}
@@ -233,11 +233,6 @@ func runApply(flags *applyFlags) error {
 
 // SetImplicitFlags handles dynamically defaulting flags based on each other's value
 func SetImplicitFlags(flags *applyFlags) error {
-	// If we are in dry-run or force mode; we should automatically execute this command non-interactively
-	if flags.dryRun || flags.force {
-		flags.nonInteractiveMode = true
-	}
-
 	if len(flags.newK8sVersionStr) == 0 {
 		return errors.New("version string can't be empty")
 	}
