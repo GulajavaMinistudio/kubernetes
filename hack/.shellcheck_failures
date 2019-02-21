@@ -7,7 +7,6 @@
 ./cluster/gce/config-common.sh
 ./cluster/gce/config-default.sh
 ./cluster/gce/config-test.sh
-./cluster/gce/delete-stranded-load-balancers.sh
 ./cluster/gce/gci/configure-helper.sh
 ./cluster/gce/gci/configure.sh
 ./cluster/gce/gci/flexvolume_node_setup.sh
@@ -21,7 +20,6 @@
 ./cluster/gce/upgrade.sh
 ./cluster/gce/util.sh
 ./cluster/images/conformance/run_e2e.sh
-./cluster/images/etcd-empty-dir-cleanup/etcd-empty-dir-cleanup.sh
 ./cluster/juju/prereqs/ubuntu-juju.sh
 ./cluster/juju/util.sh
 ./cluster/kube-up.sh
@@ -39,9 +37,6 @@
 ./cluster/test-smoke.sh
 ./cluster/update-storage-objects.sh
 ./cluster/validate-cluster.sh
-./hack/benchmark-go.sh
-./hack/build-cross.sh
-./hack/build-go.sh
 ./hack/cherry_pick_pull.sh
 ./hack/generate-bindata.sh
 ./hack/generate-docs.sh
@@ -79,23 +74,12 @@
 ./hack/make-rules/update.sh
 ./hack/make-rules/verify.sh
 ./hack/make-rules/vet.sh
-./hack/test-go.sh
 ./hack/test-integration.sh
 ./hack/test-update-storage-objects.sh
-./hack/update-all.sh
 ./hack/update-bazel.sh
 ./hack/update-codegen.sh
-./hack/update-generated-device-plugin-dockerized.sh
-./hack/update-generated-device-plugin.sh
-./hack/update-generated-docs.sh
 ./hack/update-generated-kms-dockerized.sh
-./hack/update-generated-kms.sh
-./hack/update-generated-kubelet-plugin-registration-dockerized.sh
-./hack/update-generated-kubelet-plugin-registration.sh
-./hack/update-generated-pod-resources-dockerized.sh
-./hack/update-generated-pod-resources.sh
 ./hack/update-generated-protobuf-dockerized.sh
-./hack/update-generated-protobuf.sh
 ./hack/update-generated-runtime-dockerized.sh
 ./hack/update-generated-runtime.sh
 ./hack/update-generated-swagger-docs.sh
@@ -106,7 +90,6 @@
 ./hack/update-staging-godeps.sh
 ./hack/update-translations.sh
 ./hack/update-workspace-mirror.sh
-./hack/verify-all.sh
 ./hack/verify-api-groups.sh
 ./hack/verify-boilerplate.sh
 ./hack/verify-cli-conventions.sh
@@ -150,7 +133,6 @@
 ./test/cmd/core.sh
 ./test/cmd/crd.sh
 ./test/cmd/create.sh
-./test/cmd/delete.sh
 ./test/cmd/diff.sh
 ./test/cmd/discovery.sh
 ./test/cmd/generic-resources.sh

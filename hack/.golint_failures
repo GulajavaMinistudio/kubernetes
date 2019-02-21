@@ -303,8 +303,6 @@ pkg/registry/core/service/storage
 pkg/registry/core/serviceaccount/storage
 pkg/registry/events/rest
 pkg/registry/extensions/controller/storage
-pkg/registry/extensions/ingress
-pkg/registry/extensions/ingress/storage
 pkg/registry/extensions/rest
 pkg/registry/networking/networkpolicy/storage
 pkg/registry/networking/rest
@@ -673,8 +671,6 @@ test/e2e/cloud
 test/e2e/common
 test/e2e/framework
 test/e2e/framework/ingress
-test/e2e/framework/providers/aws
-test/e2e/framework/providers/azure
 test/e2e/framework/providers/gce
 test/e2e/framework/providers/kubemark
 test/e2e/instrumentation
