@@ -45,7 +45,7 @@
 #  - Document functions using proper syntax:
 #    https://technet.microsoft.com/en-us/library/hh847834(v=wps.620).aspx
 
-$INFRA_CONTAINER = "kubeletwin/pause"
+$INFRA_CONTAINER = "e2eteam/pause:3.1"
 $GCE_METADATA_SERVER = "169.254.169.254"
 # The "management" interface is used by the kubelet and by Windows pods to talk
 # to the rest of the Kubernetes cluster *without NAT*. This interface does not
@@ -250,11 +250,12 @@ function Disable-WindowsDefender {
 
 # Creates directories where other functions in this module will read and write
 # data.
+# Note: C:\tmp is required for running certain kubernetes tests.
 function Create-Directories {
   Log-Output "Creating ${env:K8S_DIR} and its subdirectories."
   ForEach ($dir in ("${env:K8S_DIR}", "${env:NODE_DIR}", "${env:LOGS_DIR}",
     "${env:CNI_DIR}", "${env:CNI_CONFIG_DIR}", "${env:MANIFESTS_DIR}",
-    "${env:PKI_DIR}")) {
+    "${env:PKI_DIR}"), "C:\tmp") {
     mkdir -Force $dir
   }
 }
@@ -285,41 +286,6 @@ function Get_ContainerVersionLabel {
   }
   Throw ("Unknown Windows version $WinVersion, don't know its container " +
          "version label")
-}
-
-# Builds the pause image with name $INFRA_CONTAINER.
-function Create-PauseImage {
-  $win_version = $(Get-InstanceMetadataValue 'win-version')
-  if ($win_version -match '2019') {
-    # TODO(pjh): update this function to properly support 2019 vs. 1809 vs.
-    # future Windows versions. For example, Windows Server 2019 does not
-    # support the nanoserver container
-    # (https://blogs.technet.microsoft.com/virtualization/2018/11/13/windows-server-2019-now-available/).
-    Log_NotImplemented "Need to update Create-PauseImage for WS2019"
-  }
-
-  $version_label = Get_ContainerVersionLabel $win_version
-  $pause_dir = "${env:K8S_DIR}\pauseimage"
-  $dockerfile = "$pause_dir\Dockerfile"
-  mkdir -Force $pause_dir
-  if (ShouldWrite-File $dockerfile) {
-    New-Item -Force -ItemType file $dockerfile | Out-Null
-    Set-Content `
-        $dockerfile `
-        ("FROM mcr.microsoft.com/windows/nanoserver:${version_label}`n`n" +
-         "CMD cmd /c ping -t localhost > nul")
-  }
-
-  if (($(docker images -a) -like "*${INFRA_CONTAINER}*") -and
-      (-not $REDO_STEPS)) {
-    Log-Output "Skip: ${INFRA_CONTAINER} already built"
-    return
-  }
-  docker build -t ${INFRA_CONTAINER} $pause_dir
-  if ($LastExitCode -ne 0) {
-    Log-Output -Fatal `
-        "docker build -t ${INFRA_CONTAINER} $pause_dir failed"
-  }
 }
 
 # Downloads the Kubernetes binaries from kube-env's NODE_BINARY_TAR_URL and

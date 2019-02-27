@@ -127,7 +127,11 @@ type joinOptions struct {
 	controlPlane          bool
 	ignorePreflightErrors []string
 	externalcfg           *kubeadmapiv1beta1.JoinConfiguration
+	certificateKey        string
 }
+
+// compile-time assert that the local data object satisfies the phases data interface.
+var _ phases.JoinData = &joinData{}
 
 // joinData defines all the runtime information used when running the kubeadm join worklow;
 // this data is shared across all the phases that are included in the workflow.
@@ -139,6 +143,7 @@ type joinData struct {
 	clientSets            map[string]*clientset.Clientset
 	ignorePreflightErrors sets.String
 	outputWriter          io.Writer
+	certificateKey        string
 }
 
 // NewCmdJoin returns "kubeadm join" command.
@@ -189,7 +194,7 @@ func NewCmdJoin(out io.Writer, joinOptions *joinOptions) *cobra.Command {
 	}
 
 	addJoinConfigFlags(cmd.Flags(), joinOptions.externalcfg)
-	addJoinOtherFlags(cmd.Flags(), &joinOptions.cfgPath, &joinOptions.ignorePreflightErrors, &joinOptions.controlPlane, &joinOptions.token)
+	addJoinOtherFlags(cmd.Flags(), &joinOptions.cfgPath, &joinOptions.ignorePreflightErrors, &joinOptions.controlPlane, &joinOptions.token, &joinOptions.certificateKey)
 
 	joinRunner.AppendPhase(phases.NewPreflightPhase())
 	joinRunner.AppendPhase(phases.NewControlPlanePreparePhase())
@@ -251,7 +256,14 @@ func addJoinConfigFlags(flagSet *flag.FlagSet, cfg *kubeadmapiv1beta1.JoinConfig
 }
 
 // addJoinOtherFlags adds join flags that are not bound to a configuration file to the given flagset
-func addJoinOtherFlags(flagSet *flag.FlagSet, cfgPath *string, ignorePreflightErrors *[]string, controlPlane *bool, token *string) {
+func addJoinOtherFlags(
+	flagSet *flag.FlagSet,
+	cfgPath *string,
+	ignorePreflightErrors *[]string,
+	controlPlane *bool,
+	token *string,
+	certificateKey *string,
+) {
 	flagSet.StringVar(
 		cfgPath, options.CfgPath, *cfgPath,
 		"Path to kubeadm config file.",
@@ -267,6 +279,10 @@ func addJoinOtherFlags(flagSet *flag.FlagSet, cfgPath *string, ignorePreflightEr
 	flagSet.BoolVar(
 		controlPlane, options.ControlPlane, *controlPlane,
 		"Create a new control plane instance on this node",
+	)
+	flagSet.StringVar(
+		certificateKey, options.CertificateKey, "",
+		"Use this key to decrypt the certificate secrets uploaded by init.",
 	)
 }
 
@@ -372,7 +388,13 @@ func newJoinData(cmd *cobra.Command, args []string, options *joinOptions, out io
 		clientSets:            map[string]*clientset.Clientset{},
 		ignorePreflightErrors: ignorePreflightErrorsSet,
 		outputWriter:          out,
+		certificateKey:        options.certificateKey,
 	}, nil
+}
+
+// CertificateKey returns the key used to encrypt the certs.
+func (j *joinData) CertificateKey() string {
+	return j.certificateKey
 }
 
 // Cfg returns the JoinConfiguration.

@@ -732,7 +732,7 @@ func (og *operationGenerator) GenerateUnmountVolumeFunc(
 	podsDir string) (volumetypes.GeneratedOperations, error) {
 
 	var pluginName string
-	if useCSIPlugin(og.volumePluginMgr, volumeToUnmount.VolumeSpec) {
+	if volumeToUnmount.VolumeSpec != nil && useCSIPlugin(og.volumePluginMgr, volumeToUnmount.VolumeSpec) {
 		pluginName = csi.CSIPluginName
 	} else {
 		pluginName = volumeToUnmount.PluginName
@@ -1535,6 +1535,9 @@ func isDeviceOpened(deviceToDetach AttachedVolume, mounter mount.Interface) (boo
 
 // TODO(dyzz): need to also add logic to check CSINodeInfo for Kubelet migration status
 func useCSIPlugin(vpm *volume.VolumePluginMgr, spec *volume.Spec) bool {
+	if !utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) {
+		return false
+	}
 	if csilib.IsPVMigratable(spec.PersistentVolume) || csilib.IsInlineMigratable(spec.Volume) {
 		migratable, err := vpm.IsPluginMigratableBySpec(spec)
 		if err == nil && migratable {

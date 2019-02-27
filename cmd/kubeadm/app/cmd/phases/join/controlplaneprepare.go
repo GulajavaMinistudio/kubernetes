@@ -21,27 +21,24 @@ import (
 
 	"github.com/pkg/errors"
 
-	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
+	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/klog"
 	"k8s.io/kubernetes/cmd/kubeadm/app/cmd/options"
 	"k8s.io/kubernetes/cmd/kubeadm/app/cmd/phases/workflow"
 	cmdutil "k8s.io/kubernetes/cmd/kubeadm/app/cmd/util"
 	kubeadmconstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	certsphase "k8s.io/kubernetes/cmd/kubeadm/app/phases/certs"
 	"k8s.io/kubernetes/cmd/kubeadm/app/phases/controlplane"
+	"k8s.io/kubernetes/cmd/kubeadm/app/phases/copycerts"
 	kubeconfigphase "k8s.io/kubernetes/cmd/kubeadm/app/phases/kubeconfig"
+	kubeconfigutil "k8s.io/kubernetes/cmd/kubeadm/app/util/kubeconfig"
 )
-
-type controlPlanePrepareData interface {
-	Cfg() *kubeadmapi.JoinConfiguration
-	InitCfg() (*kubeadmapi.InitConfiguration, error)
-}
 
 // NewControlPlanePreparePhase creates a kubeadm workflow phase that implements the preparation of the node to serve a control plane
 func NewControlPlanePreparePhase() workflow.Phase {
 	return workflow.Phase{
 		Name:  "control-plane-prepare",
 		Short: "Prepares the machine for serving a control plane.",
-		Long:  cmdutil.MacroCommandLongDescription,
 		Phases: []workflow.Phase{
 			{
 				Name:           "all",
@@ -49,6 +46,7 @@ func NewControlPlanePreparePhase() workflow.Phase {
 				InheritFlags:   getControlPlanePreparePhaseFlags(),
 				RunAllSiblings: true,
 			},
+			newControlPlanePrepareDownloadCertsSubphase(),
 			newControlPlanePrepareCertsSubphase(),
 			newControlPlanePrepareKubeconfigSubphase(),
 			newControlPlanePrepareManifestsSubphases(),
@@ -66,6 +64,20 @@ func getControlPlanePreparePhaseFlags() []string {
 		options.TokenDiscovery,
 		options.TokenDiscoveryCAHash,
 		options.TokenDiscoverySkipCAHash,
+		options.CertificateKey,
+	}
+}
+
+func newControlPlanePrepareDownloadCertsSubphase() workflow.Phase {
+	return workflow.Phase{
+		Name:  "download-certs",
+		Short: fmt.Sprintf("Download certificates from %s", kubeadmconstants.KubeadmCertsSecret),
+		Long:  cmdutil.MacroCommandLongDescription,
+		Run:   runControlPlanePrepareDownloadCertsPhaseLocal,
+		InheritFlags: []string{
+			options.CfgPath,
+			options.CertificateKey,
+		},
 	}
 }
 
@@ -97,7 +109,7 @@ func newControlPlanePrepareManifestsSubphases() workflow.Phase {
 }
 
 func runControlPlanePrepareManifestsSubphase(c workflow.RunData) error {
-	data, ok := c.(controlPlanePrepareData)
+	data, ok := c.(JoinData)
 	if !ok {
 		return errors.New("control-plane-prepare phase invoked with an invalid data struct")
 	}
@@ -116,8 +128,35 @@ func runControlPlanePrepareManifestsSubphase(c workflow.RunData) error {
 	return controlplane.CreateInitStaticPodManifestFiles(kubeadmconstants.GetStaticPodDirectory(), cfg)
 }
 
+func runControlPlanePrepareDownloadCertsPhaseLocal(c workflow.RunData) error {
+	data, ok := c.(JoinData)
+	if !ok {
+		return errors.New("download-certs phase invoked with an invalid data struct")
+	}
+
+	if data.Cfg().ControlPlane == nil || len(data.CertificateKey()) == 0 {
+		klog.V(1).Infoln("[download-certs] Skipping certs download")
+		return nil
+	}
+
+	cfg, err := data.InitCfg()
+	if err != nil {
+		return err
+	}
+
+	client, err := bootstrapClient(data)
+	if err != nil {
+		return err
+	}
+
+	if err := copycerts.DownloadCerts(client, cfg, data.CertificateKey()); err != nil {
+		return errors.Wrap(err, "error downloading certs")
+	}
+	return nil
+}
+
 func runControlPlanePrepareCertsPhaseLocal(c workflow.RunData) error {
-	data, ok := c.(controlPlanePrepareData)
+	data, ok := c.(JoinData)
 	if !ok {
 		return errors.New("control-plane-prepare phase invoked with an invalid data struct")
 	}
@@ -137,7 +176,7 @@ func runControlPlanePrepareCertsPhaseLocal(c workflow.RunData) error {
 }
 
 func runControlPlanePrepareKubeconfigPhaseLocal(c workflow.RunData) error {
-	data, ok := c.(controlPlanePrepareData)
+	data, ok := c.(JoinData)
 	if !ok {
 		return errors.New("control-plane-prepare phase invoked with an invalid data struct")
 	}
@@ -162,4 +201,16 @@ func runControlPlanePrepareKubeconfigPhaseLocal(c workflow.RunData) error {
 	}
 
 	return nil
+}
+
+func bootstrapClient(data JoinData) (clientset.Interface, error) {
+	tlsBootstrapCfg, err := data.TLSBootstrapCfg()
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to access the cluster")
+	}
+	client, err := kubeconfigutil.ToClientSet(tlsBootstrapCfg)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to access the cluster")
+	}
+	return client, nil
 }
