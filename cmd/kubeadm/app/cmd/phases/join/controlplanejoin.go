@@ -44,10 +44,12 @@ func getControlPlaneJoinPhaseFlags() []string {
 		options.CfgPath,
 		options.ControlPlane,
 		options.NodeName,
+		options.FileDiscovery,
 		options.TokenDiscovery,
 		options.TokenDiscoveryCAHash,
 		options.TokenDiscoverySkipCAHash,
-		options.KubeconfigPath,
+		options.TLSBootstrapToken,
+		options.TokenStr,
 	}
 }
 
@@ -109,9 +111,8 @@ func runEtcdPhase(c workflow.RunData) error {
 		return nil
 	}
 
-	kubeConfigFile := data.KubeConfigPath()
-
-	client, err := data.ClientSetFromFile(kubeConfigFile)
+	// gets access to the cluster using the identity defined in admin.conf
+	client, err := data.ClientSet()
 	if err != nil {
 		return errors.Wrap(err, "couldn't create Kubernetes client")
 	}
@@ -151,9 +152,8 @@ func runUploadConfigPhase(c workflow.RunData) error {
 		return nil
 	}
 
-	kubeConfigFile := data.KubeConfigPath()
-
-	client, err := data.ClientSetFromFile(kubeConfigFile)
+	// gets access to the cluster using the identity defined in admin.conf
+	client, err := data.ClientSet()
 	if err != nil {
 		return errors.Wrap(err, "couldn't create Kubernetes client")
 	}
@@ -179,9 +179,8 @@ func runMarkControlPlanePhase(c workflow.RunData) error {
 		return nil
 	}
 
-	kubeConfigFile := data.KubeConfigPath()
-
-	client, err := data.ClientSetFromFile(kubeConfigFile)
+	// gets access to the cluster using the identity defined in admin.conf
+	client, err := data.ClientSet()
 	if err != nil {
 		return errors.Wrap(err, "couldn't create Kubernetes client")
 	}

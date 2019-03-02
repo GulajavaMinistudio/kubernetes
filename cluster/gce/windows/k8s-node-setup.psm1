@@ -134,6 +134,19 @@ function Add_GceMetadataServerRoute {
   }
 }
 
+# Writes debugging information, such as Windows version and patch info, to the
+# console.
+function Dump-DebugInfoToConsole {
+  Try {
+    $version = "$([System.Environment]::OSVersion.Version | Out-String)"
+    $hotfixes = "$(Get-Hotfix | Out-String)"
+    $image = "$(Get-InstanceMetadata 'image' | Out-String)"
+    Log-Output "Windows version:`n$version"
+    Log-Output "Installed hotfixes:`n$hotfixes"
+    Log-Output "GCE Windows image:`n$image"
+  } Catch { }
+}
+
 # Fetches the kube-env from the instance metadata.
 #
 # Returns: a PowerShell Hashtable object containing the key-value pairs from
@@ -141,7 +154,7 @@ function Add_GceMetadataServerRoute {
 function Fetch-KubeEnv {
   # Testing / debugging:
   # First:
-  #   ${kube_env} = Get-InstanceMetadataValue 'kube-env'
+  #   ${kube_env} = Get-InstanceMetadataAttribute 'kube-env'
   # or:
   #   ${kube_env} = [IO.File]::ReadAllText(".\kubeEnv.txt")
   # ${kube_env_table} = ConvertFrom-Yaml ${kube_env}
@@ -149,7 +162,7 @@ function Fetch-KubeEnv {
   # ${kube_env_table}.GetType()
 
   # The type of kube_env is a powershell String.
-  $kube_env = Get-InstanceMetadataValue 'kube-env'
+  $kube_env = Get-InstanceMetadataAttribute 'kube-env'
   $kube_env_table = ConvertFrom-Yaml ${kube_env}
   return ${kube_env_table}
 }
@@ -888,7 +901,7 @@ function Configure-Kubelet {
   # The Kubelet config is built by build-kubelet-config() in
   # cluster/gce/util.sh, and stored in the metadata server under the
   # 'kubelet-config' key.
-  $kubelet_config = Get-InstanceMetadataValue 'kubelet-config'
+  $kubelet_config = Get-InstanceMetadataAttribute 'kubelet-config'
   Set-Content ${env:KUBELET_CONFIG} $kubelet_config
   Log-Output "Kubelet config:`n$(Get-Content -Raw ${env:KUBELET_CONFIG})"
 }
@@ -901,14 +914,24 @@ function Configure-Kubelet {
 #   KUBERNETES_MASTER_NAME
 #   CLUSTER_IP_RANGE
 function Start-WorkerServices {
+  # Compute kubelet args
   $kubelet_args_str = ${kube_env}['KUBELET_ARGS']
   $kubelet_args = $kubelet_args_str.Split(" ")
   Log-Output "kubelet_args from metadata: ${kubelet_args}"
-
-  $additional_arg_list = @(`
+  $default_kubelet_args = @(`
       "--pod-infra-container-image=${INFRA_CONTAINER}"
   )
-  $kubelet_args = ${kubelet_args} + ${additional_arg_list}
+  $kubelet_args = ${default_kubelet_args} + ${kubelet_args}
+  Log-Output "Final kubelet_args: ${kubelet_args}"
+
+  # Compute kube-proxy args
+  $kubeproxy_args_str = ${kube_env}['KUBEPROXY_ARGS']
+  Try {
+    $kubeproxy_args = $kubeproxy_args_str.Split(" ")
+  } Catch {
+    $kubeproxy_args = ""
+  }
+  Log-Output "kubeproxy_args from metadata: ${kubeproxy_args}"
 
   # kubeproxy is started on Linux nodes using
   # kube-manifests/kubernetes/gci-trusty/kube-proxy.manifest, which is
@@ -921,12 +944,11 @@ function Start-WorkerServices {
   #   --ipvs-sync-period=1m --ipvs-min-sync-period=10s
   # And also with various volumeMounts and "securityContext: privileged: true".
   $apiserver_address = ${kube_env}['KUBERNETES_MASTER_NAME']
-  $kubeproxy_args = @(`
+  $default_kubeproxy_args = @(`
       "--v=4",
       "--master=https://${apiserver_address}",
       "--kubeconfig=${env:KUBEPROXY_KUBECONFIG}",
       "--proxy-mode=kernelspace",
-      "--hostname-override=$(hostname)",
       "--cluster-cidr=$(${kube_env}['CLUSTER_IP_RANGE'])",
 
       # Configure kube-proxy to run as a windows service.
@@ -947,6 +969,8 @@ function Start-WorkerServices {
       # of string delimiters.
       "--resource-container="
   )
+  $kubeproxy_args = ${default_kubeproxy_args} + ${kubeproxy_args}
+  Log-Output "Final kubeproxy_args: ${kubeproxy_args}"
 
   # TODO(pjh): kubelet is emitting these messages:
   # I1023 23:44:11.761915    2468 kubelet.go:274] Adding pod path:
