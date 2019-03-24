@@ -2,7 +2,6 @@ cmd/cloud-controller-manager/app/apis/config/v1alpha1
 cmd/kube-apiserver/app
 cmd/kube-controller-manager/app
 cmd/kube-proxy/app
-cmd/kubeadm/app/apis/kubeadm/v1alpha3
 cmd/kubeadm/app/apis/kubeadm/v1beta1
 cmd/kubeadm/app/util/system
 pkg/apis/abac/latest
@@ -168,7 +167,6 @@ pkg/kubectl/cmd/testing
 pkg/kubectl/cmd/top
 pkg/kubectl/cmd/util
 pkg/kubectl/cmd/util/openapi
-pkg/kubectl/cmd/version
 pkg/kubectl/cmd/wait
 pkg/kubectl/describe/versioned
 pkg/kubectl/generate
@@ -649,7 +647,6 @@ test/e2e/autoscaling
 test/e2e/chaosmonkey
 test/e2e/common
 test/e2e/framework
-test/e2e/framework/providers/gce
 test/e2e/lifecycle
 test/e2e/lifecycle/bootstrap
 test/e2e/network
