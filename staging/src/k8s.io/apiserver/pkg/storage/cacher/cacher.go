@@ -19,7 +19,6 @@ package cacher
 import (
 	"context"
 	"fmt"
-	"math"
 	"net/http"
 	"reflect"
 	"sync"
@@ -55,6 +54,12 @@ var (
 		[]string{"resource"},
 	)
 	emptyFunc = func() {}
+)
+
+const (
+	// storageWatchListPageSize is the cacher's request chunk size of
+	// initial and resync watch lists to storage.
+	storageWatchListPageSize = int64(10000)
 )
 
 func init() {
@@ -219,6 +224,8 @@ type Cacher struct {
 	// watchersBuffer is a list of watchers potentially interested in currently
 	// dispatched event.
 	watchersBuffer []*cacheWatcher
+	// blockedWatchers is a list of watchers whose buffer is currently full.
+	blockedWatchers []*cacheWatcher
 	// watchersToStop is a list of watchers that were supposed to be stopped
 	// during current dispatching, but stopping was deferred to the end of
 	// dispatching that event to avoid race with closing channels in watchers.
@@ -230,7 +237,7 @@ type Cacher struct {
 // given configuration.
 func NewCacherFromConfig(config Config) *Cacher {
 	watchCache := newWatchCache(config.CacheCapacity, config.KeyFunc, config.GetAttrsFunc, config.Versioner)
-	listerWatcher := newCacherListerWatcher(config.Storage, config.ResourcePrefix, config.NewListFunc)
+	listerWatcher := NewCacherListerWatcher(config.Storage, config.ResourcePrefix, config.NewListFunc)
 	reflectorName := "storage/cacher.go:" + config.ResourcePrefix
 
 	obj := config.NewFunc()
@@ -241,12 +248,16 @@ func NewCacherFromConfig(config Config) *Cacher {
 	}
 
 	stopCh := make(chan struct{})
+	reflector := cache.NewNamedReflector(reflectorName, listerWatcher, obj, watchCache, 0)
+	// Configure reflector's pager to for an appropriate pagination chunk size for fetching data from
+	// storage. The pager falls back to full list if paginated list calls fail due to an "Expired" error.
+	reflector.WatchListPageSize = storageWatchListPageSize
 	cacher := &Cacher{
 		ready:       newReady(),
 		storage:     config.Storage,
 		objectType:  reflect.TypeOf(obj),
 		watchCache:  watchCache,
-		reflector:   cache.NewNamedReflector(reflectorName, listerWatcher, obj, watchCache, 0),
+		reflector:   reflector,
 		versioner:   config.Versioner,
 		triggerFunc: config.TriggerPublisherFunc,
 		watcherIdx:  0,
@@ -365,16 +376,11 @@ func (c *Cacher) Watch(ctx context.Context, key string, resourceVersion string, 
 		chanSize = 1000
 	}
 
-	// Determine watch timeout
-	timeout := time.Duration(math.MaxInt64)
-	if deadline, ok := ctx.Deadline(); ok {
-		timeout = deadline.Sub(time.Now())
-	}
 	// Create a watcher here to reduce memory allocations under lock,
 	// given that memory allocation may trigger GC and block the thread.
 	// Also note that emptyFunc is a placeholder, until we will be able
 	// to compute watcher.forget function (which has to happen under lock).
-	watcher := newCacheWatcher(chanSize, filterWithAttrsFunction(key, pred), emptyFunc, c.versioner, timeout)
+	watcher := newCacheWatcher(chanSize, filterWithAttrsFunction(key, pred), emptyFunc, c.versioner)
 
 	// We explicitly use thread unsafe version and do locking ourself to ensure that
 	// no new events will be processed in the meantime. The watchCache will be unlocked
@@ -407,7 +413,7 @@ func (c *Cacher) Watch(ctx context.Context, key string, resourceVersion string, 
 		c.watcherIdx++
 	}()
 
-	go watcher.process(ctx, initEvents, watchRV)
+	go watcher.process(initEvents, watchRV)
 	return watcher, nil
 }
 
@@ -684,8 +690,39 @@ func (c *Cacher) dispatchEvent(event *watchCacheEvent) {
 	c.startDispatching(event)
 
 	// Since add() can block, we explicitly add when cacher is unlocked.
+
+	// Dispatching event in nonblocking way first, which make faster watchers
+	// not be blocked by slower ones.
+	c.blockedWatchers = c.blockedWatchers[:0]
 	for _, watcher := range c.watchersBuffer {
-		watcher.add(event, c.timer, c.dispatchTimeoutBudget)
+		if !watcher.nonblockingAdd(event) {
+			c.blockedWatchers = append(c.blockedWatchers, watcher)
+		}
+	}
+
+	if len(c.blockedWatchers) > 0 {
+		// dispatchEvent is called very often, so arrange
+		// to reuse timers instead of constantly allocating.
+		startTime := time.Now()
+		timeout := c.dispatchTimeoutBudget.takeAvailable()
+		c.timer.Reset(timeout)
+
+		// Make sure every watcher will try to send event without blocking first,
+		// even if the timer has already expired.
+		timer := c.timer
+		for _, watcher := range c.blockedWatchers {
+			if !watcher.add(event, timer) {
+				// No time left, clean the timer by set it to nil.
+				timer = nil
+			}
+		}
+		if !c.timer.Stop() {
+			// Consume triggered (but not yet received) timer event
+			// so that future reuse does not get a spurious timeout.
+			<-c.timer.C
+		}
+
+		c.dispatchTimeoutBudget.returnUnused(timeout - time.Since(startTime))
 	}
 
 	c.finishDispatching()
@@ -822,7 +859,8 @@ type cacherListerWatcher struct {
 	newListFunc    func() runtime.Object
 }
 
-func newCacherListerWatcher(storage storage.Interface, resourcePrefix string, newListFunc func() runtime.Object) cache.ListerWatcher {
+// NewCacherListerWatcher returns a storage.Interface backed ListerWatcher.
+func NewCacherListerWatcher(storage storage.Interface, resourcePrefix string, newListFunc func() runtime.Object) cache.ListerWatcher {
 	return &cacherListerWatcher{
 		storage:        storage,
 		resourcePrefix: resourcePrefix,
@@ -833,7 +871,14 @@ func newCacherListerWatcher(storage storage.Interface, resourcePrefix string, ne
 // Implements cache.ListerWatcher interface.
 func (lw *cacherListerWatcher) List(options metav1.ListOptions) (runtime.Object, error) {
 	list := lw.newListFunc()
-	if err := lw.storage.List(context.TODO(), lw.resourcePrefix, "", storage.Everything, list); err != nil {
+	pred := storage.SelectionPredicate{
+		Label:    labels.Everything(),
+		Field:    fields.Everything(),
+		Limit:    options.Limit,
+		Continue: options.Continue,
+	}
+
+	if err := lw.storage.List(context.TODO(), lw.resourcePrefix, "", pred, list); err != nil {
 		return nil, err
 	}
 	return list, nil
@@ -894,34 +939,9 @@ type cacheWatcher struct {
 	stopped   bool
 	forget    func()
 	versioner storage.Versioner
-	timer     *time.Timer
 }
 
-var timerPool sync.Pool
-
-func newTimer(d time.Duration) *time.Timer {
-	t, ok := timerPool.Get().(*time.Timer)
-	if ok {
-		t.Reset(d)
-	} else {
-		t = time.NewTimer(d)
-	}
-	return t
-}
-
-func freeTimer(timer *time.Timer) {
-	if !timer.Stop() {
-		// Consume triggered (but not yet received) timer event
-		// so that future reuse does not get a spurious timeout.
-		select {
-		case <-timer.C:
-		default:
-		}
-	}
-	timerPool.Put(timer)
-}
-
-func newCacheWatcher(chanSize int, filter filterWithAttrsFunc, forget func(), versioner storage.Versioner, timeout time.Duration) *cacheWatcher {
+func newCacheWatcher(chanSize int, filter filterWithAttrsFunc, forget func(), versioner storage.Versioner) *cacheWatcher {
 	return &cacheWatcher{
 		input:     make(chan *watchCacheEvent, chanSize),
 		result:    make(chan watch.Event, chanSize),
@@ -930,7 +950,6 @@ func newCacheWatcher(chanSize int, filter filterWithAttrsFunc, forget func(), ve
 		stopped:   false,
 		forget:    forget,
 		versioner: versioner,
-		timer:     newTimer(timeout),
 	}
 }
 
@@ -951,34 +970,26 @@ func (c *cacheWatcher) stop() {
 		c.stopped = true
 		close(c.done)
 		close(c.input)
-		freeTimer(c.timer)
 	}
 }
 
-func (c *cacheWatcher) add(event *watchCacheEvent, timer *time.Timer, budget *timeBudget) {
-	// Try to send the event immediately, without blocking.
+func (c *cacheWatcher) nonblockingAdd(event *watchCacheEvent) bool {
 	select {
 	case c.input <- event:
-		return
+		return true
 	default:
+		return false
+	}
+}
+
+// Nil timer means that add will not block (if it can't send event immediately, it will break the watcher)
+func (c *cacheWatcher) add(event *watchCacheEvent, timer *time.Timer) bool {
+	// Try to send the event immediately, without blocking.
+	if c.nonblockingAdd(event) {
+		return true
 	}
 
-	// OK, block sending, but only for up to <timeout>.
-	// cacheWatcher.add is called very often, so arrange
-	// to reuse timers instead of constantly allocating.
-	startTime := time.Now()
-	timeout := budget.takeAvailable()
-
-	timer.Reset(timeout)
-
-	select {
-	case c.input <- event:
-		if !timer.Stop() {
-			// Consume triggered (but not yet received) timer event
-			// so that future reuse does not get a spurious timeout.
-			<-timer.C
-		}
-	case <-timer.C:
+	closeFunc := func() {
 		// This means that we couldn't send event to that watcher.
 		// Since we don't want to block on it infinitely,
 		// we simply terminate it.
@@ -986,7 +997,19 @@ func (c *cacheWatcher) add(event *watchCacheEvent, timer *time.Timer, budget *ti
 		c.forget()
 	}
 
-	budget.returnUnused(timeout - time.Since(startTime))
+	if timer == nil {
+		closeFunc()
+		return false
+	}
+
+	// OK, block sending, but only until timer fires.
+	select {
+	case c.input <- event:
+		return true
+	case <-timer.C:
+		closeFunc()
+		return false
+	}
 }
 
 // NOTE: sendWatchCacheEvent is assumed to not modify <event> !!!
@@ -1040,7 +1063,7 @@ func (c *cacheWatcher) sendWatchCacheEvent(event *watchCacheEvent) {
 	}
 }
 
-func (c *cacheWatcher) process(ctx context.Context, initEvents []*watchCacheEvent, resourceVersion uint64) {
+func (c *cacheWatcher) process(initEvents []*watchCacheEvent, resourceVersion uint64) {
 	defer utilruntime.HandleCrash()
 
 	// Check how long we are processing initEvents.
@@ -1076,20 +1099,10 @@ func (c *cacheWatcher) process(ctx context.Context, initEvents []*watchCacheEven
 
 	defer close(c.result)
 	defer c.Stop()
-	for {
-		select {
-		case event, ok := <-c.input:
-			if !ok {
-				return
-			}
-			// only send events newer than resourceVersion
-			if event.ResourceVersion > resourceVersion {
-				c.sendWatchCacheEvent(event)
-			}
-		case <-ctx.Done():
-			return
-		case <-c.timer.C:
-			return
+	for event := range c.input {
+		// only send events newer than resourceVersion
+		if event.ResourceVersion > resourceVersion {
+			c.sendWatchCacheEvent(event)
 		}
 	}
 }
