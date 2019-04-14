@@ -28,8 +28,6 @@
 ./hack/ginkgo-e2e.sh
 ./hack/grab-profiles.sh
 ./hack/lib/init.sh
-./hack/lib/logging.sh
-./hack/lib/protoc.sh
 ./hack/lib/swagger.sh
 ./hack/lib/test.sh
 ./hack/lib/version.sh
@@ -44,13 +42,10 @@
 ./hack/make-rules/vet.sh
 ./hack/test-integration.sh
 ./hack/test-update-storage-objects.sh
-./hack/update-codegen.sh
 ./hack/update-generated-kms-dockerized.sh
 ./hack/update-generated-protobuf-dockerized.sh
 ./hack/update-generated-runtime-dockerized.sh
-./hack/update-gofmt.sh
 ./hack/update-openapi-spec.sh
-./hack/update-translations.sh
 ./hack/update-vendor.sh
 ./hack/verify-api-groups.sh
 ./hack/verify-boilerplate.sh
@@ -90,13 +85,9 @@
 ./test/e2e_node/environment/setup_host.sh
 ./test/e2e_node/gubernator.sh
 ./test/images/image-util.sh
-./test/images/pets/redis-installer/on-start.sh
-./test/images/pets/zookeeper-installer/install.sh
-./test/images/pets/zookeeper-installer/on-start.sh
 ./test/images/volume/gluster/run_gluster.sh
 ./test/images/volume/iscsi/create_block.sh
 ./test/images/volume/nfs/run_nfs.sh
-./third_party/forked/shell2junit/sh2ju.sh
 ./third_party/intemp/intemp.sh
 ./third_party/multiarch/qemu-user-static/register/qemu-binfmt-conf.sh
 ./third_party/multiarch/qemu-user-static/register/register.sh

@@ -640,6 +640,7 @@ test/e2e/autoscaling
 test/e2e/chaosmonkey
 test/e2e/common
 test/e2e/framework
+test/e2e/framework/providers/gce
 test/e2e/lifecycle
 test/e2e/lifecycle/bootstrap
 test/e2e/network
@@ -653,7 +654,6 @@ test/e2e/storage/utils
 test/e2e/storage/vsphere
 test/e2e_kubeadm
 test/e2e_node
-test/e2e_node/builder
 test/e2e_node/remote
 test/e2e_node/runner/remote
 test/e2e_node/services
