@@ -40,6 +40,7 @@
 ./hack/make-rules/update.sh
 ./hack/make-rules/verify.sh
 ./hack/make-rules/vet.sh
+./hack/pin-dependency.sh
 ./hack/test-integration.sh
 ./hack/test-update-storage-objects.sh
 ./hack/update-generated-kms-dockerized.sh
@@ -88,6 +89,3 @@
 ./test/images/volume/gluster/run_gluster.sh
 ./test/images/volume/iscsi/create_block.sh
 ./test/images/volume/nfs/run_nfs.sh
-./third_party/intemp/intemp.sh
-./third_party/multiarch/qemu-user-static/register/qemu-binfmt-conf.sh
-./third_party/multiarch/qemu-user-static/register/register.sh
