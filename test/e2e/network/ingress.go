@@ -26,7 +26,7 @@ import (
 
 	compute "google.golang.org/api/compute/v1"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	rbacv1beta1 "k8s.io/api/rbac/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/authentication/serviceaccount"
 	"k8s.io/kubernetes/test/e2e/framework"
+	"k8s.io/kubernetes/test/e2e/framework/auth"
 	"k8s.io/kubernetes/test/e2e/framework/ingress"
 	"k8s.io/kubernetes/test/e2e/framework/providers/gce"
 
@@ -62,10 +63,11 @@ var _ = SIGDescribe("Loadbalancing: L7", func() {
 
 		// this test wants powerful permissions.  Since the namespace names are unique, we can leave this
 		// lying around so we don't have to race any caches
-		framework.BindClusterRole(jig.Client.RbacV1beta1(), "cluster-admin", f.Namespace.Name,
+		err := auth.BindClusterRole(jig.Client.RbacV1beta1(), "cluster-admin", f.Namespace.Name,
 			rbacv1beta1.Subject{Kind: rbacv1beta1.ServiceAccountKind, Namespace: f.Namespace.Name, Name: "default"})
+		framework.ExpectNoError(err)
 
-		err := framework.WaitForAuthorizationUpdate(jig.Client.AuthorizationV1beta1(),
+		err = auth.WaitForAuthorizationUpdate(jig.Client.AuthorizationV1beta1(),
 			serviceaccount.MakeUsername(f.Namespace.Name, "default"),
 			"", "create", schema.GroupResource{Resource: "pods"}, true)
 		framework.ExpectNoError(err)
@@ -856,29 +858,6 @@ func executeBacksideBacksideHTTPSTest(f *framework.Framework, jig *ingress.TestJ
 		return true, nil
 	})
 	Expect(err).NotTo(HaveOccurred(), "Failed to verify backside re-encryption ingress")
-}
-
-func detectHTTPVersionAndSchemeTest(f *framework.Framework, jig *ingress.TestJig, address, version, scheme string) {
-	timeoutClient := &http.Client{Timeout: ingress.IngressReqTimeout}
-	resp := ""
-	err := wait.PollImmediate(framework.LoadBalancerPollInterval, framework.LoadBalancerPollTimeout, func() (bool, error) {
-		var err error
-		resp, err = framework.SimpleGET(timeoutClient, fmt.Sprintf("http://%s", address), "")
-		if err != nil {
-			framework.Logf("SimpleGET failed: %v", err)
-			return false, nil
-		}
-		if !strings.Contains(resp, version) {
-			framework.Logf("Waiting for transition to HTTP/2")
-			return false, nil
-		}
-		if !strings.Contains(resp, scheme) {
-			return false, nil
-		}
-		framework.Logf("Poll succeeded, request was served by HTTP2")
-		return true, nil
-	})
-	Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Failed to get %s or %s, response body: %s", version, scheme, resp))
 }
 
 func detectNegAnnotation(f *framework.Framework, jig *ingress.TestJig, gceController *gce.IngressController, ns, name string, negs int) {
