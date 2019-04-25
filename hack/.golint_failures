@@ -14,7 +14,6 @@ pkg/apis/apps/v1beta2
 pkg/apis/apps/validation
 pkg/apis/auditregistration/v1alpha1
 pkg/apis/authentication/v1
-pkg/apis/authorization
 pkg/apis/authorization/v1
 pkg/apis/authorization/validation
 pkg/apis/autoscaling
@@ -60,7 +59,6 @@ pkg/apis/storage/v1beta1/util
 pkg/capabilities
 pkg/cloudprovider/providers/fake
 pkg/cloudprovider/providers/photon
-pkg/cloudprovider/providers/vsphere
 pkg/controller
 pkg/controller/apis/config/v1alpha1
 pkg/controller/certificates
@@ -161,13 +159,11 @@ pkg/kubectl/generate/versioned
 pkg/kubectl/metricsutil
 pkg/kubectl/util/templates
 pkg/kubelet
-pkg/kubelet/apis
 pkg/kubelet/apis/config
 pkg/kubelet/apis/config/v1beta1
 pkg/kubelet/apis/deviceplugin/v1beta1
 pkg/kubelet/cadvisor
 pkg/kubelet/cadvisor/testing
-pkg/kubelet/checkpoint
 pkg/kubelet/checkpointmanager/checksum
 pkg/kubelet/checkpointmanager/testing/example_checkpoint_formats/v1
 pkg/kubelet/client
@@ -178,7 +174,6 @@ pkg/kubelet/container
 pkg/kubelet/container/testing
 pkg/kubelet/custommetrics
 pkg/kubelet/dockershim
-pkg/kubelet/dockershim/cm
 pkg/kubelet/dockershim/libdocker
 pkg/kubelet/dockershim/network
 pkg/kubelet/dockershim/network/cni
@@ -190,6 +185,7 @@ pkg/kubelet/dockershim/network/testing
 pkg/kubelet/events
 pkg/kubelet/lifecycle
 pkg/kubelet/metrics
+pkg/kubelet/oom
 pkg/kubelet/pod
 pkg/kubelet/pod/testing
 pkg/kubelet/preemption
@@ -348,7 +344,6 @@ pkg/volume/host_path
 pkg/volume/iscsi
 pkg/volume/nfs
 pkg/volume/photon_pd
-pkg/volume/portworx
 pkg/volume/rbd
 pkg/volume/scaleio
 pkg/volume/storageos
@@ -606,6 +601,7 @@ staging/src/k8s.io/kube-aggregator/pkg/apis/apiregistration/v1beta1
 staging/src/k8s.io/kube-aggregator/pkg/controllers/autoregister
 staging/src/k8s.io/kube-proxy/config/v1alpha1
 staging/src/k8s.io/kubelet/config/v1beta1
+staging/src/k8s.io/legacy-cloud-providers/vsphere
 staging/src/k8s.io/metrics/pkg/apis/custom_metrics
 staging/src/k8s.io/metrics/pkg/apis/custom_metrics/v1beta1
 staging/src/k8s.io/metrics/pkg/apis/external_metrics
