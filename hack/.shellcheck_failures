@@ -11,7 +11,6 @@
 ./cluster/gce/gci/flexvolume_node_setup.sh
 ./cluster/gce/gci/health-monitor.sh
 ./cluster/gce/gci/master-helper.sh
-./cluster/gce/list-resources.sh
 ./cluster/gce/upgrade-aliases.sh
 ./cluster/gce/upgrade.sh
 ./cluster/gce/util.sh
@@ -24,8 +23,6 @@
 ./hack/lib/swagger.sh
 ./hack/lib/test.sh
 ./hack/lib/version.sh
-./hack/make-rules/clean.sh
-./hack/make-rules/helpers/cache_go_dirs.sh
 ./hack/make-rules/make-help.sh
 ./hack/make-rules/test.sh
 ./hack/make-rules/update.sh
@@ -35,7 +32,6 @@
 ./hack/test-integration.sh
 ./hack/update-vendor.sh
 ./hack/verify-golint.sh
-./hack/verify-no-vendor-cycles.sh
 ./hack/verify-test-featuregates.sh
 ./test/cmd/apply.sh
 ./test/cmd/apps.sh

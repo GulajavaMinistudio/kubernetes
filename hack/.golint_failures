@@ -4,7 +4,6 @@ cmd/kube-controller-manager/app
 cmd/kubeadm/app/apis/kubeadm/v1beta1
 pkg/apis/abac/latest
 pkg/apis/admission
-pkg/apis/admissionregistration
 pkg/apis/admissionregistration/v1beta1
 pkg/apis/admissionregistration/validation
 pkg/apis/apps
@@ -38,7 +37,6 @@ pkg/apis/core/validation
 pkg/apis/events/v1beta1
 pkg/apis/extensions
 pkg/apis/extensions/v1beta1
-pkg/apis/networking
 pkg/apis/networking/v1
 pkg/apis/node/v1alpha1
 pkg/apis/policy
@@ -56,7 +54,6 @@ pkg/apis/storage/v1
 pkg/apis/storage/v1/util
 pkg/apis/storage/v1beta1
 pkg/apis/storage/v1beta1/util
-pkg/capabilities
 pkg/cloudprovider/providers/fake
 pkg/cloudprovider/providers/photon
 pkg/controller
@@ -164,7 +161,6 @@ pkg/kubelet/apis/config/v1beta1
 pkg/kubelet/apis/deviceplugin/v1beta1
 pkg/kubelet/cadvisor
 pkg/kubelet/cadvisor/testing
-pkg/kubelet/checkpointmanager/checksum
 pkg/kubelet/checkpointmanager/testing/example_checkpoint_formats/v1
 pkg/kubelet/client
 pkg/kubelet/cm
@@ -186,7 +182,6 @@ pkg/kubelet/events
 pkg/kubelet/lifecycle
 pkg/kubelet/metrics
 pkg/kubelet/oom
-pkg/kubelet/pod
 pkg/kubelet/pod/testing
 pkg/kubelet/preemption
 pkg/kubelet/prober
