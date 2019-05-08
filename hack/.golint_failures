@@ -103,8 +103,6 @@ pkg/controller/volume/expand
 pkg/controller/volume/persistentvolume
 pkg/controller/volume/persistentvolume/config/v1alpha1
 pkg/controller/volume/persistentvolume/options
-pkg/controller/volume/persistentvolume/testing
-pkg/controller/volume/scheduling
 pkg/credentialprovider
 pkg/credentialprovider/gcp
 pkg/features
@@ -609,7 +607,6 @@ test/e2e/autoscaling
 test/e2e/chaosmonkey
 test/e2e/common
 test/e2e/framework
-test/e2e/framework/providers/gce
 test/e2e/lifecycle/bootstrap
 test/e2e/network
 test/e2e/node
