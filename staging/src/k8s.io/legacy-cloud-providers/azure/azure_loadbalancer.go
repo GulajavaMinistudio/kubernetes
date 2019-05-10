@@ -83,6 +83,11 @@ const (
 	// ServiceAnnotationLoadBalancerMixedProtocols is the annotation used on the service
 	// to create both TCP and UDP protocols when creating load balancer rules.
 	ServiceAnnotationLoadBalancerMixedProtocols = "service.beta.kubernetes.io/azure-load-balancer-mixed-protocols"
+
+	// serviceTagKey is the service key applied for public IP tags.
+	serviceTagKey = "service"
+	// clusterNameKey is the cluster name key applied for public IP tags.
+	clusterNameKey = "kubernetes-cluster-name"
 )
 
 var (
@@ -147,7 +152,8 @@ func (az *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, ser
 		return nil, err
 	}
 
-	if _, err := az.reconcilePublicIP(clusterName, updateService, lb, true /* wantLb */); err != nil {
+	// lb is not reused here because the ETAG may be changed in above operations, hence reconcilePublicIP() would get lb again from cache.
+	if _, err := az.reconcilePublicIP(clusterName, updateService, to.String(lb.Name), true /* wantLb */); err != nil {
 		return nil, err
 	}
 
@@ -203,7 +209,7 @@ func (az *Cloud) EnsureLoadBalancerDeleted(ctx context.Context, clusterName stri
 		}
 	}
 
-	if _, err := az.reconcilePublicIP(clusterName, service, nil, false /* wantLb */); err != nil {
+	if _, err := az.reconcilePublicIP(clusterName, service, "", false /* wantLb */); err != nil {
 		if ignoreErrors(err) != nil {
 			return err
 		}
@@ -465,7 +471,7 @@ func (az *Cloud) findServiceIPAddress(ctx context.Context, clusterName string, s
 	return lbStatus.Ingress[0].IP, nil
 }
 
-func (az *Cloud) ensurePublicIPExists(service *v1.Service, pipName string, domainNameLabel string) (*network.PublicIPAddress, error) {
+func (az *Cloud) ensurePublicIPExists(service *v1.Service, pipName string, domainNameLabel, clusterName string) (*network.PublicIPAddress, error) {
 	pipResourceGroup := az.getPublicIPAddressResourceGroup(service)
 	pip, existsPip, err := az.getPublicIPAddress(pipResourceGroup, pipName)
 	if err != nil {
@@ -486,7 +492,10 @@ func (az *Cloud) ensurePublicIPExists(service *v1.Service, pipName string, domai
 			DomainNameLabel: &domainNameLabel,
 		}
 	}
-	pip.Tags = map[string]*string{"service": &serviceName}
+	pip.Tags = map[string]*string{
+		serviceTagKey:  &serviceName,
+		clusterNameKey: &clusterName,
+	}
 	if az.useStandardLoadBalancer() {
 		pip.Sku = &network.PublicIPAddressSku{
 			Name: network.PublicIPAddressSkuNameStandard,
@@ -711,7 +720,7 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 					return nil, err
 				}
 				domainNameLabel := getPublicIPDomainNameLabel(service)
-				pip, err := az.ensurePublicIPExists(service, pipName, domainNameLabel)
+				pip, err := az.ensurePublicIPExists(service, pipName, domainNameLabel, clusterName)
 				if err != nil {
 					return nil, err
 				}
@@ -1323,9 +1332,10 @@ func deduplicate(collection *[]string) *[]string {
 }
 
 // This reconciles the PublicIP resources similar to how the LB is reconciled.
-func (az *Cloud) reconcilePublicIP(clusterName string, service *v1.Service, lb *network.LoadBalancer, wantLb bool) (*network.PublicIPAddress, error) {
+func (az *Cloud) reconcilePublicIP(clusterName string, service *v1.Service, lbName string, wantLb bool) (*network.PublicIPAddress, error) {
 	isInternal := requiresInternalLoadBalancer(service)
 	serviceName := getServiceName(service)
+	var lb *network.LoadBalancer
 	var desiredPipName string
 	var err error
 	if !isInternal && wantLb {
@@ -1333,6 +1343,14 @@ func (az *Cloud) reconcilePublicIP(clusterName string, service *v1.Service, lb *
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	if lbName != "" {
+		loadBalancer, _, err := az.getAzureLoadBalancer(lbName)
+		if err != nil {
+			return nil, err
+		}
+		lb = &loadBalancer
 	}
 
 	pipResourceGroup := az.getPublicIPAddressResourceGroup(service)
@@ -1344,9 +1362,7 @@ func (az *Cloud) reconcilePublicIP(clusterName string, service *v1.Service, lb *
 
 	for i := range pips {
 		pip := pips[i]
-		if pip.Tags != nil &&
-			(pip.Tags)["service"] != nil &&
-			*(pip.Tags)["service"] == serviceName {
+		if serviceOwnsPublicIP(&pip, clusterName, serviceName) {
 			// We need to process for pips belong to this service
 			pipName := *pip.Name
 			if wantLb && !isInternal && pipName == desiredPipName {
@@ -1369,7 +1385,7 @@ func (az *Cloud) reconcilePublicIP(clusterName string, service *v1.Service, lb *
 		// Confirm desired public ip resource exists
 		var pip *network.PublicIPAddress
 		domainNameLabel := getPublicIPDomainNameLabel(service)
-		if pip, err = az.ensurePublicIPExists(service, desiredPipName, domainNameLabel); err != nil {
+		if pip, err = az.ensurePublicIPExists(service, desiredPipName, domainNameLabel, clusterName); err != nil {
 			return nil, err
 		}
 		return pip, nil
@@ -1611,4 +1627,25 @@ func getServiceTags(service *v1.Service) ([]string, error) {
 	}
 
 	return nil, nil
+}
+
+func serviceOwnsPublicIP(pip *network.PublicIPAddress, clusterName, serviceName string) bool {
+	if pip != nil && pip.Tags != nil {
+		serviceTag := pip.Tags[serviceTagKey]
+		clusterTag := pip.Tags[clusterNameKey]
+
+		if serviceTag != nil && *serviceTag == serviceName {
+			// Backward compatible for clusters upgraded from old releases.
+			// In such case, only "service" tag is set.
+			if clusterTag == nil {
+				return true
+			}
+
+			// If cluster name tag is set, then return true if it matches.
+			if *clusterTag == clusterName {
+				return true
+			}
+		}
+	}
+	return false
 }

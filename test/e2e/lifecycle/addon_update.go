@@ -29,6 +29,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
+	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+	e2essh "k8s.io/kubernetes/test/e2e/framework/ssh"
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
@@ -297,7 +299,7 @@ var _ = SIGDescribe("Addon update", func() {
 		sshExecAndVerify(sshClient, fmt.Sprintf("sudo cp %s/%s %s/%s", temporaryRemotePath, svcAddonEnsureExists, destinationDir, svcAddonEnsureExists))
 		// Delete the "ensure exist class" addon at the end.
 		defer func() {
-			framework.Logf("Cleaning up ensure exist class addon.")
+			e2elog.Logf("Cleaning up ensure exist class addon.")
 			gomega.Expect(f.ClientSet.CoreV1().Services(addonNsName).Delete("addon-ensure-exists-test", nil)).NotTo(gomega.HaveOccurred())
 		}()
 
@@ -355,11 +357,11 @@ func waitForReplicationControllerwithSelectorInAddonTest(c clientset.Interface, 
 		addonTestPollTimeout))
 }
 
-// TODO use the framework.SSH code, either adding an SCP to it or copying files
+// TODO use the ssh.SSH code, either adding an SCP to it or copying files
 // differently.
 func getMasterSSHClient() (*ssh.Client, error) {
 	// Get a signer for the provider.
-	signer, err := framework.GetSigner(framework.TestContext.Provider)
+	signer, err := e2essh.GetSigner(framework.TestContext.Provider)
 	if err != nil {
 		return nil, fmt.Errorf("error getting signer for provider %s: '%v'", framework.TestContext.Provider, err)
 	}
@@ -389,7 +391,7 @@ func sshExecAndVerify(client *ssh.Client, cmd string) {
 }
 
 func sshExec(client *ssh.Client, cmd string) (string, string, int, error) {
-	framework.Logf("Executing '%s' on %v", cmd, client.RemoteAddr())
+	e2elog.Logf("Executing '%s' on %v", cmd, client.RemoteAddr())
 	session, err := client.NewSession()
 	if err != nil {
 		return "", "", 0, fmt.Errorf("error creating session to host %s: '%v'", client.RemoteAddr(), err)
@@ -421,7 +423,7 @@ func sshExec(client *ssh.Client, cmd string) (string, string, int, error) {
 }
 
 func writeRemoteFile(sshClient *ssh.Client, data, dir, fileName string, mode os.FileMode) error {
-	framework.Logf(fmt.Sprintf("Writing remote file '%s/%s' on %v", dir, fileName, sshClient.RemoteAddr()))
+	e2elog.Logf(fmt.Sprintf("Writing remote file '%s/%s' on %v", dir, fileName, sshClient.RemoteAddr()))
 	session, err := sshClient.NewSession()
 	if err != nil {
 		return fmt.Errorf("error creating session to host %s: '%v'", sshClient.RemoteAddr(), err)
