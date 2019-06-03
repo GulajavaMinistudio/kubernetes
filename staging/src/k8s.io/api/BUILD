@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_test")
 go_test(
     name = "go_default_test",
     srcs = ["roundtrip_test.go"],
+    data = glob(["testdata/**"]),
     deps = [
         "//staging/src/k8s.io/api/admission/v1beta1:go_default_library",
         "//staging/src/k8s.io/api/admissionregistration/v1beta1:go_default_library",
@@ -24,8 +25,6 @@ go_test(
         "//staging/src/k8s.io/api/extensions/v1beta1:go_default_library",
         "//staging/src/k8s.io/api/imagepolicy/v1alpha1:go_default_library",
         "//staging/src/k8s.io/api/networking/v1:go_default_library",
-        "//staging/src/k8s.io/api/node/v1alpha1:go_default_library",
-        "//staging/src/k8s.io/api/node/v1beta1:go_default_library",
         "//staging/src/k8s.io/api/policy/v1beta1:go_default_library",
         "//staging/src/k8s.io/api/rbac/v1:go_default_library",
         "//staging/src/k8s.io/api/rbac/v1alpha1:go_default_library",
@@ -40,9 +39,7 @@ go_test(
         "//staging/src/k8s.io/apimachinery/pkg/api/apitesting/fuzzer:go_default_library",
         "//staging/src/k8s.io/apimachinery/pkg/api/apitesting/roundtrip:go_default_library",
         "//staging/src/k8s.io/apimachinery/pkg/apis/meta/fuzzer:go_default_library",
-        "//staging/src/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//staging/src/k8s.io/apimachinery/pkg/runtime:go_default_library",
-        "//staging/src/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
         "//staging/src/k8s.io/apimachinery/pkg/runtime/serializer:go_default_library",
         "//vendor/github.com/stretchr/testify/require:go_default_library",
     ],
