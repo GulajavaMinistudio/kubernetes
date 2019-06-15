@@ -153,10 +153,8 @@ pkg/kubelet/checkpointmanager/testing/example_checkpoint_formats/v1
 pkg/kubelet/client
 pkg/kubelet/cm
 pkg/kubelet/config
-pkg/kubelet/configmap
 pkg/kubelet/container
 pkg/kubelet/container/testing
-pkg/kubelet/custommetrics
 pkg/kubelet/dockershim
 pkg/kubelet/dockershim/libdocker
 pkg/kubelet/dockershim/network
@@ -172,12 +170,10 @@ pkg/kubelet/metrics
 pkg/kubelet/pluginmanager/pluginwatcher
 pkg/kubelet/pod/testing
 pkg/kubelet/preemption
-pkg/kubelet/prober
 pkg/kubelet/prober/results
 pkg/kubelet/prober/testing
 pkg/kubelet/qos
 pkg/kubelet/remote
-pkg/kubelet/secret
 pkg/kubelet/stats
 pkg/kubelet/status
 pkg/kubelet/status/testing
@@ -296,14 +292,11 @@ pkg/util/mount
 pkg/util/netsh/testing
 pkg/util/normalizer
 pkg/util/oom
-pkg/util/parsers
 pkg/util/procfs
 pkg/util/removeall
 pkg/util/rlimit
 pkg/util/selinux
-pkg/util/sysctl
 pkg/util/sysctl/testing
-pkg/util/system
 pkg/util/taints
 pkg/util/tolerations
 pkg/version/verflag
@@ -580,7 +573,6 @@ test/e2e/common
 test/e2e/lifecycle/bootstrap
 test/e2e/scalability
 test/e2e/storage/testsuites
-test/e2e/storage/utils
 test/e2e/storage/vsphere
 test/e2e_kubeadm
 test/e2e_node

@@ -27,6 +27,7 @@ import (
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 )
 
@@ -104,17 +105,8 @@ func (p *loadLoggingPod) Start(f *framework.Framework) error {
 			Containers: []api_v1.Container{
 				{
 					Name:  loggingContainerName,
-					Image: imageutils.GetE2EImage(imageutils.LogsGenerator),
-					Env: []api_v1.EnvVar{
-						{
-							Name:  "LOGS_GENERATOR_LINES_TOTAL",
-							Value: strconv.Itoa(p.expectedLinesCount),
-						},
-						{
-							Name:  "LOGS_GENERATOR_DURATION",
-							Value: p.runDuration.String(),
-						},
-					},
+					Image: imageutils.GetE2EImage(imageutils.Agnhost),
+					Args:  []string{"logs-generator", "-log-lines-total", strconv.Itoa(p.expectedLinesCount), "-run-duration", p.runDuration.String()},
 					Resources: api_v1.ResourceRequirements{
 						Requests: api_v1.ResourceList{
 							api_v1.ResourceCPU: *resource.NewMilliQuantity(
@@ -130,7 +122,7 @@ func (p *loadLoggingPod) Start(f *framework.Framework) error {
 			NodeName: p.nodeName,
 		},
 	})
-	return framework.WaitForPodNameRunningInNamespace(f.ClientSet, p.name, f.Namespace.Name)
+	return e2epod.WaitForPodNameRunningInNamespace(f.ClientSet, p.name, f.Namespace.Name)
 }
 
 func (p *loadLoggingPod) ExpectedLineCount() int {
@@ -194,5 +186,5 @@ func (p *execLoggingPod) Start(f *framework.Framework) error {
 			},
 		},
 	})
-	return framework.WaitForPodNameRunningInNamespace(f.ClientSet, p.name, f.Namespace.Name)
+	return e2epod.WaitForPodNameRunningInNamespace(f.ClientSet, p.name, f.Namespace.Name)
 }

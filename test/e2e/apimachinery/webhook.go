@@ -25,7 +25,7 @@ import (
 	"k8s.io/api/admissionregistration/v1beta1"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	rbacv1beta1 "k8s.io/api/rbac/v1beta1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	crdclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -40,6 +40,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2edeploy "k8s.io/kubernetes/test/e2e/framework/deployment"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	"k8s.io/kubernetes/test/utils/crd"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 	"k8s.io/utils/pointer"
@@ -270,20 +271,20 @@ func createAuthReaderRoleBinding(f *framework.Framework, namespace string) {
 	ginkgo.By("Create role binding to let webhook read extension-apiserver-authentication")
 	client := f.ClientSet
 	// Create the role binding to allow the webhook read the extension-apiserver-authentication configmap
-	_, err := client.RbacV1beta1().RoleBindings("kube-system").Create(&rbacv1beta1.RoleBinding{
+	_, err := client.RbacV1().RoleBindings("kube-system").Create(&rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: roleBindingName,
 			Annotations: map[string]string{
-				rbacv1beta1.AutoUpdateAnnotationKey: "true",
+				rbacv1.AutoUpdateAnnotationKey: "true",
 			},
 		},
-		RoleRef: rbacv1beta1.RoleRef{
+		RoleRef: rbacv1.RoleRef{
 			APIGroup: "",
 			Kind:     "Role",
 			Name:     "extension-apiserver-authentication-reader",
 		},
 		// Webhook uses the default service account.
-		Subjects: []rbacv1beta1.Subject{
+		Subjects: []rbacv1.Subject{
 			{
 				Kind:      "ServiceAccount",
 				Name:      "default",
@@ -818,7 +819,7 @@ func testAttachingPodWebhook(f *framework.Framework) {
 	pod := toBeAttachedPod(f)
 	_, err := client.CoreV1().Pods(f.Namespace.Name).Create(pod)
 	framework.ExpectNoError(err, "failed to create pod %s in namespace: %s", pod.Name, f.Namespace.Name)
-	err = framework.WaitForPodNameRunningInNamespace(client, pod.Name, f.Namespace.Name)
+	err = e2epod.WaitForPodNameRunningInNamespace(client, pod.Name, f.Namespace.Name)
 	framework.ExpectNoError(err, "error while waiting for pod %s to go to Running phase in namespace: %s", pod.Name, f.Namespace.Name)
 
 	ginkgo.By("'kubectl attach' the pod, should be denied by the webhook")
@@ -1285,7 +1286,7 @@ func cleanWebhookTest(client clientset.Interface, namespaceName string) {
 	_ = client.CoreV1().Services(namespaceName).Delete(serviceName, nil)
 	_ = client.AppsV1().Deployments(namespaceName).Delete(deploymentName, nil)
 	_ = client.CoreV1().Secrets(namespaceName).Delete(secretName, nil)
-	_ = client.RbacV1beta1().RoleBindings("kube-system").Delete(roleBindingName, nil)
+	_ = client.RbacV1().RoleBindings("kube-system").Delete(roleBindingName, nil)
 }
 
 func registerWebhookForCustomResource(f *framework.Framework, context *certContext, testcrd *crd.TestCrd) func() {

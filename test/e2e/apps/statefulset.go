@@ -35,6 +35,7 @@ import (
 	watchtools "k8s.io/client-go/tools/watch"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 )
 
@@ -166,7 +167,7 @@ var _ = SIGDescribe("StatefulSet", func() {
 			})
 
 			ginkgo.By("Checking that the stateful set readopts the pod")
-			gomega.Expect(framework.WaitForPodCondition(c, pod.Namespace, pod.Name, "adopted", framework.StatefulSetTimeout,
+			gomega.Expect(e2epod.WaitForPodCondition(c, pod.Namespace, pod.Name, "adopted", framework.StatefulSetTimeout,
 				func(pod *v1.Pod) (bool, error) {
 					controllerRef := metav1.GetControllerOf(pod)
 					if controllerRef == nil {
@@ -186,7 +187,7 @@ var _ = SIGDescribe("StatefulSet", func() {
 			})
 
 			ginkgo.By("Checking that the stateful set releases the pod")
-			gomega.Expect(framework.WaitForPodCondition(c, pod.Namespace, pod.Name, "released", framework.StatefulSetTimeout,
+			gomega.Expect(e2epod.WaitForPodCondition(c, pod.Namespace, pod.Name, "released", framework.StatefulSetTimeout,
 				func(pod *v1.Pod) (bool, error) {
 					controllerRef := metav1.GetControllerOf(pod)
 					if controllerRef != nil {
@@ -203,7 +204,7 @@ var _ = SIGDescribe("StatefulSet", func() {
 			})
 
 			ginkgo.By("Checking that the stateful set readopts the pod")
-			gomega.Expect(framework.WaitForPodCondition(c, pod.Namespace, pod.Name, "adopted", framework.StatefulSetTimeout,
+			gomega.Expect(e2epod.WaitForPodCondition(c, pod.Namespace, pod.Name, "adopted", framework.StatefulSetTimeout,
 				func(pod *v1.Pod) (bool, error) {
 					controllerRef := metav1.GetControllerOf(pod)
 					if controllerRef == nil {
@@ -575,7 +576,7 @@ var _ = SIGDescribe("StatefulSet", func() {
 			Testname: StatefulSet, Scaling
 			Description: StatefulSet MUST create Pods in ascending order by ordinal index when scaling up, and delete Pods in descending order when scaling down. Scaling up or down MUST pause if any Pods belonging to the StatefulSet are unhealthy. This test does not depend on a preexisting default StorageClass or a dynamic provisioner.
 		*/
-		framework.ConformanceIt("Scaling should happen in predictable order and halt if any stateful pod is unhealthy", func() {
+		framework.ConformanceIt("Scaling should happen in predictable order and halt if any stateful pod is unhealthy [Slow]", func() {
 			psLabels := klabels.Set(labels)
 			ginkgo.By("Initializing watcher for selector " + psLabels.String())
 			watcher, err := f.ClientSet.CoreV1().Pods(ns).Watch(metav1.ListOptions{
@@ -660,7 +661,7 @@ var _ = SIGDescribe("StatefulSet", func() {
 			Testname: StatefulSet, Burst Scaling
 			Description: StatefulSet MUST support the Parallel PodManagementPolicy for burst scaling. This test does not depend on a preexisting default StorageClass or a dynamic provisioner.
 		*/
-		framework.ConformanceIt("Burst scaling should run to completion even with unhealthy pods", func() {
+		framework.ConformanceIt("Burst scaling should run to completion even with unhealthy pods [Slow]", func() {
 			psLabels := klabels.Set(labels)
 
 			ginkgo.By("Creating stateful set " + ssName + " in namespace " + ns)
