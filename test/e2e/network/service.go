@@ -40,6 +40,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2eendpoints "k8s.io/kubernetes/test/e2e/framework/endpoints"
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	"k8s.io/kubernetes/test/e2e/framework/providers/gce"
 	e2essh "k8s.io/kubernetes/test/e2e/framework/ssh"
@@ -334,12 +335,16 @@ var _ = SIGDescribe("Services", func() {
 		ns := f.Namespace.Name
 		numPods, servicePort := 3, defaultServeHostnameServicePort
 
-		ginkgo.By("creating service1 in namespace " + ns)
-		podNames1, svc1IP, err := framework.StartServeHostnameService(cs, getServeHostnameService("service1"), ns, numPods)
-		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc1IP, ns)
-		ginkgo.By("creating service2 in namespace " + ns)
-		podNames2, svc2IP, err := framework.StartServeHostnameService(cs, getServeHostnameService("service2"), ns, numPods)
-		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc2IP, ns)
+		svc1 := "up-down-1"
+		svc2 := "up-down-2"
+		svc3 := "up-down-3"
+
+		ginkgo.By("creating " + svc1 + " in namespace " + ns)
+		podNames1, svc1IP, err := framework.StartServeHostnameService(cs, getServeHostnameService(svc1), ns, numPods)
+		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc1, ns)
+		ginkgo.By("creating " + svc2 + " in namespace " + ns)
+		podNames2, svc2IP, err := framework.StartServeHostnameService(cs, getServeHostnameService(svc2), ns, numPods)
+		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc2, ns)
 
 		hosts, err := e2essh.NodeSSHHosts(cs)
 		framework.ExpectNoError(err, "failed to find external/internal IPs for every node")
@@ -348,34 +353,34 @@ var _ = SIGDescribe("Services", func() {
 		}
 		host := hosts[0]
 
-		ginkgo.By("verifying service1 is up")
+		ginkgo.By("verifying service " + svc1 + " is up")
 		framework.ExpectNoError(framework.VerifyServeHostnameServiceUp(cs, ns, host, podNames1, svc1IP, servicePort))
 
-		ginkgo.By("verifying service2 is up")
+		ginkgo.By("verifying service " + svc2 + " is up")
 		framework.ExpectNoError(framework.VerifyServeHostnameServiceUp(cs, ns, host, podNames2, svc2IP, servicePort))
 
 		// Stop service 1 and make sure it is gone.
-		ginkgo.By("stopping service1")
-		framework.ExpectNoError(framework.StopServeHostnameService(f.ClientSet, ns, "service1"))
+		ginkgo.By("stopping service " + svc1)
+		framework.ExpectNoError(framework.StopServeHostnameService(f.ClientSet, ns, svc1))
 
-		ginkgo.By("verifying service1 is not up")
+		ginkgo.By("verifying service " + svc1 + " is not up")
 		framework.ExpectNoError(framework.VerifyServeHostnameServiceDown(cs, host, svc1IP, servicePort))
-		ginkgo.By("verifying service2 is still up")
+		ginkgo.By("verifying service " + svc2 + " is still up")
 		framework.ExpectNoError(framework.VerifyServeHostnameServiceUp(cs, ns, host, podNames2, svc2IP, servicePort))
 
 		// Start another service and verify both are up.
-		ginkgo.By("creating service3 in namespace " + ns)
-		podNames3, svc3IP, err := framework.StartServeHostnameService(cs, getServeHostnameService("service3"), ns, numPods)
-		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc3IP, ns)
+		ginkgo.By("creating service " + svc3 + " in namespace " + ns)
+		podNames3, svc3IP, err := framework.StartServeHostnameService(cs, getServeHostnameService(svc3), ns, numPods)
+		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc3, ns)
 
 		if svc2IP == svc3IP {
 			framework.Failf("service IPs conflict: %v", svc2IP)
 		}
 
-		ginkgo.By("verifying service2 is still up")
+		ginkgo.By("verifying service " + svc2 + " is still up")
 		framework.ExpectNoError(framework.VerifyServeHostnameServiceUp(cs, ns, host, podNames2, svc2IP, servicePort))
 
-		ginkgo.By("verifying service3 is up")
+		ginkgo.By("verifying service " + svc3 + " is up")
 		framework.ExpectNoError(framework.VerifyServeHostnameServiceUp(cs, ns, host, podNames3, svc3IP, servicePort))
 	})
 
@@ -386,20 +391,20 @@ var _ = SIGDescribe("Services", func() {
 		ns := f.Namespace.Name
 		numPods, servicePort := 3, defaultServeHostnameServicePort
 
-		svc1 := "service1"
-		svc2 := "service2"
+		svc1 := "restart-proxy-1"
+		svc2 := "restart-proxy-2"
 
 		defer func() {
 			framework.ExpectNoError(framework.StopServeHostnameService(f.ClientSet, ns, svc1))
 		}()
 		podNames1, svc1IP, err := framework.StartServeHostnameService(cs, getServeHostnameService(svc1), ns, numPods)
-		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc1IP, ns)
+		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc1, ns)
 
 		defer func() {
 			framework.ExpectNoError(framework.StopServeHostnameService(f.ClientSet, ns, svc2))
 		}()
 		podNames2, svc2IP, err := framework.StartServeHostnameService(cs, getServeHostnameService(svc2), ns, numPods)
-		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc2IP, ns)
+		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc2, ns)
 
 		if svc1IP == svc2IP {
 			framework.Failf("VIPs conflict: %v", svc1IP)
@@ -442,11 +447,14 @@ var _ = SIGDescribe("Services", func() {
 		ns := f.Namespace.Name
 		numPods, servicePort := 3, 80
 
+		svc1 := "restart-apiserver-1"
+		svc2 := "restart-apiserver-2"
+
 		defer func() {
-			framework.ExpectNoError(framework.StopServeHostnameService(f.ClientSet, ns, "service1"))
+			framework.ExpectNoError(framework.StopServeHostnameService(f.ClientSet, ns, svc1))
 		}()
-		podNames1, svc1IP, err := framework.StartServeHostnameService(cs, getServeHostnameService("service1"), ns, numPods)
-		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc1IP, ns)
+		podNames1, svc1IP, err := framework.StartServeHostnameService(cs, getServeHostnameService(svc1), ns, numPods)
+		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc1, ns)
 
 		hosts, err := e2essh.NodeSSHHosts(cs)
 		framework.ExpectNoError(err, "failed to find external/internal IPs for every node")
@@ -470,10 +478,10 @@ var _ = SIGDescribe("Services", func() {
 
 		// Create a new service and check if it's not reusing IP.
 		defer func() {
-			framework.ExpectNoError(framework.StopServeHostnameService(f.ClientSet, ns, "service2"))
+			framework.ExpectNoError(framework.StopServeHostnameService(f.ClientSet, ns, svc2))
 		}()
-		podNames2, svc2IP, err := framework.StartServeHostnameService(cs, getServeHostnameService("service2"), ns, numPods)
-		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc2IP, ns)
+		podNames2, svc2IP, err := framework.StartServeHostnameService(cs, getServeHostnameService(svc2), ns, numPods)
+		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc2, ns)
 
 		if svc1IP == svc2IP {
 			framework.Failf("VIPs conflict: %v", svc1IP)
@@ -1673,25 +1681,25 @@ var _ = SIGDescribe("Services", func() {
 	})
 
 	ginkgo.It("should have session affinity work for service with type clusterIP", func() {
-		svc := getServeHostnameService("service")
+		svc := getServeHostnameService("affinity-clusterip")
 		svc.Spec.Type = v1.ServiceTypeClusterIP
 		execAffinityTestForNonLBService(f, cs, svc)
 	})
 
 	ginkgo.It("should be able to switch session affinity for service with type clusterIP", func() {
-		svc := getServeHostnameService("service")
+		svc := getServeHostnameService("affinity-clusterip-transition")
 		svc.Spec.Type = v1.ServiceTypeClusterIP
 		execAffinityTestForNonLBServiceWithTransition(f, cs, svc)
 	})
 
 	ginkgo.It("should have session affinity work for NodePort service", func() {
-		svc := getServeHostnameService("service")
+		svc := getServeHostnameService("affinity-nodeport")
 		svc.Spec.Type = v1.ServiceTypeNodePort
 		execAffinityTestForNonLBService(f, cs, svc)
 	})
 
 	ginkgo.It("should be able to switch session affinity for NodePort service", func() {
-		svc := getServeHostnameService("service")
+		svc := getServeHostnameService("affinity-nodeport-transition")
 		svc.Spec.Type = v1.ServiceTypeNodePort
 		execAffinityTestForNonLBServiceWithTransition(f, cs, svc)
 	})
@@ -1701,7 +1709,7 @@ var _ = SIGDescribe("Services", func() {
 		// L4 load balancer affinity `ClientIP` is not supported on AWS ELB.
 		framework.SkipIfProviderIs("aws")
 
-		svc := getServeHostnameService("service")
+		svc := getServeHostnameService("affinity-lb-esipp")
 		svc.Spec.Type = v1.ServiceTypeLoadBalancer
 		svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
 		execAffinityTestForLBService(f, cs, svc)
@@ -1712,7 +1720,7 @@ var _ = SIGDescribe("Services", func() {
 		// L4 load balancer affinity `ClientIP` is not supported on AWS ELB.
 		framework.SkipIfProviderIs("aws")
 
-		svc := getServeHostnameService("service")
+		svc := getServeHostnameService("affinity-lb-esipp-transition")
 		svc.Spec.Type = v1.ServiceTypeLoadBalancer
 		svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
 		execAffinityTestForLBServiceWithTransition(f, cs, svc)
@@ -1723,7 +1731,7 @@ var _ = SIGDescribe("Services", func() {
 		// L4 load balancer affinity `ClientIP` is not supported on AWS ELB.
 		framework.SkipIfProviderIs("aws")
 
-		svc := getServeHostnameService("service")
+		svc := getServeHostnameService("affinity-lb")
 		svc.Spec.Type = v1.ServiceTypeLoadBalancer
 		svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeCluster
 		execAffinityTestForLBService(f, cs, svc)
@@ -1734,7 +1742,7 @@ var _ = SIGDescribe("Services", func() {
 		// L4 load balancer affinity `ClientIP` is not supported on AWS ELB.
 		framework.SkipIfProviderIs("aws")
 
-		svc := getServeHostnameService("service")
+		svc := getServeHostnameService("affinity-lb-transition")
 		svc.Spec.Type = v1.ServiceTypeLoadBalancer
 		svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeCluster
 		execAffinityTestForLBServiceWithTransition(f, cs, svc)
@@ -1756,13 +1764,13 @@ var _ = SIGDescribe("Services", func() {
 		// svcToggled: Created without the label then the label is toggled verifying reachability at each step.
 
 		ginkgo.By("creating service-disabled in namespace " + ns)
-		svcDisabled := getServeHostnameService("service-disabled")
+		svcDisabled := getServeHostnameService("service-proxy-disabled")
 		svcDisabled.ObjectMeta.Labels = serviceProxyNameLabels
 		_, svcDisabledIP, err := framework.StartServeHostnameService(cs, svcDisabled, ns, numPods)
 		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svcDisabledIP, ns)
 
 		ginkgo.By("creating service in namespace " + ns)
-		svcToggled := getServeHostnameService("service")
+		svcToggled := getServeHostnameService("service-proxy-toggled")
 		podToggledNames, svcToggledIP, err := framework.StartServeHostnameService(cs, svcToggled, ns, numPods)
 		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svcToggledIP, ns)
 
@@ -1992,7 +2000,7 @@ var _ = SIGDescribe("ESIPP [Slow] [DisabledForLargeClusters]", func() {
 
 	ginkgo.It("should work for type=LoadBalancer", func() {
 		namespace := f.Namespace.Name
-		serviceName := "external-local"
+		serviceName := "external-local-lb"
 		jig := framework.NewServiceTestJig(cs, serviceName)
 
 		svc := jig.CreateOnlyLocalLoadBalancerService(namespace, serviceName, loadBalancerCreateTimeout, true, nil)
@@ -2030,7 +2038,7 @@ var _ = SIGDescribe("ESIPP [Slow] [DisabledForLargeClusters]", func() {
 
 	ginkgo.It("should work for type=NodePort", func() {
 		namespace := f.Namespace.Name
-		serviceName := "external-local"
+		serviceName := "external-local-nodeport"
 		jig := framework.NewServiceTestJig(cs, serviceName)
 
 		svc := jig.CreateOnlyLocalNodePortService(namespace, serviceName, true)
@@ -2057,7 +2065,7 @@ var _ = SIGDescribe("ESIPP [Slow] [DisabledForLargeClusters]", func() {
 
 	ginkgo.It("should only target nodes with endpoints", func() {
 		namespace := f.Namespace.Name
-		serviceName := "external-local"
+		serviceName := "external-local-nodes"
 		jig := framework.NewServiceTestJig(cs, serviceName)
 		nodes := jig.GetNodes(framework.MaxNodesForEndpointsTests)
 
@@ -2083,7 +2091,7 @@ var _ = SIGDescribe("ESIPP [Slow] [DisabledForLargeClusters]", func() {
 			framework.Failf("Service HealthCheck NodePort was not allocated")
 		}
 
-		ips := framework.CollectAddresses(nodes, v1.NodeExternalIP)
+		ips := e2enode.CollectAddresses(nodes, v1.NodeExternalIP)
 
 		ingressIP := framework.GetIngressPoint(&svc.Status.LoadBalancer.Ingress[0])
 		svcTCPPort := int(svc.Spec.Ports[0].Port)
@@ -2123,7 +2131,7 @@ var _ = SIGDescribe("ESIPP [Slow] [DisabledForLargeClusters]", func() {
 
 	ginkgo.It("should work from pods", func() {
 		namespace := f.Namespace.Name
-		serviceName := "external-local"
+		serviceName := "external-local-pods"
 		jig := framework.NewServiceTestJig(cs, serviceName)
 		nodes := jig.GetNodes(framework.MaxNodesForEndpointsTests)
 
@@ -2173,7 +2181,7 @@ var _ = SIGDescribe("ESIPP [Slow] [DisabledForLargeClusters]", func() {
 
 	ginkgo.It("should handle updates to ExternalTrafficPolicy field", func() {
 		namespace := f.Namespace.Name
-		serviceName := "external-local"
+		serviceName := "external-local-update"
 		jig := framework.NewServiceTestJig(cs, serviceName)
 
 		nodes := jig.GetNodes(framework.MaxNodesForEndpointsTests)
@@ -2206,7 +2214,7 @@ var _ = SIGDescribe("ESIPP [Slow] [DisabledForLargeClusters]", func() {
 			if _, ok := endpointNodeMap[n.Name]; ok {
 				continue
 			}
-			noEndpointNodeMap[n.Name] = framework.GetNodeAddresses(&n, v1.NodeExternalIP)
+			noEndpointNodeMap[n.Name] = e2enode.GetAddresses(&n, v1.NodeExternalIP)
 		}
 
 		svcTCPPort := int(svc.Spec.Ports[0].Port)
@@ -2354,7 +2362,7 @@ func execAffinityTestForNonLBServiceWithOptionalTransition(f *framework.Framewor
 	var svcIP string
 	if serviceType == v1.ServiceTypeNodePort {
 		nodes := framework.GetReadySchedulableNodesOrDie(cs)
-		addrs := framework.CollectAddresses(nodes, v1.NodeInternalIP)
+		addrs := e2enode.CollectAddresses(nodes, v1.NodeInternalIP)
 		gomega.Expect(len(addrs)).To(gomega.BeNumerically(">", 0), "ginkgo.Failed to get Node internal IP")
 		svcIP = addrs[0]
 		servicePort = int(svc.Spec.Ports[0].NodePort)

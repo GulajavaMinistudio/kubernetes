@@ -60,9 +60,6 @@ const (
 	minRetryDelay = 5 * time.Second
 	maxRetryDelay = 300 * time.Second
 
-	clientRetryCount    = 5
-	clientRetryInterval = 5 * time.Second
-
 	// LabelNodeRoleMaster specifies that a node is a master
 	// It's copied over to kubeadm until it's merged in core: https://github.com/kubernetes/kubernetes/pull/39112
 	LabelNodeRoleMaster = "node-role.kubernetes.io/master"
@@ -505,10 +502,6 @@ func (s *ServiceController) needsUpdate(oldService *v1.Service, newService *v1.S
 	}
 
 	return false
-}
-
-func (s *ServiceController) loadBalancerName(service *v1.Service) string {
-	return s.balancer.GetLoadBalancerName(context.TODO(), "", service)
 }
 
 func getPortsForLB(service *v1.Service) ([]*v1.ServicePort, error) {
