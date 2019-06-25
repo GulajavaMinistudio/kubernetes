@@ -537,7 +537,6 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		experimentalHostUserNamespaceDefaulting: utilfeature.DefaultFeatureGate.Enabled(features.ExperimentalHostUserNamespaceDefaultingGate),
 		keepTerminatedPodVolumes:                keepTerminatedPodVolumes,
 		nodeStatusMaxImages:                     nodeStatusMaxImages,
-		enablePluginsWatcher:                    utilfeature.DefaultFeatureGate.Enabled(features.KubeletPluginsWatcher),
 	}
 
 	if klet.cloud != nil {
@@ -785,13 +784,11 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	if err != nil {
 		return nil, err
 	}
-	if klet.enablePluginsWatcher {
-		klet.pluginManager = pluginmanager.NewPluginManager(
-			klet.getPluginsRegistrationDir(), /* sockDir */
-			klet.getPluginsDir(),             /* deprecatedSockDir */
-			kubeDeps.Recorder,
-		)
-	}
+	klet.pluginManager = pluginmanager.NewPluginManager(
+		klet.getPluginsRegistrationDir(), /* sockDir */
+		klet.getPluginsDir(),             /* deprecatedSockDir */
+		kubeDeps.Recorder,
+	)
 
 	// If the experimentalMounterPathFlag is set, we do not want to
 	// check node capabilities since the mount path is not the default
@@ -1210,9 +1207,6 @@ type Kubelet struct {
 	// This flag sets a maximum number of images to report in the node status.
 	nodeStatusMaxImages int32
 
-	//  This flag indicates that kubelet should start plugin watcher utility server for discovering Kubelet plugins
-	enablePluginsWatcher bool
-
 	// Handles RuntimeClass objects for the Kubelet.
 	runtimeClassManager *runtimeclass.Manager
 }
@@ -1375,15 +1369,13 @@ func (kl *Kubelet) initializeRuntimeDependentModules() {
 	// container log manager must start after container runtime is up to retrieve information from container runtime
 	// and inform container to reopen log file after log rotation.
 	kl.containerLogManager.Start()
-	if kl.enablePluginsWatcher {
-		// Adding Registration Callback function for CSI Driver
-		kl.pluginManager.AddHandler(pluginwatcherapi.CSIPlugin, plugincache.PluginHandler(csi.PluginHandler))
-		// Adding Registration Callback function for Device Manager
-		kl.pluginManager.AddHandler(pluginwatcherapi.DevicePlugin, kl.containerManager.GetPluginRegistrationHandler())
-		// Start the plugin manager
-		klog.V(4).Infof("starting plugin manager")
-		go kl.pluginManager.Run(kl.sourcesReady, wait.NeverStop)
-	}
+	// Adding Registration Callback function for CSI Driver
+	kl.pluginManager.AddHandler(pluginwatcherapi.CSIPlugin, plugincache.PluginHandler(csi.PluginHandler))
+	// Adding Registration Callback function for Device Manager
+	kl.pluginManager.AddHandler(pluginwatcherapi.DevicePlugin, kl.containerManager.GetPluginRegistrationHandler())
+	// Start the plugin manager
+	klog.V(4).Infof("starting plugin manager")
+	go kl.pluginManager.Run(kl.sourcesReady, wait.NeverStop)
 }
 
 // Run starts the kubelet reacting to config updates
@@ -1629,11 +1621,13 @@ func (kl *Kubelet) syncPod(o syncPodOptions) error {
 			if mirrorPod.DeletionTimestamp != nil || !kl.podManager.IsMirrorPodOf(mirrorPod, pod) {
 				// The mirror pod is semantically different from the static pod. Remove
 				// it. The mirror pod will get recreated later.
-				klog.Warningf("Deleting mirror pod %q because it is outdated", format.Pod(mirrorPod))
-				if err := kl.podManager.DeleteMirrorPod(podFullName); err != nil {
+				klog.Infof("Trying to delete pod %s %v", podFullName, mirrorPod.ObjectMeta.UID)
+				var err error
+				deleted, err = kl.podManager.DeleteMirrorPod(podFullName, &mirrorPod.ObjectMeta.UID)
+				if deleted {
+					klog.Warningf("Deleted mirror pod %q because it is outdated", format.Pod(mirrorPod))
+				} else if err != nil {
 					klog.Errorf("Failed deleting mirror pod %q: %v", format.Pod(mirrorPod), err)
-				} else {
-					deleted = true
 				}
 			}
 		}
