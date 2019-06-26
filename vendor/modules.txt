@@ -727,7 +727,7 @@ github.com/rubiojr/go-vhd/vhd
 github.com/russross/blackfriday
 # github.com/satori/go.uuid v1.2.0 => github.com/satori/go.uuid v1.2.0
 github.com/satori/go.uuid
-# github.com/seccomp/libseccomp-golang v0.0.0-20150813023252-1b506fc7c24e => github.com/seccomp/libseccomp-golang v0.0.0-20150813023252-1b506fc7c24e
+# github.com/seccomp/libseccomp-golang v0.9.1 => github.com/seccomp/libseccomp-golang v0.9.1
 github.com/seccomp/libseccomp-golang
 # github.com/sigma/go-inotify v0.0.0-20181102212354-c87b6cf5033d => github.com/sigma/go-inotify v0.0.0-20181102212354-c87b6cf5033d
 github.com/sigma/go-inotify
@@ -1543,6 +1543,7 @@ k8s.io/cloud-provider/volume/errors
 k8s.io/cloud-provider/volume/helpers
 # k8s.io/cluster-bootstrap v0.0.0 => ./staging/src/k8s.io/cluster-bootstrap
 k8s.io/cluster-bootstrap/token/api
+k8s.io/cluster-bootstrap/token/jws
 k8s.io/cluster-bootstrap/token/util
 k8s.io/cluster-bootstrap/util/secrets
 k8s.io/cluster-bootstrap/util/tokens
@@ -1635,9 +1636,12 @@ k8s.io/kube-proxy/config/v1alpha1
 # k8s.io/kube-scheduler v0.0.0 => ./staging/src/k8s.io/kube-scheduler
 k8s.io/kube-scheduler/config/v1alpha1
 # k8s.io/kubectl v0.0.0 => ./staging/src/k8s.io/kubectl
+k8s.io/kubectl/pkg/util/deployment
+k8s.io/kubectl/pkg/util/hash
 k8s.io/kubectl/pkg/util/interrupt
 k8s.io/kubectl/pkg/util/podutils
 k8s.io/kubectl/pkg/util/printers
+k8s.io/kubectl/pkg/util/rbac
 k8s.io/kubectl/pkg/util/templates
 k8s.io/kubectl/pkg/util/term
 # k8s.io/kubelet v0.0.0 => ./staging/src/k8s.io/kubelet
