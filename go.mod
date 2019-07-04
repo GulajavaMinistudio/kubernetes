@@ -64,7 +64,7 @@ require (
 	github.com/go-openapi/validate v0.19.2
 	github.com/go-ozzo/ozzo-validation v3.5.0+incompatible // indirect
 	github.com/godbus/dbus v4.1.0+incompatible
-	github.com/gogo/protobuf v0.0.0-20171007142547-342cbe0a0415
+	github.com/gogo/protobuf v1.0.0
 	github.com/golang/groupcache v0.0.0-20160516000752-02826c3e7903
 	github.com/golang/mock v1.2.0
 	github.com/golang/protobuf v1.2.0
@@ -177,7 +177,7 @@ require (
 	k8s.io/metrics v0.0.0
 	k8s.io/repo-infra v0.0.0-20181204233714-00fe14e3d1a3
 	k8s.io/sample-apiserver v0.0.0
-	k8s.io/utils v0.0.0-20190221042446-c2654d5206da
+	k8s.io/utils v0.0.0-20190607212802-c55fbcfc754a
 	sigs.k8s.io/kustomize v2.0.3+incompatible
 	sigs.k8s.io/yaml v1.1.0
 	vbom.ml/util v0.0.0-20160121211510-db5cfe13f5cc
@@ -271,7 +271,7 @@ replace (
 	github.com/go-openapi/validate => github.com/go-openapi/validate v0.19.2
 	github.com/go-ozzo/ozzo-validation => github.com/go-ozzo/ozzo-validation v3.5.0+incompatible
 	github.com/godbus/dbus => github.com/godbus/dbus v4.1.0+incompatible
-	github.com/gogo/protobuf => github.com/gogo/protobuf v0.0.0-20171007142547-342cbe0a0415
+	github.com/gogo/protobuf => github.com/gogo/protobuf v1.0.0
 	github.com/golang/glog => github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/golang/groupcache => github.com/golang/groupcache v0.0.0-20160516000752-02826c3e7903
 	github.com/golang/mock => github.com/golang/mock v1.2.0
@@ -462,7 +462,7 @@ replace (
 	k8s.io/sample-apiserver => ./staging/src/k8s.io/sample-apiserver
 	k8s.io/sample-cli-plugin => ./staging/src/k8s.io/sample-cli-plugin
 	k8s.io/sample-controller => ./staging/src/k8s.io/sample-controller
-	k8s.io/utils => k8s.io/utils v0.0.0-20190221042446-c2654d5206da
+	k8s.io/utils => k8s.io/utils v0.0.0-20190607212802-c55fbcfc754a
 	modernc.org/cc => modernc.org/cc v1.0.0
 	modernc.org/golex => modernc.org/golex v1.0.0
 	modernc.org/mathutil => modernc.org/mathutil v1.0.0

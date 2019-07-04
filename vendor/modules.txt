@@ -373,7 +373,7 @@ github.com/go-ozzo/ozzo-validation
 github.com/go-ozzo/ozzo-validation/is
 # github.com/godbus/dbus v4.1.0+incompatible => github.com/godbus/dbus v4.1.0+incompatible
 github.com/godbus/dbus
-# github.com/gogo/protobuf v0.0.0-20171007142547-342cbe0a0415 => github.com/gogo/protobuf v0.0.0-20171007142547-342cbe0a0415
+# github.com/gogo/protobuf v1.0.0 => github.com/gogo/protobuf v1.0.0
 github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/plugin/compare
 github.com/gogo/protobuf/plugin/defaultcheck
@@ -1477,6 +1477,7 @@ k8s.io/client-go/listers/settings/v1alpha1
 k8s.io/client-go/listers/storage/v1
 k8s.io/client-go/listers/storage/v1alpha1
 k8s.io/client-go/listers/storage/v1beta1
+k8s.io/client-go/metadata
 k8s.io/client-go/pkg/apis/clientauthentication
 k8s.io/client-go/pkg/apis/clientauthentication/v1alpha1
 k8s.io/client-go/pkg/apis/clientauthentication/v1beta1
@@ -1711,7 +1712,7 @@ k8s.io/sample-apiserver/pkg/generated/listers/wardle/v1beta1
 k8s.io/sample-apiserver/pkg/registry
 k8s.io/sample-apiserver/pkg/registry/wardle/fischer
 k8s.io/sample-apiserver/pkg/registry/wardle/flunder
-# k8s.io/utils v0.0.0-20190221042446-c2654d5206da => k8s.io/utils v0.0.0-20190221042446-c2654d5206da
+# k8s.io/utils v0.0.0-20190607212802-c55fbcfc754a => k8s.io/utils v0.0.0-20190607212802-c55fbcfc754a
 k8s.io/utils/buffer
 k8s.io/utils/clock
 k8s.io/utils/exec

@@ -162,6 +162,12 @@ const (
 	// Enable nodes to change CPUCFSQuotaPeriod
 	CPUCFSQuotaPeriod featuregate.Feature = "CustomCPUCFSQuotaPeriod"
 
+	// owner: @lmdaly
+	// alpha: v1.16
+	//
+	// Enable resource managers to make NUMA aligned decisions
+	TopologyManager featuregate.Feature = "TopologyManager"
+
 	// owner: @sjenning
 	// beta: v1.11
 	//
@@ -447,6 +453,12 @@ const (
 	//
 	// Enables PodOverhead, for accounting pod overheads which are specific to a given RuntimeClass
 	PodOverhead featuregate.Feature = "PodOverhead"
+
+	// owner: @khenidak
+	// alpha: v1.15
+	//
+	// Enables ipv6 dual stack
+	IPv6DualStack featuregate.Feature = "IPv6DualStack"
 )
 
 func init() {
@@ -479,6 +491,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	AttachVolumeLimit:                           {Default: true, PreRelease: featuregate.Beta},
 	CPUManager:                                  {Default: true, PreRelease: featuregate.Beta},
 	CPUCFSQuotaPeriod:                           {Default: false, PreRelease: featuregate.Alpha},
+	TopologyManager:                             {Default: false, PreRelease: featuregate.Alpha},
 	ServiceNodeExclusion:                        {Default: false, PreRelease: featuregate.Alpha},
 	MountContainers:                             {Default: false, PreRelease: featuregate.Alpha},
 	CSIDriverRegistry:                           {Default: true, PreRelease: featuregate.Beta},
@@ -522,6 +535,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	NonPreemptingPriority:                          {Default: false, PreRelease: featuregate.Alpha},
 	VolumePVCDataSource:                            {Default: false, PreRelease: featuregate.Alpha},
 	PodOverhead:                                    {Default: false, PreRelease: featuregate.Alpha},
+	IPv6DualStack:                                  {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
