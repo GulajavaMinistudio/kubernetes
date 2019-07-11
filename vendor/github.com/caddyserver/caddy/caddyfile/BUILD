@@ -8,10 +8,9 @@ go_library(
         "lexer.go",
         "parse.go",
     ],
-    importmap = "k8s.io/kubernetes/vendor/github.com/mholt/caddy/caddyfile",
-    importpath = "github.com/mholt/caddy/caddyfile",
+    importmap = "k8s.io/kubernetes/vendor/github.com/caddyserver/caddy/caddyfile",
+    importpath = "github.com/caddyserver/caddy/caddyfile",
     visibility = ["//visibility:public"],
-    deps = ["//vendor/github.com/mholt/caddy/telemetry:go_default_library"],
 )
 
 filegroup(
