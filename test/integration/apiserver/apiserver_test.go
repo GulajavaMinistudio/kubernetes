@@ -151,6 +151,70 @@ var cascDel = `
 }
 `
 
+func Test4xxStatusCodeInvalidPatch(t *testing.T) {
+	_, client, closeFn := setup(t)
+	defer closeFn()
+
+	obj := []byte(`{
+		"apiVersion": "apps/v1",
+		"kind": "Deployment",
+		"metadata": {
+			"name": "deployment",
+			"labels": {"app": "nginx"}
+                },
+		"spec": {
+			"selector": {
+				"matchLabels": {
+					 "app": "nginx"
+				}
+			},
+			"template": {
+				"metadata": {
+					"labels": {
+						"app": "nginx"
+					}
+				},
+				"spec": {
+					"containers": [{
+						"name":  "nginx",
+						"image": "nginx:latest"
+					}]
+				}
+			}
+		}
+	}`)
+
+	resp, err := client.CoreV1().RESTClient().Post().
+		AbsPath("/apis/apps/v1").
+		Namespace("default").
+		Resource("deployments").
+		Body(obj).Do().Get()
+	if err != nil {
+		t.Fatalf("Failed to create object: %v: %v", err, resp)
+	}
+	result := client.CoreV1().RESTClient().Patch(types.MergePatchType).
+		AbsPath("/apis/apps/v1").
+		Namespace("default").
+		Resource("deployments").
+		Name("deployment").
+		Body([]byte(`{"metadata":{"annotations":{"foo":["bar"]}}}`)).Do()
+	var statusCode int
+	result.StatusCode(&statusCode)
+	if statusCode != 422 {
+		t.Fatalf("Expected status code to be 422, got %v (%#v)", statusCode, result)
+	}
+	result = client.CoreV1().RESTClient().Patch(types.StrategicMergePatchType).
+		AbsPath("/apis/apps/v1").
+		Namespace("default").
+		Resource("deployments").
+		Name("deployment").
+		Body([]byte(`{"metadata":{"annotations":{"foo":["bar"]}}}`)).Do()
+	result.StatusCode(&statusCode)
+	if statusCode != 422 {
+		t.Fatalf("Expected status code to be 422, got %v (%#v)", statusCode, result)
+	}
+}
+
 // Tests that the apiserver returns 202 status code as expected.
 func Test202StatusCode(t *testing.T) {
 	s, clientSet, closeFn := setup(t)
@@ -481,7 +545,7 @@ func TestMetadataClient(t *testing.T) {
 					return wrapper
 				})
 
-				client := metadata.NewConfigOrDie(cfg).Resource(v1.SchemeGroupVersion.WithResource("services"))
+				client := metadata.NewForConfigOrDie(cfg).Resource(v1.SchemeGroupVersion.WithResource("services"))
 				items, err := client.Namespace(ns).List(metav1.ListOptions{})
 				if err != nil {
 					t.Fatal(err)
@@ -558,7 +622,7 @@ func TestMetadataClient(t *testing.T) {
 					return wrapper
 				})
 
-				client := metadata.NewConfigOrDie(cfg).Resource(crdGVR)
+				client := metadata.NewForConfigOrDie(cfg).Resource(crdGVR)
 				items, err := client.Namespace(ns).List(metav1.ListOptions{})
 				if err != nil {
 					t.Fatal(err)
@@ -624,7 +688,7 @@ func TestMetadataClient(t *testing.T) {
 					return wrapper
 				})
 
-				client := metadata.NewConfigOrDie(cfg).Resource(v1.SchemeGroupVersion.WithResource("services"))
+				client := metadata.NewForConfigOrDie(cfg).Resource(v1.SchemeGroupVersion.WithResource("services"))
 				w, err := client.Namespace(ns).Watch(metav1.ListOptions{ResourceVersion: svc.ResourceVersion, Watch: true})
 				if err != nil {
 					t.Fatal(err)
@@ -680,7 +744,7 @@ func TestMetadataClient(t *testing.T) {
 				}
 
 				cfg := metadata.ConfigFor(config)
-				client := metadata.NewConfigOrDie(cfg).Resource(crdGVR)
+				client := metadata.NewForConfigOrDie(cfg).Resource(crdGVR)
 
 				patched, err := client.Namespace(ns).Patch("test-2", types.MergePatchType, []byte(`{"metadata":{"annotations":{"test":"1"}}}`), metav1.PatchOptions{})
 				if err != nil {
@@ -695,7 +759,7 @@ func TestMetadataClient(t *testing.T) {
 					wrapper.nested = rt
 					return wrapper
 				})
-				client = metadata.NewConfigOrDie(cfg).Resource(crdGVR)
+				client = metadata.NewForConfigOrDie(cfg).Resource(crdGVR)
 
 				w, err := client.Namespace(ns).Watch(metav1.ListOptions{ResourceVersion: cr.GetResourceVersion(), Watch: true})
 				if err != nil {
