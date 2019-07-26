@@ -17,7 +17,6 @@ go_test(
     ],
     embed = [":go_default_library"],
     deps = [
-        "//pkg/kubectl/util:go_default_library",
         "//staging/src/k8s.io/api/apps/v1:go_default_library",
         "//staging/src/k8s.io/api/autoscaling/v1:go_default_library",
         "//staging/src/k8s.io/api/core/v1:go_default_library",
@@ -40,13 +39,13 @@ go_test(
         "//staging/src/k8s.io/client-go/scale/fake:go_default_library",
         "//staging/src/k8s.io/client-go/testing:go_default_library",
         "//staging/src/k8s.io/kubectl/pkg/scheme:go_default_library",
+        "//staging/src/k8s.io/kubectl/pkg/util:go_default_library",
     ],
 )
 
 go_library(
     name = "go_default_library",
     srcs = [
-        "apply.go",
         "conditions.go",
         "doc.go",
         "history.go",
@@ -58,9 +57,7 @@ go_library(
     ],
     importpath = "k8s.io/kubernetes/pkg/kubectl",
     deps = [
-        "//pkg/kubectl/apps:go_default_library",
         "//pkg/kubectl/describe/versioned:go_default_library",
-        "//pkg/kubectl/util:go_default_library",
         "//staging/src/k8s.io/api/apps/v1:go_default_library",
         "//staging/src/k8s.io/api/autoscaling/v1:go_default_library",
         "//staging/src/k8s.io/api/core/v1:go_default_library",
@@ -84,7 +81,9 @@ go_library(
         "//staging/src/k8s.io/client-go/rest:go_default_library",
         "//staging/src/k8s.io/client-go/scale:go_default_library",
         "//staging/src/k8s.io/client-go/util/retry:go_default_library",
+        "//staging/src/k8s.io/kubectl/pkg/apps:go_default_library",
         "//staging/src/k8s.io/kubectl/pkg/scheme:go_default_library",
+        "//staging/src/k8s.io/kubectl/pkg/util:go_default_library",
         "//staging/src/k8s.io/kubectl/pkg/util/deployment:go_default_library",
         "//staging/src/k8s.io/kubectl/pkg/util/podutils:go_default_library",
         "//staging/src/k8s.io/kubectl/pkg/util/slice:go_default_library",
@@ -105,7 +104,6 @@ filegroup(
     srcs = [
         ":package-srcs",
         "//pkg/kubectl/apply:all-srcs",
-        "//pkg/kubectl/apps:all-srcs",
         "//pkg/kubectl/cmd:all-srcs",
         "//pkg/kubectl/describe:all-srcs",
         "//pkg/kubectl/drain:all-srcs",
