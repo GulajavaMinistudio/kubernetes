@@ -229,23 +229,23 @@ func getTPMapMatchingSpreadConstraints(pod *v1.Pod, nodeInfoMap map[string]*sche
 		}
 		// In accordance to design, if NodeAffinity or NodeSelector is defined,
 		// spreading is applied to nodes that pass those filters.
-		if !podMatchesNodeSelectorAndAffinityTerms(pod, node) {
-			return
-		}
-		// Ensure current node's labels contains all topologyKeys in 'constraints'.
-		if !nodeLabelsMatchSpreadConstraints(node.Labels, constraints) {
+		if !PodMatchesNodeSelectorAndAffinityTerms(pod, node) {
 			return
 		}
 
+		// Ensure current node's labels contains all topologyKeys in 'constraints'.
+		if !NodeLabelsMatchSpreadConstraints(node.Labels, constraints) {
+			return
+		}
 		nodeTopologyMaps := newTopologyPairsMaps()
-		// nodeInfo.Pods() can be empty; or all pods don't fit
-		for _, existingPod := range nodeInfo.Pods() {
-			if existingPod.Namespace != pod.Namespace {
-				continue
-			}
-			podLabelSet := labels.Set(existingPod.Labels)
-			for _, constraint := range constraints {
-				ok, err := podMatchesSpreadConstraint(podLabelSet, constraint)
+		for _, constraint := range constraints {
+			pairAdded := false
+			// nodeInfo.Pods() can be empty; or all pods don't fit
+			for _, existingPod := range nodeInfo.Pods() {
+				if existingPod.Namespace != pod.Namespace {
+					continue
+				}
+				ok, err := PodMatchesSpreadConstraint(existingPod.Labels, constraint)
 				if err != nil {
 					errCh.SendErrorWithCancel(err, cancel)
 					return
@@ -254,21 +254,20 @@ func getTPMapMatchingSpreadConstraints(pod *v1.Pod, nodeInfoMap map[string]*sche
 					// constraint.TopologyKey is already guaranteed to be present
 					pair := topologyPair{key: constraint.TopologyKey, value: node.Labels[constraint.TopologyKey]}
 					nodeTopologyMaps.addTopologyPair(pair, existingPod)
+					pairAdded = true
 				}
 			}
-		}
-		// If needed, append topology pair without entry of pods.
-		// For example, on node-x, there is no pod matching spread constraints,
-		// but node-x should be also considered as a match (with match number 0)
-		// i.e. <node: node-x>: {}
-		for _, constraint := range constraints {
-			// constraint.TopologyKey is already guaranteed to be present
-			pair := topologyPair{
-				key:   constraint.TopologyKey,
-				value: node.Labels[constraint.TopologyKey],
+			// If needed, append topology pair without entry of pods.
+			// For example, on node-x, there is no pod matching spread constraints,
+			// but node-x should be also considered as a match (with match number 0)
+			// i.e. <node: node-x>: {}
+			if !pairAdded {
+				pair := topologyPair{
+					key:   constraint.TopologyKey,
+					value: node.Labels[constraint.TopologyKey],
+				}
+				nodeTopologyMaps.addTopologyPairWithoutPods(pair)
 			}
-			// addTopologyPairWithoutPods is a non-op if other pods match this pair
-			nodeTopologyMaps.addTopologyPairWithoutPods(pair)
 		}
 
 		appendTopologyPairsMaps(nodeTopologyMaps)
@@ -305,10 +304,11 @@ func getHardTopologySpreadConstraints(pod *v1.Pod) (constraints []v1.TopologySpr
 	return
 }
 
-// some corner cases:
+// PodMatchesSpreadConstraint verifies if <constraint.LabelSelector> matches <podLabelSet>.
+// Some corner cases:
 // 1. podLabelSet = nil => returns (false, nil)
 // 2. constraint.LabelSelector = nil => returns (false, nil)
-func podMatchesSpreadConstraint(podLabelSet labels.Set, constraint v1.TopologySpreadConstraint) (bool, error) {
+func PodMatchesSpreadConstraint(podLabelSet labels.Set, constraint v1.TopologySpreadConstraint) (bool, error) {
 	selector, err := metav1.LabelSelectorAsSelector(constraint.LabelSelector)
 	if err != nil {
 		return false, err
@@ -319,8 +319,8 @@ func podMatchesSpreadConstraint(podLabelSet labels.Set, constraint v1.TopologySp
 	return true, nil
 }
 
-// check if ALL topology keys in spread constraints are present in node labels
-func nodeLabelsMatchSpreadConstraints(nodeLabels map[string]string, constraints []v1.TopologySpreadConstraint) bool {
+// NodeLabelsMatchSpreadConstraints checks if ALL topology keys in spread constraints are present in node labels.
+func NodeLabelsMatchSpreadConstraints(nodeLabels map[string]string, constraints []v1.TopologySpreadConstraint) bool {
 	for _, constraint := range constraints {
 		if _, ok := nodeLabels[constraint.TopologyKey]; !ok {
 			return false
@@ -389,7 +389,7 @@ func (m *topologyPairsPodSpreadMap) addPod(addedPod, preemptorPod *v1.Pod, node 
 		return nil
 	}
 	constraints := getHardTopologySpreadConstraints(preemptorPod)
-	if !nodeLabelsMatchSpreadConstraints(node.Labels, constraints) {
+	if !NodeLabelsMatchSpreadConstraints(node.Labels, constraints) {
 		return nil
 	}
 
@@ -397,7 +397,7 @@ func (m *topologyPairsPodSpreadMap) addPod(addedPod, preemptorPod *v1.Pod, node 
 	minMatchNeedingUpdate := make(map[string]struct{})
 	podLabelSet := labels.Set(addedPod.Labels)
 	for _, constraint := range constraints {
-		if match, err := podMatchesSpreadConstraint(podLabelSet, constraint); err != nil {
+		if match, err := PodMatchesSpreadConstraint(podLabelSet, constraint); err != nil {
 			return err
 		} else if !match {
 			continue
