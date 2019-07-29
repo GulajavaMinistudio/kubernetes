@@ -82,14 +82,12 @@ filegroup(
     name = "all-srcs",
     srcs = [
         ":package-srcs",
-        "//pkg/kubectl/apply:all-srcs",
         "//pkg/kubectl/cmd:all-srcs",
         "//pkg/kubectl/explain:all-srcs",
         "//pkg/kubectl/generate:all-srcs",
         "//pkg/kubectl/metricsutil:all-srcs",
         "//pkg/kubectl/polymorphichelpers:all-srcs",
         "//pkg/kubectl/proxy:all-srcs",
-        "//pkg/kubectl/util:all-srcs",
     ],
     tags = ["automanaged"],
 )
