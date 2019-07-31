@@ -45,7 +45,7 @@ require (
 	github.com/cyphar/filepath-securejoin v0.2.2 // indirect
 	github.com/davecgh/go-spew v1.1.1
 	github.com/daviddengcn/go-colortext v0.0.0-20160507010035-511bcaf42ccd
-	github.com/docker/distribution v0.0.0-20170726174610-edc3ab29cdff
+	github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/docker v0.7.3-0.20190327010347-be7ac8be2ae0
 	github.com/docker/go-connections v0.3.0
 	github.com/docker/go-units v0.3.3
@@ -62,7 +62,7 @@ require (
 	github.com/go-openapi/validate v0.19.2
 	github.com/go-ozzo/ozzo-validation v3.5.0+incompatible // indirect
 	github.com/godbus/dbus v4.1.0+incompatible
-	github.com/gogo/protobuf v0.0.0-20190410021324-65acae22fc9
+	github.com/gogo/protobuf v1.2.2-0.20190723190241-65acae22fc9d
 	github.com/golang/groupcache v0.0.0-20160516000752-02826c3e7903
 	github.com/golang/mock v1.2.0
 	github.com/golang/protobuf v1.2.0
@@ -238,7 +238,7 @@ replace (
 	github.com/daviddengcn/go-colortext => github.com/daviddengcn/go-colortext v0.0.0-20160507010035-511bcaf42ccd
 	github.com/dgrijalva/jwt-go => github.com/dgrijalva/jwt-go v0.0.0-20160705203006-01aeca54ebda
 	github.com/dnaeon/go-vcr => github.com/dnaeon/go-vcr v1.0.1
-	github.com/docker/distribution => github.com/docker/distribution v0.0.0-20170726174610-edc3ab29cdff
+	github.com/docker/distribution => github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/docker => github.com/docker/docker v0.7.3-0.20190327010347-be7ac8be2ae0
 	github.com/docker/go-connections => github.com/docker/go-connections v0.3.0
 	github.com/docker/go-units => github.com/docker/go-units v0.3.3
@@ -269,7 +269,7 @@ replace (
 	github.com/go-openapi/validate => github.com/go-openapi/validate v0.19.2
 	github.com/go-ozzo/ozzo-validation => github.com/go-ozzo/ozzo-validation v3.5.0+incompatible
 	github.com/godbus/dbus => github.com/godbus/dbus v4.1.0+incompatible
-	github.com/gogo/protobuf => github.com/gogo/protobuf v0.0.0-20190410021324-65acae22fc9
+	github.com/gogo/protobuf => github.com/gogo/protobuf v1.2.2-0.20190723190241-65acae22fc9d
 	github.com/golang/glog => github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/golang/groupcache => github.com/golang/groupcache v0.0.0-20160516000752-02826c3e7903
 	github.com/golang/mock => github.com/golang/mock v1.2.0

@@ -283,7 +283,7 @@ github.com/davecgh/go-spew/spew
 github.com/daviddengcn/go-colortext
 # github.com/dgrijalva/jwt-go v0.0.0-20160705203006-01aeca54ebda => github.com/dgrijalva/jwt-go v0.0.0-20160705203006-01aeca54ebda
 github.com/dgrijalva/jwt-go
-# github.com/docker/distribution v0.0.0-20170726174610-edc3ab29cdff => github.com/docker/distribution v0.0.0-20170726174610-edc3ab29cdff
+# github.com/docker/distribution v2.7.1+incompatible => github.com/docker/distribution v2.7.1+incompatible
 github.com/docker/distribution/digestset
 github.com/docker/distribution/reference
 github.com/docker/distribution/registry/api/errcode
@@ -375,7 +375,7 @@ github.com/go-ozzo/ozzo-validation
 github.com/go-ozzo/ozzo-validation/is
 # github.com/godbus/dbus v4.1.0+incompatible => github.com/godbus/dbus v4.1.0+incompatible
 github.com/godbus/dbus
-# github.com/gogo/protobuf v0.0.0-20190410021324-65acae22fc9 => github.com/gogo/protobuf v0.0.0-20190410021324-65acae22fc9
+# github.com/gogo/protobuf v1.2.2-0.20190723190241-65acae22fc9d => github.com/gogo/protobuf v1.2.2-0.20190723190241-65acae22fc9d
 github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/plugin/compare
 github.com/gogo/protobuf/plugin/defaultcheck
@@ -1649,7 +1649,12 @@ k8s.io/kubectl/pkg/cmd/util/sanity
 k8s.io/kubectl/pkg/describe
 k8s.io/kubectl/pkg/describe/versioned
 k8s.io/kubectl/pkg/drain
+k8s.io/kubectl/pkg/generate
+k8s.io/kubectl/pkg/generate/versioned
 k8s.io/kubectl/pkg/generated
+k8s.io/kubectl/pkg/metricsutil
+k8s.io/kubectl/pkg/polymorphichelpers
+k8s.io/kubectl/pkg/proxy
 k8s.io/kubectl/pkg/rawhttp
 k8s.io/kubectl/pkg/scheme
 k8s.io/kubectl/pkg/util
