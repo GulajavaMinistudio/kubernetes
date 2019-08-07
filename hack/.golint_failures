@@ -114,7 +114,6 @@ pkg/kubelet/apis/config
 pkg/kubelet/apis/config/v1beta1
 pkg/kubelet/apis/deviceplugin/v1beta1
 pkg/kubelet/checkpointmanager/testing/example_checkpoint_formats/v1
-pkg/kubelet/client
 pkg/kubelet/cm
 pkg/kubelet/config
 pkg/kubelet/container
@@ -129,7 +128,6 @@ pkg/kubelet/dockershim/network/kubenet
 pkg/kubelet/dockershim/network/testing
 pkg/kubelet/events
 pkg/kubelet/lifecycle
-pkg/kubelet/metrics
 pkg/kubelet/pluginmanager/pluginwatcher
 pkg/kubelet/pod/testing
 pkg/kubelet/preemption
