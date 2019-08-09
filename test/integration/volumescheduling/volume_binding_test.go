@@ -14,11 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package scheduler
+package volumescheduling
 
 // This file tests the VolumeScheduling feature.
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -28,7 +29,7 @@ import (
 
 	"k8s.io/klog"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,12 +39,12 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/workqueue"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/kubernetes/pkg/controller/volume/persistentvolume"
 	persistentvolumeoptions "k8s.io/kubernetes/pkg/controller/volume/persistentvolume/options"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
-	schedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/volume"
 	volumetest "k8s.io/kubernetes/pkg/volume/testing"
 	imageutils "k8s.io/kubernetes/test/utils/image"
@@ -78,8 +79,8 @@ var (
 const (
 	node1                 = "node-1"
 	node2                 = "node-2"
-	podLimit              = 100
-	volsPerPod            = 5
+	podLimit              = 50
+	volsPerPod            = 3
 	nodeAffinityLabelKey  = "kubernetes.io/hostname"
 	provisionerPluginName = "kubernetes.io/mock-provisioner"
 )
@@ -407,7 +408,7 @@ func TestVolumeBindingDynamicStressFast(t *testing.T) {
 
 // Like TestVolumeBindingStress but with slow dynamic provisioning
 func TestVolumeBindingDynamicStressSlow(t *testing.T) {
-	testVolumeBindingStress(t, 0, true, 30)
+	testVolumeBindingStress(t, 0, true, 10)
 }
 
 func testVolumeBindingStress(t *testing.T, schedulerResyncPeriod time.Duration, dynamic bool, provisionDelaySeconds int) {
@@ -431,10 +432,12 @@ func testVolumeBindingStress(t *testing.T, schedulerResyncPeriod time.Duration, 
 		}
 	}
 
+	klog.Infof("Start creating PVs and PVCs")
 	// Create enough PVs and PVCs for all the pods
-	pvs := []*v1.PersistentVolume{}
-	pvcs := []*v1.PersistentVolumeClaim{}
-	for i := 0; i < podLimit*volsPerPod; i++ {
+	podVolumesCount := podLimit * volsPerPod
+	pvs := make([]*v1.PersistentVolume, podVolumesCount)
+	pvcs := make([]*v1.PersistentVolumeClaim, podVolumesCount)
+	workqueue.ParallelizeUntil(context.TODO(), 16, podVolumesCount, func(i int) {
 		var (
 			pv      *v1.PersistentVolume
 			pvc     *v1.PersistentVolumeClaim
@@ -453,7 +456,7 @@ func testVolumeBindingStress(t *testing.T, schedulerResyncPeriod time.Duration, 
 			if pv, err := config.client.CoreV1().PersistentVolumes().Create(pv); err != nil {
 				t.Fatalf("Failed to create PersistentVolume %q: %v", pv.Name, err)
 			}
-			pvs = append(pvs, pv)
+			pvs[i] = pv
 		}
 		if pv != nil && pv.Spec.ClaimRef != nil && pv.Spec.ClaimRef.Name == pvcName {
 			pvc = makePVC(pvcName, config.ns, &classImmediate, pv.Name)
@@ -463,11 +466,12 @@ func testVolumeBindingStress(t *testing.T, schedulerResyncPeriod time.Duration, 
 		if pvc, err := config.client.CoreV1().PersistentVolumeClaims(config.ns).Create(pvc); err != nil {
 			t.Fatalf("Failed to create PersistentVolumeClaim %q: %v", pvc.Name, err)
 		}
-		pvcs = append(pvcs, pvc)
-	}
+		pvcs[i] = pvc
+	})
 
-	pods := []*v1.Pod{}
-	for i := 0; i < podLimit; i++ {
+	klog.Infof("Start creating Pods")
+	pods := make([]*v1.Pod, podLimit)
+	workqueue.ParallelizeUntil(context.TODO(), 16, podLimit, func(i int) {
 		// Generate string of all the PVCs for the pod
 		podPvcs := []string{}
 		for j := i * volsPerPod; j < (i+1)*volsPerPod; j++ {
@@ -478,24 +482,32 @@ func testVolumeBindingStress(t *testing.T, schedulerResyncPeriod time.Duration, 
 		if pod, err := config.client.CoreV1().Pods(config.ns).Create(pod); err != nil {
 			t.Fatalf("Failed to create Pod %q: %v", pod.Name, err)
 		}
-		pods = append(pods, pod)
-	}
+		pods[i] = pod
+	})
 
+	klog.Infof("Start validating pod scheduled")
 	// Validate Pods scheduled
-	for _, pod := range pods {
+	workqueue.ParallelizeUntil(context.TODO(), 16, len(pods), func(i int) {
+		pod := pods[i]
 		// Use increased timeout for stress test because there is a higher chance of
 		// PV sync error
 		if err := waitForPodToScheduleWithTimeout(config.client, pod, 2*time.Minute); err != nil {
 			t.Errorf("Failed to schedule Pod %q: %v", pod.Name, err)
 		}
-	}
+	})
 
+	klog.Infof("Start validating PVCs scheduled")
 	// Validate PVC/PV binding
-	for _, pvc := range pvcs {
-		validatePVCPhase(t, config.client, pvc.Name, config.ns, v1.ClaimBound, dynamic)
-	}
-	for _, pv := range pvs {
-		validatePVPhase(t, config.client, pv.Name, v1.VolumeBound)
+	workqueue.ParallelizeUntil(context.TODO(), 16, len(pvcs), func(i int) {
+		validatePVCPhase(t, config.client, pvcs[i].Name, config.ns, v1.ClaimBound, dynamic)
+	})
+
+	// Don't validate pv for dynamic provisioning test
+	if !dynamic {
+		klog.Infof("Start validating PVs scheduled")
+		workqueue.ParallelizeUntil(context.TODO(), 16, len(pvs), func(i int) {
+			validatePVPhase(t, config.client, pvs[i].Name, v1.VolumeBound)
+		})
 	}
 }
 
@@ -883,8 +895,7 @@ func TestRescheduleProvisioning(t *testing.T) {
 }
 
 func setupCluster(t *testing.T, nsName string, numberOfNodes int, resyncPeriod time.Duration, provisionDelaySeconds int) *testConfig {
-	context := initTestSchedulerWithOptions(t, initTestMaster(t, nsName, nil), false, nil, nil,
-		nil, []schedulerconfig.PluginConfig{}, false, resyncPeriod)
+	context := initTestSchedulerWithOptions(t, initTestMaster(t, nsName, nil), resyncPeriod)
 	clientset := context.clientSet
 	ns := context.ns.Name
 
@@ -918,6 +929,7 @@ func setupCluster(t *testing.T, nsName string, numberOfNodes int, resyncPeriod t
 		ns:     ns,
 		stop:   context.stopCh,
 		teardown: func() {
+			klog.Infof("test cluster %q start to tear down", ns)
 			deleteTestObjects(clientset, ns, nil)
 			cleanupTest(t, context)
 		},

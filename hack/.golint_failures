@@ -239,7 +239,6 @@ pkg/util/iptables
 pkg/util/iptables/testing
 pkg/util/labels
 pkg/util/mount
-pkg/util/normalizer
 pkg/util/oom
 pkg/util/procfs
 pkg/util/removeall
@@ -257,8 +256,6 @@ pkg/volume/csi/fake
 pkg/volume/git_repo
 pkg/volume/iscsi
 pkg/volume/rbd
-pkg/volume/scaleio
-pkg/volume/storageos
 pkg/volume/testing
 pkg/volume/util/fs
 pkg/volume/util/volumepathhandler

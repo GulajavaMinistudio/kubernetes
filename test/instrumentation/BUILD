@@ -1,17 +1,16 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
 
 go_library(
     name = "go_default_library",
-    srcs = [
-        "markdown.go",
-        "normalizer.go",
-    ],
-    importpath = "k8s.io/kubernetes/pkg/util/normalizer",
+    srcs = ["main.go"],
+    importpath = "k8s.io/kubernetes/test/instrumentation",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "instrumentation",
+    embed = [":go_default_library"],
     visibility = ["//visibility:public"],
-    deps = [
-        "//vendor/github.com/MakeNowJust/heredoc:go_default_library",
-        "//vendor/github.com/russross/blackfriday:go_default_library",
-    ],
 )
 
 filegroup(
