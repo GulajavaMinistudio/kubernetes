@@ -30,7 +30,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-08-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -66,10 +66,10 @@ var nicResourceGroupRE = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGro
 var publicIPResourceGroupRE = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(.+)/providers/Microsoft.Network/publicIPAddresses/(?:.*)`)
 
 // getStandardMachineID returns the full identifier of a virtual machine.
-func (az *Cloud) getStandardMachineID(resourceGroup, machineName string) string {
+func (az *Cloud) getStandardMachineID(subscriptionID, resourceGroup, machineName string) string {
 	return fmt.Sprintf(
 		machineIDTemplate,
-		az.SubscriptionID,
+		subscriptionID,
 		strings.ToLower(resourceGroup),
 		machineName)
 }
@@ -413,7 +413,7 @@ func (as *availabilitySet) GetZoneByNodeName(name string) (cloudprovider.Zone, e
 			return cloudprovider.Zone{}, fmt.Errorf("failed to parse zone %q: %v", zones, err)
 		}
 
-		failureDomain = as.makeZone(zoneID)
+		failureDomain = as.makeZone(to.String(vm.Location), zoneID)
 	} else {
 		// Availability zone is not used for the node, falling back to fault domain.
 		failureDomain = strconv.Itoa(int(*vm.VirtualMachineProperties.InstanceView.PlatformFaultDomain))
@@ -421,7 +421,7 @@ func (as *availabilitySet) GetZoneByNodeName(name string) (cloudprovider.Zone, e
 
 	zone := cloudprovider.Zone{
 		FailureDomain: failureDomain,
-		Region:        *(vm.Location),
+		Region:        to.String(vm.Location),
 	}
 	return zone, nil
 }
