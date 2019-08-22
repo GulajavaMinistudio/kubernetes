@@ -784,18 +784,6 @@ func PrioritizeNodes(
 		return schedulerapi.HostPriorityList{}, scoreStatus.AsError()
 	}
 
-	// Run the Normalize Score plugins.
-	status := framework.RunNormalizeScorePlugins(pluginContext, pod, scoresMap)
-	if !status.IsSuccess() {
-		return schedulerapi.HostPriorityList{}, status.AsError()
-	}
-
-	// Apply weights for scores.
-	status = framework.ApplyScoreWeights(pluginContext, pod, scoresMap)
-	if !status.IsSuccess() {
-		return schedulerapi.HostPriorityList{}, status.AsError()
-	}
-
 	// Summarize all scores.
 	result := make(schedulerapi.HostPriorityList, 0, len(nodes))
 
@@ -1107,7 +1095,7 @@ func selectVictimsOnNode(
 	removePod := func(rp *v1.Pod) {
 		nodeInfoCopy.RemovePod(rp)
 		if meta != nil {
-			meta.RemovePod(rp)
+			meta.RemovePod(rp, nodeInfoCopy.Node())
 		}
 	}
 	addPod := func(ap *v1.Pod) {

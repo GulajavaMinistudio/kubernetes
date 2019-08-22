@@ -32,6 +32,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -207,6 +208,9 @@ const (
 var (
 	// BusyBoxImage is the image URI of BusyBox.
 	BusyBoxImage = imageutils.GetE2EImage(imageutils.BusyBox)
+
+	// AgnHostImage is the image URI of AgnHost
+	AgnHostImage = imageutils.GetE2EImage(imageutils.Agnhost)
 
 	// For parsing Kubectl version for version-skewed testing.
 	gitVersionRegexp = regexp.MustCompile("GitVersion:\"(v.+?)\"")
@@ -474,8 +478,8 @@ func ProxyMode(f *Framework) (string, error) {
 			Containers: []v1.Container{
 				{
 					Name:    "detector",
-					Image:   imageutils.GetE2EImage(imageutils.Agnhost),
-					Command: []string{"/bin/sleep", "3600"},
+					Image:   AgnHostImage,
+					Command: []string{"pause"},
 				},
 			},
 		},
@@ -1356,16 +1360,28 @@ func RandomSuffix() string {
 
 // ExpectEqual expects the specified two are the same, otherwise an exception raises
 func ExpectEqual(actual interface{}, extra interface{}, explain ...interface{}) {
+	if isEqual, _ := gomega.Equal(extra).Match(actual); !isEqual {
+		e2elog.Logf("Unexpected unequal occurred: %v and %v", actual, extra)
+		debug.PrintStack()
+	}
 	gomega.Expect(actual).To(gomega.Equal(extra), explain...)
 }
 
 // ExpectNotEqual expects the specified two are not the same, otherwise an exception raises
 func ExpectNotEqual(actual interface{}, extra interface{}, explain ...interface{}) {
+	if isEqual, _ := gomega.Equal(extra).Match(actual); isEqual {
+		e2elog.Logf("Expect to be unequal: %v and %v", actual, extra)
+		debug.PrintStack()
+	}
 	gomega.Expect(actual).NotTo(gomega.Equal(extra), explain...)
 }
 
 // ExpectError expects an error happens, otherwise an exception raises
 func ExpectError(err error, explain ...interface{}) {
+	if err == nil {
+		e2elog.Logf("Expect error to occur.")
+		debug.PrintStack()
+	}
 	gomega.Expect(err).To(gomega.HaveOccurred(), explain...)
 }
 
@@ -1379,6 +1395,7 @@ func ExpectNoError(err error, explain ...interface{}) {
 func ExpectNoErrorWithOffset(offset int, err error, explain ...interface{}) {
 	if err != nil {
 		e2elog.Logf("Unexpected error occurred: %v", err)
+		debug.PrintStack()
 	}
 	gomega.ExpectWithOffset(1+offset, err).NotTo(gomega.HaveOccurred(), explain...)
 }
@@ -1392,6 +1409,9 @@ func ExpectNoErrorWithRetries(fn func() error, maxRetries int, explain ...interf
 			return
 		}
 		e2elog.Logf("(Attempt %d of %d) Unexpected error occurred: %v", i+1, maxRetries, err)
+	}
+	if err != nil {
+		debug.PrintStack()
 	}
 	gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred(), explain...)
 }
@@ -2876,29 +2896,19 @@ func UnblockNetwork(from string, to string) {
 	}
 }
 
-// PingCommand is the type to hold ping command.
-type PingCommand string
-
-const (
-	// IPv4PingCommand is a ping command for IPv4.
-	IPv4PingCommand PingCommand = "ping"
-	// IPv6PingCommand is a ping command for IPv6.
-	IPv6PingCommand PingCommand = "ping6"
-)
-
 // CheckConnectivityToHost launches a pod to test connectivity to the specified
 // host. An error will be returned if the host is not reachable from the pod.
 //
 // An empty nodeName will use the schedule to choose where the pod is executed.
-func CheckConnectivityToHost(f *Framework, nodeName, podName, host string, pingCmd PingCommand, timeout int) error {
+func CheckConnectivityToHost(f *Framework, nodeName, podName, host string, port, timeout int) error {
 	contName := fmt.Sprintf("%s-container", podName)
 
 	command := []string{
-		string(pingCmd),
-		"-c", "3", // send 3 pings
-		"-W", "2", // wait at most 2 seconds for a reply
+		"nc",
+		"-vz",
 		"-w", strconv.Itoa(timeout),
 		host,
+		strconv.Itoa(port),
 	}
 
 	pod := &v1.Pod{
@@ -2909,7 +2919,7 @@ func CheckConnectivityToHost(f *Framework, nodeName, podName, host string, pingC
 			Containers: []v1.Container{
 				{
 					Name:    contName,
-					Image:   BusyBoxImage,
+					Image:   AgnHostImage,
 					Command: command,
 				},
 			},
@@ -3257,7 +3267,7 @@ func (f *Framework) NewAgnhostPod(name string, args ...string) *v1.Pod {
 			Containers: []v1.Container{
 				{
 					Name:  "agnhost",
-					Image: imageutils.GetE2EImage(imageutils.Agnhost),
+					Image: AgnHostImage,
 					Args:  args,
 				},
 			},
