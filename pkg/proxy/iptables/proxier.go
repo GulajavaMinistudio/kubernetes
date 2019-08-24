@@ -235,8 +235,8 @@ func (l *listenPortOpener) OpenLocalPort(lp *utilproxy.LocalPort) (utilproxy.Clo
 	return openLocalPort(lp)
 }
 
-// Proxier implements ProxyProvider
-var _ proxy.ProxyProvider = &Proxier{}
+// Proxier implements proxy.Provider
+var _ proxy.Provider = &Proxier{}
 
 // NewProxier returns a new Proxier given an iptables Interface instance.
 // Because of the iptables logic, it is assumed that there is only a single Proxier active on a machine.
@@ -1374,10 +1374,12 @@ func (proxier *Proxier) syncProxyRules() {
 		utilproxy.RevertPorts(replacementPortsMap, proxier.portsMap)
 		return
 	}
-	for _, lastChangeTriggerTime := range endpointUpdateResult.LastChangeTriggerTimes {
-		latency := metrics.SinceInSeconds(lastChangeTriggerTime)
-		metrics.NetworkProgrammingLatency.Observe(latency)
-		klog.V(4).Infof("Network programming took %f seconds", latency)
+	for name, lastChangeTriggerTimes := range endpointUpdateResult.LastChangeTriggerTimes {
+		for _, lastChangeTriggerTime := range lastChangeTriggerTimes {
+			latency := metrics.SinceInSeconds(lastChangeTriggerTime)
+			metrics.NetworkProgrammingLatency.Observe(latency)
+			klog.V(4).Infof("Network programming of %s took %f seconds", name, latency)
+		}
 	}
 
 	// Close old local ports and save new ones.
