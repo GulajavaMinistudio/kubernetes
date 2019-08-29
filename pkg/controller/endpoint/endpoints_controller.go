@@ -45,7 +45,12 @@ import (
 	api "k8s.io/kubernetes/pkg/apis/core"
 	helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	"k8s.io/kubernetes/pkg/controller"
+	endpointutil "k8s.io/kubernetes/pkg/controller/util/endpoint"
 	"k8s.io/kubernetes/pkg/util/metrics"
+
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/kubernetes/pkg/features"
+	utilnet "k8s.io/utils/net"
 )
 
 const (
@@ -109,7 +114,7 @@ func NewEndpointController(podInformer coreinformers.PodInformer, serviceInforme
 	e.endpointsLister = endpointsInformer.Lister()
 	e.endpointsSynced = endpointsInformer.Informer().HasSynced
 
-	e.triggerTimeTracker = NewTriggerTimeTracker()
+	e.triggerTimeTracker = endpointutil.NewTriggerTimeTracker()
 	e.eventBroadcaster = broadcaster
 	e.eventRecorder = recorder
 
@@ -157,7 +162,7 @@ type EndpointController struct {
 
 	// triggerTimeTracker is an util used to compute and export the EndpointsLastChangeTriggerTime
 	// annotation.
-	triggerTimeTracker *TriggerTimeTracker
+	triggerTimeTracker *endpointutil.TriggerTimeTracker
 
 	endpointUpdatesBatchPeriod time.Duration
 }
@@ -219,6 +224,37 @@ func (e *EndpointController) addPod(obj interface{}) {
 	}
 }
 
+func podToEndpointAddressForService(svc *v1.Service, pod *v1.Pod) (*v1.EndpointAddress, error) {
+	if !utilfeature.DefaultFeatureGate.Enabled(features.IPv6DualStack) {
+		return podToEndpointAddress(pod), nil
+	}
+
+	// api-server service controller ensured that the service got the correct IP Family
+	// according to user setup, here we only need to match EndPoint IPs' family to service
+	// actual IP family. as in, we don't need to check service.IPFamily
+
+	ipv6ClusterIP := utilnet.IsIPv6String(svc.Spec.ClusterIP)
+	for _, podIP := range pod.Status.PodIPs {
+		ipv6PodIP := utilnet.IsIPv6String(podIP.IP)
+		// same family?
+		// TODO (khenidak) when we remove the max of 2 PodIP limit from pods
+		// we will have to return multiple endpoint addresses
+		if ipv6ClusterIP == ipv6PodIP {
+			return &v1.EndpointAddress{
+				IP:       podIP.IP,
+				NodeName: &pod.Spec.NodeName,
+				TargetRef: &v1.ObjectReference{
+					Kind:            "Pod",
+					Namespace:       pod.ObjectMeta.Namespace,
+					Name:            pod.ObjectMeta.Name,
+					UID:             pod.ObjectMeta.UID,
+					ResourceVersion: pod.ObjectMeta.ResourceVersion,
+				}}, nil
+		}
+	}
+	return nil, fmt.Errorf("failed to find a matching endpoint for service %v", svc.Name)
+}
+
 func podToEndpointAddress(pod *v1.Pod) *v1.EndpointAddress {
 	return &v1.EndpointAddress{
 		IP:       pod.Status.PodIP,
@@ -232,122 +268,33 @@ func podToEndpointAddress(pod *v1.Pod) *v1.EndpointAddress {
 		}}
 }
 
-func podChanged(oldPod, newPod *v1.Pod) bool {
-	// If the pod's deletion timestamp is set, remove endpoint from ready address.
-	if newPod.DeletionTimestamp != oldPod.DeletionTimestamp {
-		return true
-	}
-	// If the pod's readiness has changed, the associated endpoint address
-	// will move from the unready endpoints set to the ready endpoints.
-	// So for the purposes of an endpoint, a readiness change on a pod
-	// means we have a changed pod.
-	if podutil.IsPodReady(oldPod) != podutil.IsPodReady(newPod) {
-		return true
-	}
-	// Convert the pod to an EndpointAddress, clear inert fields,
-	// and see if they are the same.
-	newEndpointAddress := podToEndpointAddress(newPod)
-	oldEndpointAddress := podToEndpointAddress(oldPod)
-	// Ignore the ResourceVersion because it changes
-	// with every pod update. This allows the comparison to
-	// show equality if all other relevant fields match.
-	newEndpointAddress.TargetRef.ResourceVersion = ""
-	oldEndpointAddress.TargetRef.ResourceVersion = ""
-	if reflect.DeepEqual(newEndpointAddress, oldEndpointAddress) {
-		// The pod has not changed in any way that impacts the endpoints
-		return false
-	}
-	return true
-}
+func endpointChanged(pod1, pod2 *v1.Pod) bool {
+	endpointAddress1 := podToEndpointAddress(pod1)
+	endpointAddress2 := podToEndpointAddress(pod2)
 
-func determineNeededServiceUpdates(oldServices, services sets.String, podChanged bool) sets.String {
-	if podChanged {
-		// if the labels and pod changed, all services need to be updated
-		services = services.Union(oldServices)
-	} else {
-		// if only the labels changed, services not common to
-		// both the new and old service set (i.e the disjunctive union)
-		// need to be updated
-		services = services.Difference(oldServices).Union(oldServices.Difference(services))
-	}
-	return services
+	endpointAddress1.TargetRef.ResourceVersion = ""
+	endpointAddress2.TargetRef.ResourceVersion = ""
+
+	return !reflect.DeepEqual(endpointAddress1, endpointAddress2)
 }
 
 // When a pod is updated, figure out what services it used to be a member of
 // and what services it will be a member of, and enqueue the union of these.
 // old and cur must be *v1.Pod types.
 func (e *EndpointController) updatePod(old, cur interface{}) {
-	newPod := cur.(*v1.Pod)
-	oldPod := old.(*v1.Pod)
-	if newPod.ResourceVersion == oldPod.ResourceVersion {
-		// Periodic resync will send update events for all known pods.
-		// Two different versions of the same pod will always have different RVs.
-		return
-	}
-
-	podChangedFlag := podChanged(oldPod, newPod)
-
-	// Check if the pod labels have changed, indicating a possible
-	// change in the service membership
-	labelsChanged := false
-	if !reflect.DeepEqual(newPod.Labels, oldPod.Labels) ||
-		!hostNameAndDomainAreEqual(newPod, oldPod) {
-		labelsChanged = true
-	}
-
-	// If both the pod and labels are unchanged, no update is needed
-	if !podChangedFlag && !labelsChanged {
-		return
-	}
-
-	services, err := e.getPodServiceMemberships(newPod)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Unable to get pod %v/%v's service memberships: %v", newPod.Namespace, newPod.Name, err))
-		return
-	}
-
-	if labelsChanged {
-		oldServices, err := e.getPodServiceMemberships(oldPod)
-		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("Unable to get pod %v/%v's service memberships: %v", oldPod.Namespace, oldPod.Name, err))
-			return
-		}
-		services = determineNeededServiceUpdates(oldServices, services, podChangedFlag)
-	}
-
+	services := endpointutil.GetServicesToUpdateOnPodChange(e.serviceLister, old, cur, endpointChanged)
 	for key := range services {
 		e.queue.AddAfter(key, e.endpointUpdatesBatchPeriod)
 	}
 }
 
-func hostNameAndDomainAreEqual(pod1, pod2 *v1.Pod) bool {
-	return pod1.Spec.Hostname == pod2.Spec.Hostname &&
-		pod1.Spec.Subdomain == pod2.Spec.Subdomain
-}
-
 // When a pod is deleted, enqueue the services the pod used to be a member of.
 // obj could be an *v1.Pod, or a DeletionFinalStateUnknown marker item.
 func (e *EndpointController) deletePod(obj interface{}) {
-	if _, ok := obj.(*v1.Pod); ok {
-		// Enqueue all the services that the pod used to be a member
-		// of. This happens to be exactly the same thing we do when a
-		// pod is added.
-		e.addPod(obj)
-		return
+	pod := endpointutil.GetPodFromDeleteAction(obj)
+	if pod != nil {
+		e.addPod(pod)
 	}
-	// If we reached here it means the pod was deleted but its final state is unrecorded.
-	tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get object from tombstone %#v", obj))
-		return
-	}
-	pod, ok := tombstone.Obj.(*v1.Pod)
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("Tombstone contained object that is not a Pod: %#v", obj))
-		return
-	}
-	klog.V(4).Infof("Enqueuing services of deleted pod %s/%s having final state unrecorded", pod.Namespace, pod.Name)
-	e.addPod(pod)
 }
 
 // obj could be an *v1.Service, or a DeletionFinalStateUnknown marker item.
@@ -425,7 +372,7 @@ func (e *EndpointController) syncService(key string) error {
 		if err != nil && !errors.IsNotFound(err) {
 			return err
 		}
-		e.triggerTimeTracker.DeleteEndpoints(namespace, name)
+		e.triggerTimeTracker.DeleteService(namespace, name)
 		return nil
 	}
 
@@ -454,11 +401,11 @@ func (e *EndpointController) syncService(key string) error {
 		}
 	}
 
-	// We call ComputeEndpointsLastChangeTriggerTime here to make sure that the state of the trigger
-	// time tracker gets updated even if the sync turns out to be no-op and we don't update the
-	// endpoints object.
+	// We call ComputeEndpointLastChangeTriggerTime here to make sure that the
+	// state of the trigger time tracker gets updated even if the sync turns out
+	// to be no-op and we don't update the endpoints object.
 	endpointsLastChangeTriggerTime := e.triggerTimeTracker.
-		ComputeEndpointsLastChangeTriggerTime(namespace, name, service, pods)
+		ComputeEndpointLastChangeTriggerTime(namespace, service, pods)
 
 	subsets := []v1.EndpointSubset{}
 	var totalReadyEps int
@@ -474,7 +421,14 @@ func (e *EndpointController) syncService(key string) error {
 			continue
 		}
 
-		epa := *podToEndpointAddress(pod)
+		ep, err := podToEndpointAddressForService(service, pod)
+		if err != nil {
+			// this will happen, if the cluster runs with some nodes configured as dual stack and some as not
+			// such as the case of an upgrade..
+			klog.V(2).Infof("failed to find endpoint for service:%v with ClusterIP:%v on pod:%v with error:%v", service.Name, service.Spec.ClusterIP, pod.Name, err)
+			continue
+		}
+		epa := *ep
 
 		hostname := pod.Spec.Hostname
 		if len(hostname) > 0 && pod.Spec.Subdomain == service.Name && service.Namespace == pod.Namespace {
