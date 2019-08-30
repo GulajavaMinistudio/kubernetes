@@ -329,6 +329,7 @@ const (
 
 	// owner: @vladimirvivien
 	// alpha: v1.14
+	// beta: v1.16
 	//
 	// Enables CSI Inline volumes support for pods
 	CSIInlineVolume featuregate.Feature = "CSIInlineVolume"
@@ -460,6 +461,7 @@ const (
 
 	// owner: @j-griffith
 	// alpha: v1.15
+	// beta: v1.16
 	//
 	// Enable support for specifying an existing PVC as a DataSource
 	VolumePVCDataSource featuregate.Feature = "VolumePVCDataSource"
@@ -549,7 +551,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	VolumeSubpathEnvExpansion:           {Default: true, PreRelease: featuregate.Beta},
 	ResourceQuotaScopeSelectors:         {Default: true, PreRelease: featuregate.Beta},
 	CSIBlockVolume:                      {Default: true, PreRelease: featuregate.Beta},
-	CSIInlineVolume:                     {Default: false, PreRelease: featuregate.Alpha},
+	CSIInlineVolume:                     {Default: true, PreRelease: featuregate.Beta},
 	RuntimeClass:                        {Default: true, PreRelease: featuregate.Beta},
 	NodeLease:                           {Default: true, PreRelease: featuregate.Beta},
 	SCTPSupport:                         {Default: false, PreRelease: featuregate.Alpha},
@@ -562,7 +564,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	ServiceLoadBalancerFinalizer:        {Default: true, PreRelease: featuregate.Beta},
 	LocalStorageCapacityIsolationFSQuotaMonitoring: {Default: false, PreRelease: featuregate.Alpha},
 	NonPreemptingPriority:                          {Default: false, PreRelease: featuregate.Alpha},
-	VolumePVCDataSource:                            {Default: false, PreRelease: featuregate.Alpha},
+	VolumePVCDataSource:                            {Default: true, PreRelease: featuregate.Beta},
 	PodOverhead:                                    {Default: false, PreRelease: featuregate.Alpha},
 	IPv6DualStack:                                  {Default: false, PreRelease: featuregate.Alpha},
 	EndpointSlice:                                  {Default: false, PreRelease: featuregate.Alpha},
