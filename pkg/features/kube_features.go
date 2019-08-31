@@ -418,6 +418,7 @@ const (
 
 	// owner: @wk8
 	// alpha: v1.14
+	// beta: v1.16
 	//
 	// Enables GMSA support for Windows workloads.
 	WindowsGMSA featuregate.Feature = "WindowsGMSA"
@@ -489,6 +490,19 @@ const (
 	//
 	// Schedule pods evenly across available topology domains.
 	EvenPodsSpread featuregate.Feature = "EvenPodsSpread"
+
+	// owner: @matthyx
+	// alpha: v1.16
+	//
+	// Enables the startupProbe in kubelet worker.
+	StartupProbe featuregate.Feature = "StartupProbe"
+
+	// owner @deads2k
+	// deprecated: v1.16
+	//
+	// Enable the aggregated discovery timeout to ensure client responsiveness. Note this feature is present
+	// only for backward compatibility, it will be removed in the 1.17 release.
+	EnableAggregatedDiscoveryTimeout featuregate.Feature = "EnableAggregatedDiscoveryTimeout"
 )
 
 func init() {
@@ -559,7 +573,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	ProcMountType:                       {Default: false, PreRelease: featuregate.Alpha},
 	TTLAfterFinished:                    {Default: false, PreRelease: featuregate.Alpha},
 	KubeletPodResources:                 {Default: true, PreRelease: featuregate.Beta},
-	WindowsGMSA:                         {Default: false, PreRelease: featuregate.Alpha},
+	WindowsGMSA:                         {Default: true, PreRelease: featuregate.Beta},
 	WindowsRunAsUserName:                {Default: false, PreRelease: featuregate.Alpha},
 	ServiceLoadBalancerFinalizer:        {Default: true, PreRelease: featuregate.Beta},
 	LocalStorageCapacityIsolationFSQuotaMonitoring: {Default: false, PreRelease: featuregate.Alpha},
@@ -569,6 +583,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	IPv6DualStack:                                  {Default: false, PreRelease: featuregate.Alpha},
 	EndpointSlice:                                  {Default: false, PreRelease: featuregate.Alpha},
 	EvenPodsSpread:                                 {Default: false, PreRelease: featuregate.Alpha},
+	StartupProbe:                                   {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
@@ -579,7 +594,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	genericfeatures.APIResponseCompression:  {Default: true, PreRelease: featuregate.Beta},
 	genericfeatures.APIListChunking:         {Default: true, PreRelease: featuregate.Beta},
 	genericfeatures.DryRun:                  {Default: true, PreRelease: featuregate.Beta},
-	genericfeatures.ServerSideApply:         {Default: false, PreRelease: featuregate.Alpha},
+	genericfeatures.ServerSideApply:         {Default: true, PreRelease: featuregate.Beta},
 	genericfeatures.RequestManagement:       {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from apiextensions-apiserver, relisted here to get a conflict if it is changed
@@ -589,6 +604,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	apiextensionsfeatures.CustomResourceWebhookConversion: {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
 	apiextensionsfeatures.CustomResourcePublishOpenAPI:    {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
 	apiextensionsfeatures.CustomResourceDefaulting:        {Default: true, PreRelease: featuregate.Beta},
+
+	EnableAggregatedDiscoveryTimeout: {Default: true, PreRelease: featuregate.Deprecated},
 
 	// features that enable backwards compatibility but are scheduled to be removed
 	// ...

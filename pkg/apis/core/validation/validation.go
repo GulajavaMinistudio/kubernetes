@@ -2696,6 +2696,9 @@ func validateInitContainers(containers, otherContainers []core.Container, device
 		if ctr.ReadinessProbe != nil {
 			allErrs = append(allErrs, field.Invalid(idxPath.Child("readinessProbe"), ctr.ReadinessProbe, "must not be set for init containers"))
 		}
+		if ctr.StartupProbe != nil {
+			allErrs = append(allErrs, field.Invalid(idxPath.Child("startupProbe"), ctr.StartupProbe, "must not be set for init containers"))
+		}
 	}
 	return allErrs
 }
@@ -2737,6 +2740,11 @@ func validateContainers(containers []core.Container, isInitContainers bool, volu
 		// Liveness-specific validation
 		if ctr.LivenessProbe != nil && ctr.LivenessProbe.SuccessThreshold != 1 {
 			allErrs = append(allErrs, field.Invalid(idxPath.Child("livenessProbe", "successThreshold"), ctr.LivenessProbe.SuccessThreshold, "must be 1"))
+		}
+		allErrs = append(allErrs, validateProbe(ctr.StartupProbe, idxPath.Child("startupProbe"))...)
+		// Startup-specific validation
+		if ctr.StartupProbe != nil && ctr.StartupProbe.SuccessThreshold != 1 {
+			allErrs = append(allErrs, field.Invalid(idxPath.Child("startupProbe", "successThreshold"), ctr.StartupProbe.SuccessThreshold, "must be 1"))
 		}
 
 		switch ctr.TerminationMessagePolicy {
@@ -5518,12 +5526,12 @@ func ValidateSecurityContext(sc *core.SecurityContext, fldPath *field.Path) fiel
 // is the max character length for the USER itself. Both the DOMAIN and USER have their
 // own restrictions, and more information about them can be found here:
 // https://support.microsoft.com/en-us/help/909264/naming-conventions-in-active-directory-for-computers-domains-sites-and
-// https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.localaccounts/new-localuser?view=powershell-5.1
+// https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-2000-server/bb726984(v=technet.10)
 const (
 	maxGMSACredentialSpecLengthInKiB = 64
 	maxGMSACredentialSpecLength      = maxGMSACredentialSpecLengthInKiB * 1024
 	maxRunAsUserNameDomainLength     = 256
-	maxRunAsUserNameUserLength       = 21
+	maxRunAsUserNameUserLength       = 104
 )
 
 var (
@@ -5604,8 +5612,8 @@ func validateWindowsSecurityContextOptions(windowsOptions *core.WindowsSecurityC
 			if l := len(user); l == 0 {
 				errMsg := fmt.Sprintf("runAsUserName's User cannot be empty")
 				allErrs = append(allErrs, field.Invalid(fieldPath.Child("runAsUserName"), windowsOptions.RunAsUserName, errMsg))
-			} else if l >= maxRunAsUserNameUserLength {
-				errMsg := fmt.Sprintf("runAsUserName's User length must be under %d characters", maxRunAsUserNameUserLength)
+			} else if l > maxRunAsUserNameUserLength {
+				errMsg := fmt.Sprintf("runAsUserName's User length must not be longer than %d characters", maxRunAsUserNameUserLength)
 				allErrs = append(allErrs, field.Invalid(fieldPath.Child("runAsUserName"), windowsOptions.RunAsUserName, errMsg))
 			}
 
