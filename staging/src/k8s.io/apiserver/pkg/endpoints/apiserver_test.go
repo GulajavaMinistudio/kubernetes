@@ -38,6 +38,7 @@ import (
 	"time"
 
 	restful "github.com/emicklei/go-restful"
+
 	fuzzer "k8s.io/apimachinery/pkg/api/apitesting/fuzzer"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
@@ -85,6 +86,8 @@ func (alwaysMutatingDeny) Handles(operation admission.Operation) bool {
 	return true
 }
 
+var _ admission.MutationInterface = &alwaysMutatingDeny{}
+
 type alwaysValidatingDeny struct{}
 
 func (alwaysValidatingDeny) Validate(ctx context.Context, a admission.Attributes, o admission.ObjectInterfaces) (err error) {
@@ -94,6 +97,8 @@ func (alwaysValidatingDeny) Validate(ctx context.Context, a admission.Attributes
 func (alwaysValidatingDeny) Handles(operation admission.Operation) bool {
 	return true
 }
+
+var _ admission.ValidationInterface = &alwaysValidatingDeny{}
 
 // This creates fake API versions, similar to api/latest.go.
 var testAPIGroup = "test.group"
@@ -3078,6 +3083,9 @@ func TestDelete(t *testing.T) {
 
 	client := http.Client{}
 	request, err := http.NewRequest("DELETE", server.URL+"/"+prefix+"/"+testGroupVersion.Group+"/"+testGroupVersion.Version+"/namespaces/default/simple/"+ID, nil)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
 	res, err := client.Do(request)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -3110,6 +3118,9 @@ func TestDeleteWithOptions(t *testing.T) {
 
 	client := http.Client{}
 	request, err := http.NewRequest("DELETE", server.URL+"/"+prefix+"/"+testGroupVersion.Group+"/"+testGroupVersion.Version+"/namespaces/default/simple/"+ID, bytes.NewReader(body))
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
 	res, err := client.Do(request)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -3147,6 +3158,9 @@ func TestDeleteWithOptionsQuery(t *testing.T) {
 
 	client := http.Client{}
 	request, err := http.NewRequest("DELETE", server.URL+"/"+prefix+"/"+testGroupVersion.Group+"/"+testGroupVersion.Version+"/namespaces/default/simple/"+ID+"?gracePeriodSeconds="+strconv.FormatInt(grace, 10), nil)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
 	res, err := client.Do(request)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -3187,6 +3201,9 @@ func TestDeleteWithOptionsQueryAndBody(t *testing.T) {
 	}
 	client := http.Client{}
 	request, err := http.NewRequest("DELETE", server.URL+"/"+prefix+"/"+testGroupVersion.Group+"/"+testGroupVersion.Version+"/namespaces/default/simple/"+ID+"?gracePeriodSeconds="+strconv.FormatInt(grace+10, 10), bytes.NewReader(body))
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
 	res, err := client.Do(request)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -3223,6 +3240,9 @@ func TestDeleteInvokesAdmissionControl(t *testing.T) {
 
 		client := http.Client{}
 		request, err := http.NewRequest("DELETE", server.URL+"/"+prefix+"/"+testGroupVersion.Group+"/"+testGroupVersion.Version+"/namespaces/default/simple/"+ID, nil)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 		response, err := client.Do(request)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
@@ -3246,6 +3266,9 @@ func TestDeleteMissing(t *testing.T) {
 
 	client := http.Client{}
 	request, err := http.NewRequest("DELETE", server.URL+"/"+prefix+"/"+testGroupVersion.Group+"/"+testGroupVersion.Version+"/namespaces/default/simple/"+ID, nil)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -3286,6 +3309,9 @@ func TestUpdate(t *testing.T) {
 
 	client := http.Client{}
 	request, err := http.NewRequest("PUT", server.URL+"/"+prefix+"/"+testGroupVersion.Group+"/"+testGroupVersion.Version+"/namespaces/default/simple/"+ID, bytes.NewReader(body))
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -3328,6 +3354,9 @@ func TestUpdateInvokesAdmissionControl(t *testing.T) {
 
 		client := http.Client{}
 		request, err := http.NewRequest("PUT", server.URL+"/"+prefix+"/"+testGroupVersion.Group+"/"+testGroupVersion.Version+"/namespaces/default/simple/"+ID, bytes.NewReader(body))
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 		response, err := client.Do(request)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
@@ -3361,6 +3390,9 @@ func TestUpdateRequiresMatchingName(t *testing.T) {
 
 	client := http.Client{}
 	request, err := http.NewRequest("PUT", server.URL+"/"+prefix+"/"+testGroupVersion.Group+"/"+testGroupVersion.Version+"/namespaces/default/simple/"+ID, bytes.NewReader(body))
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -3395,6 +3427,9 @@ func TestUpdateAllowsMissingNamespace(t *testing.T) {
 
 	client := http.Client{}
 	request, err := http.NewRequest("PUT", server.URL+"/"+prefix+"/"+testGroupVersion.Group+"/"+testGroupVersion.Version+"/namespaces/default/simple/"+ID, bytes.NewReader(body))
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -3436,6 +3471,9 @@ func TestUpdateDisallowsMismatchedNamespaceOnError(t *testing.T) {
 
 	client := http.Client{}
 	request, err := http.NewRequest("PUT", server.URL+"/"+prefix+"/"+testGroupVersion.Group+"/"+testGroupVersion.Version+"/namespaces/default/simple/"+ID, bytes.NewReader(body))
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -3475,6 +3513,9 @@ func TestUpdatePreventsMismatchedNamespace(t *testing.T) {
 
 	client := http.Client{}
 	request, err := http.NewRequest("PUT", server.URL+"/"+prefix+"/"+testGroupVersion.Group+"/"+testGroupVersion.Version+"/namespaces/default/simple/"+ID, bytes.NewReader(body))
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -3509,6 +3550,9 @@ func TestUpdateMissing(t *testing.T) {
 
 	client := http.Client{}
 	request, err := http.NewRequest("PUT", server.URL+"/"+prefix+"/"+testGroupVersion.Group+"/"+testGroupVersion.Version+"/namespaces/default/simple/"+ID, bytes.NewReader(body))
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -3752,7 +3796,7 @@ type namePopulatorAdmissionControl struct {
 	populateName string
 }
 
-func (npac *namePopulatorAdmissionControl) Validate(a admission.Attributes, o admission.ObjectInterfaces) (err error) {
+func (npac *namePopulatorAdmissionControl) Validate(ctx context.Context, a admission.Attributes, o admission.ObjectInterfaces) (err error) {
 	if a.GetName() != npac.populateName {
 		npac.t.Errorf("Unexpected name: got %q, expected %q", a.GetName(), npac.populateName)
 	}
@@ -3762,6 +3806,8 @@ func (npac *namePopulatorAdmissionControl) Validate(a admission.Attributes, o ad
 func (npac *namePopulatorAdmissionControl) Handles(operation admission.Operation) bool {
 	return true
 }
+
+var _ admission.ValidationInterface = &namePopulatorAdmissionControl{}
 
 func TestNamedCreaterWithGenerateName(t *testing.T) {
 	populateName := "bar"

@@ -433,11 +433,6 @@ func (f *framework) RunPreBindPlugins(
 	for _, pl := range f.preBindPlugins {
 		status := pl.PreBind(pc, pod, nodeName)
 		if !status.IsSuccess() {
-			if status.IsUnschedulable() {
-				msg := fmt.Sprintf("rejected by %q at prebind: %v", pl.Name(), status.Message())
-				klog.V(4).Infof(msg)
-				return NewStatus(status.Code(), msg)
-			}
 			msg := fmt.Sprintf("error while running %q prebind plugin for pod %q: %v", pl.Name(), pod.Name, status.Message())
 			klog.Error(msg)
 			return NewStatus(Error, msg)
@@ -582,7 +577,9 @@ func (f *framework) GetWaitingPod(uid types.UID) WaitingPod {
 
 func pluginNameToConfig(args []config.PluginConfig) map[string]*runtime.Unknown {
 	pc := make(map[string]*runtime.Unknown, 0)
-	for _, p := range args {
+	for i := range args {
+		// This is needed because the type of PluginConfig.Args is not pointer type.
+		p := args[i]
 		pc[p.Name] = &p.Args
 	}
 	return pc
