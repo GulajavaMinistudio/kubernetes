@@ -132,7 +132,7 @@ func (f *FitError) Error() string {
 // onto machines.
 // TODO: Rename this type.
 type ScheduleAlgorithm interface {
-	Schedule(*v1.Pod, *framework.PluginContext) (scheduleResult ScheduleResult, err error)
+	Schedule(*framework.PluginContext, *v1.Pod) (scheduleResult ScheduleResult, err error)
 	// Preempt receives scheduling errors for a pod and tries to create room for
 	// the pod by preempting lower priority pods if possible.
 	// It returns the node where preemption happened, a list of preempted pods, a
@@ -186,7 +186,7 @@ func (g *genericScheduler) snapshot() error {
 // Schedule tries to schedule the given pod to one of the nodes in the node list.
 // If it succeeds, it will return the name of the node.
 // If it fails, it will return a FitError error with reasons.
-func (g *genericScheduler) Schedule(pod *v1.Pod, pluginContext *framework.PluginContext) (result ScheduleResult, err error) {
+func (g *genericScheduler) Schedule(pluginContext *framework.PluginContext, pod *v1.Pod) (result ScheduleResult, err error) {
 	trace := utiltrace.New("Scheduling", utiltrace.Field{Key: "namespace", Value: pod.Namespace}, utiltrace.Field{Key: "name", Value: pod.Name})
 	defer trace.LogIfLong(100 * time.Millisecond)
 
@@ -799,12 +799,12 @@ func PrioritizeNodes(
 		}
 
 		for j := range scoresMap {
-			result[i].Score += scoresMap[j][i].Score
+			result[i].Score += int64(scoresMap[j][i].Score)
 		}
 	}
 
 	if len(extenders) != 0 && nodes != nil {
-		combinedScores := make(map[string]int, len(nodeNameToInfo))
+		combinedScores := make(map[string]int64, len(nodeNameToInfo))
 		for i := range extenders {
 			if !extenders[i].IsInterested(pod) {
 				continue
@@ -870,7 +870,7 @@ func pickOneNodeForPreemption(nodesToVictims map[*v1.Node]*schedulerapi.Victims)
 	if len(nodesToVictims) == 0 {
 		return nil
 	}
-	minNumPDBViolatingPods := math.MaxInt32
+	minNumPDBViolatingPods := int64(math.MaxInt32)
 	var minNodes1 []*v1.Node
 	lenNodes1 := 0
 	for node, victims := range nodesToVictims {
@@ -1021,7 +1021,7 @@ func (g *genericScheduler) selectNodesForPreemption(
 			resultLock.Lock()
 			victims := schedulerapi.Victims{
 				Pods:             pods,
-				NumPDBViolations: numPDBViolations,
+				NumPDBViolations: int64(numPDBViolations),
 			}
 			nodeToVictims[potentialNodes[i]] = &victims
 			resultLock.Unlock()
