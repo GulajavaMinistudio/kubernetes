@@ -2643,13 +2643,6 @@ func LookForStringInLog(ns, podName, container, expectedString string, timeout t
 	})
 }
 
-// LookForStringInFile looks for the given string in a file in a specific pod container
-func LookForStringInFile(ns, podName, container, file, expectedString string, timeout time.Duration) (result string, err error) {
-	return LookForString(expectedString, timeout, func() string {
-		return RunKubectlOrDie("exec", podName, "-c", container, fmt.Sprintf("--namespace=%v", ns), "--", "cat", file)
-	})
-}
-
 // EnsureLoadBalancerResourcesDeleted ensures that cloud load balancer resources that were created
 // are actually cleaned up.  Currently only implemented for GCE/GKE.
 func EnsureLoadBalancerResourcesDeleted(ip, portRange string) error {
@@ -3276,4 +3269,19 @@ func GetFileModeRegex(filePath string, mask *int32) string {
 	windowsOutput := fmt.Sprintf("mode of Windows file \"%v\": %s", filePath, os.FileMode(windowsMask))
 
 	return fmt.Sprintf("(%s|%s)", linuxOutput, windowsOutput)
+}
+
+// PrettyPrintJSON converts metrics to JSON format.
+func PrettyPrintJSON(metrics interface{}) string {
+	output := &bytes.Buffer{}
+	if err := json.NewEncoder(output).Encode(metrics); err != nil {
+		Logf("Error building encoder: %v", err)
+		return ""
+	}
+	formatted := &bytes.Buffer{}
+	if err := json.Indent(formatted, output.Bytes(), "", "  "); err != nil {
+		Logf("Error indenting: %v", err)
+		return ""
+	}
+	return string(formatted.Bytes())
 }
