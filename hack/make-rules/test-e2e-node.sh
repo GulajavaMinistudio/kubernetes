@@ -117,7 +117,7 @@ if [ "${remote}" = true ] ; then
   IFS=',' read -ra IM <<< "${images}"
        images=""
        for i in "${IM[@]}"; do
-         if gcloud compute instances list "${instance_prefix}-${i}" | grep "${i}"; then
+         if gcloud compute instances list --project="${project}" --filter="name:'${instance_prefix}-${i}' AND zone:'${zone}'" | grep "${i}"; then
            if [[ "${hosts}" != "" ]]; then
              hosts="${hosts},"
            fi
@@ -165,7 +165,7 @@ else
     echo 'No need to refresh sudo credentials'
   else
     echo 'Updating sudo credentials'
-    sudo --validate || exit 1
+    sudo -v || exit 1
   fi
 
   # Do not use any network plugin by default. User could override the flags with
