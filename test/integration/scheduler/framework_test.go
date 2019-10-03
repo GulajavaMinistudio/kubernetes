@@ -157,12 +157,12 @@ func (sp *ScorePlugin) Score(pc *framework.PluginContext, p *v1.Pod, nodeName st
 	if sp.numScoreCalled == 1 {
 		// The first node is scored the highest, the rest is scored lower.
 		sp.highScoreNode = nodeName
-		score = framework.MaxNodeScore
+		score = int(framework.MaxNodeScore)
 	}
 	return score, nil
 }
 
-func (sp *ScorePlugin) NormalizeScore(pc *framework.PluginContext, pod *v1.Pod, scores framework.NodeScoreList) *framework.Status {
+func (sp *ScorePlugin) Extensions() framework.ScoreExtensions {
 	return nil
 }
 
@@ -187,6 +187,10 @@ func (sp *ScoreWithNormalizePlugin) Score(pc *framework.PluginContext, p *v1.Pod
 func (sp *ScoreWithNormalizePlugin) NormalizeScore(pc *framework.PluginContext, pod *v1.Pod, scores framework.NodeScoreList) *framework.Status {
 	sp.numNormalizeScoreCalled++
 	return nil
+}
+
+func (sp *ScoreWithNormalizePlugin) Extensions() framework.ScoreExtensions {
+	return sp
 }
 
 // Name returns name of the plugin.
@@ -330,8 +334,8 @@ func (pp *PreFilterPlugin) Name() string {
 	return prefilterPluginName
 }
 
-// Updater returns the updater interface.
-func (pp *PreFilterPlugin) Updater() framework.Updater {
+// Extensions returns the PreFilterExtensions interface.
+func (pp *PreFilterPlugin) Extensions() framework.PreFilterExtensions {
 	return nil
 }
 
