@@ -35,11 +35,13 @@ import (
 	storageinformersv1beta1 "k8s.io/client-go/informers/storage/v1beta1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/events"
+	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 	latestschedulerapi "k8s.io/kubernetes/pkg/scheduler/api/latest"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/core"
 	"k8s.io/kubernetes/pkg/scheduler/factory"
+	frameworkplugins "k8s.io/kubernetes/pkg/scheduler/framework/plugins"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	internalcache "k8s.io/kubernetes/pkg/scheduler/internal/cache"
 	internalqueue "k8s.io/kubernetes/pkg/scheduler/internal/queue"
@@ -54,6 +56,12 @@ const (
 	SchedulerError = "SchedulerError"
 )
 
+// podConditionUpdater updates the condition of a pod based on the passed
+// PodCondition
+type podConditionUpdater interface {
+	update(pod *v1.Pod, podCondition *v1.PodCondition) error
+}
+
 // Scheduler watches for new unscheduled pods. It attempts to find
 // nodes that they fit on and writes bindings back to the api server.
 type Scheduler struct {
@@ -66,7 +74,7 @@ type Scheduler struct {
 	// PodConditionUpdater is used only in case of scheduling errors. If we succeed
 	// with scheduling, PodScheduled condition will be updated in apiserver in /bind
 	// handler so that binding and setting PodCondition it is atomic.
-	PodConditionUpdater factory.PodConditionUpdater
+	podConditionUpdater podConditionUpdater
 	// PodPreemptor is used to evict pods and update 'NominatedNode' field of
 	// the preemptor pod.
 	PodPreemptor factory.PodPreemptor
@@ -109,11 +117,15 @@ func (sched *Scheduler) Cache() internalcache.Cache {
 }
 
 type schedulerOptions struct {
-	schedulerName                  string
-	hardPodAffinitySymmetricWeight int32
-	disablePreemption              bool
-	percentageOfNodesToScore       int32
-	bindTimeoutSeconds             int64
+	schedulerName                   string
+	hardPodAffinitySymmetricWeight  int32
+	disablePreemption               bool
+	percentageOfNodesToScore        int32
+	bindTimeoutSeconds              int64
+	frameworkRegistry               framework.Registry
+	frameworkConfigProducerRegistry *frameworkplugins.ConfigProducerRegistry
+	frameworkPlugins                *kubeschedulerconfig.Plugins
+	frameworkPluginConfig           []kubeschedulerconfig.PluginConfig
 }
 
 // Option configures a Scheduler
@@ -154,12 +166,51 @@ func WithBindTimeoutSeconds(bindTimeoutSeconds int64) Option {
 	}
 }
 
+// WithFrameworkRegistry sets the framework registry.
+func WithFrameworkRegistry(registry framework.Registry) Option {
+	return func(o *schedulerOptions) {
+		o.frameworkRegistry = registry
+	}
+}
+
+// WithFrameworkConfigProducerRegistry sets the framework plugin producer registry.
+func WithFrameworkConfigProducerRegistry(registry *frameworkplugins.ConfigProducerRegistry) Option {
+	return func(o *schedulerOptions) {
+		o.frameworkConfigProducerRegistry = registry
+	}
+}
+
+// WithFrameworkPlugins sets the plugins that the framework should be configured with.
+func WithFrameworkPlugins(plugins *kubeschedulerconfig.Plugins) Option {
+	return func(o *schedulerOptions) {
+		o.frameworkPlugins = plugins
+	}
+}
+
+// WithFrameworkPluginConfig sets the PluginConfig slice that the framework should be configured with.
+func WithFrameworkPluginConfig(pluginConfig []kubeschedulerconfig.PluginConfig) Option {
+	return func(o *schedulerOptions) {
+		o.frameworkPluginConfig = pluginConfig
+	}
+}
+
 var defaultSchedulerOptions = schedulerOptions{
-	schedulerName:                  v1.DefaultSchedulerName,
-	hardPodAffinitySymmetricWeight: v1.DefaultHardPodAffinitySymmetricWeight,
-	disablePreemption:              false,
-	percentageOfNodesToScore:       schedulerapi.DefaultPercentageOfNodesToScore,
-	bindTimeoutSeconds:             BindTimeoutSeconds,
+	schedulerName:                   v1.DefaultSchedulerName,
+	hardPodAffinitySymmetricWeight:  v1.DefaultHardPodAffinitySymmetricWeight,
+	disablePreemption:               false,
+	percentageOfNodesToScore:        schedulerapi.DefaultPercentageOfNodesToScore,
+	bindTimeoutSeconds:              BindTimeoutSeconds,
+	frameworkRegistry:               frameworkplugins.NewDefaultRegistry(),
+	frameworkConfigProducerRegistry: frameworkplugins.NewDefaultConfigProducerRegistry(),
+	// The plugins and pluginConfig options are currently nil because we currently don't have
+	// "default" plugins. All plugins that we run through the framework currently come from two
+	// sources: 1) specified in component config, in which case those two options should be
+	// set using their corresponding With* functions, 2) predicate/priority-mapped plugins, which
+	// pluginConfigProducerRegistry contains a mapping for and produces their configurations.
+	// TODO(ahg-g) Once predicates and priorities are migrated to natively run as plugins, the
+	// below two parameters will be populated accordingly.
+	frameworkPlugins:      nil,
+	frameworkPluginConfig: nil,
 }
 
 // New returns a Scheduler
@@ -178,9 +229,6 @@ func New(client clientset.Interface,
 	recorder events.EventRecorder,
 	schedulerAlgorithmSource kubeschedulerconfig.SchedulerAlgorithmSource,
 	stopCh <-chan struct{},
-	registry framework.Registry,
-	plugins *kubeschedulerconfig.Plugins,
-	pluginConfig []kubeschedulerconfig.PluginConfig,
 	opts ...Option) (*Scheduler, error) {
 
 	options := defaultSchedulerOptions
@@ -205,9 +253,10 @@ func New(client clientset.Interface,
 		DisablePreemption:              options.disablePreemption,
 		PercentageOfNodesToScore:       options.percentageOfNodesToScore,
 		BindTimeoutSeconds:             options.bindTimeoutSeconds,
-		Registry:                       registry,
-		Plugins:                        plugins,
-		PluginConfig:                   pluginConfig,
+		Registry:                       options.frameworkRegistry,
+		PluginConfigProducerRegistry:   options.frameworkConfigProducerRegistry,
+		Plugins:                        options.frameworkPlugins,
+		PluginConfig:                   options.frameworkPluginConfig,
 	})
 	var config *factory.Config
 	source := schedulerAlgorithmSource
@@ -247,7 +296,7 @@ func New(client clientset.Interface,
 
 	// Create the scheduler.
 	sched := NewFromConfig(config)
-
+	sched.podConditionUpdater = &podConditionUpdaterImpl{client}
 	AddAllEventHandlers(sched, options.schedulerName, nodeInformer, podInformer, pvInformer, pvcInformer, serviceInformer, storageClassInformer, csiNodeInformer)
 	return sched, nil
 }
@@ -292,20 +341,19 @@ func initPolicyFromConfigMap(client clientset.Interface, policyRef *kubeschedule
 func NewFromConfig(config *factory.Config) *Scheduler {
 	metrics.Register()
 	return &Scheduler{
-		SchedulerCache:      config.SchedulerCache,
-		Algorithm:           config.Algorithm,
-		GetBinder:           config.GetBinder,
-		PodConditionUpdater: config.PodConditionUpdater,
-		PodPreemptor:        config.PodPreemptor,
-		Framework:           config.Framework,
-		NextPod:             config.NextPod,
-		WaitForCacheSync:    config.WaitForCacheSync,
-		Error:               config.Error,
-		Recorder:            config.Recorder,
-		StopEverything:      config.StopEverything,
-		VolumeBinder:        config.VolumeBinder,
-		DisablePreemption:   config.DisablePreemption,
-		SchedulingQueue:     config.SchedulingQueue,
+		SchedulerCache:    config.SchedulerCache,
+		Algorithm:         config.Algorithm,
+		GetBinder:         config.GetBinder,
+		PodPreemptor:      config.PodPreemptor,
+		Framework:         config.Framework,
+		NextPod:           config.NextPod,
+		WaitForCacheSync:  config.WaitForCacheSync,
+		Error:             config.Error,
+		Recorder:          config.Recorder,
+		StopEverything:    config.StopEverything,
+		VolumeBinder:      config.VolumeBinder,
+		DisablePreemption: config.DisablePreemption,
+		SchedulingQueue:   config.SchedulingQueue,
 	}
 }
 
@@ -324,7 +372,7 @@ func (sched *Scheduler) Run() {
 func (sched *Scheduler) recordSchedulingFailure(pod *v1.Pod, err error, reason string, message string) {
 	sched.Error(pod, err)
 	sched.Recorder.Eventf(pod, nil, v1.EventTypeWarning, "FailedScheduling", "Scheduling", message)
-	if err := sched.PodConditionUpdater.Update(pod, &v1.PodCondition{
+	if err := sched.podConditionUpdater.update(pod, &v1.PodCondition{
 		Type:    v1.PodScheduled,
 		Status:  v1.ConditionFalse,
 		Reason:  reason,
@@ -668,6 +716,19 @@ func (sched *Scheduler) scheduleOne() {
 			fwk.RunPostBindPlugins(pluginContext, assumedPod, scheduleResult.SuggestedHost)
 		}
 	}()
+}
+
+type podConditionUpdaterImpl struct {
+	Client clientset.Interface
+}
+
+func (p *podConditionUpdaterImpl) update(pod *v1.Pod, condition *v1.PodCondition) error {
+	klog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s, Reason=%s)", pod.Namespace, pod.Name, condition.Type, condition.Status, condition.Reason)
+	if podutil.UpdatePodCondition(&pod.Status, condition) {
+		_, err := p.Client.CoreV1().Pods(pod.Namespace).UpdateStatus(pod)
+		return err
+	}
+	return nil
 }
 
 // nodeResourceString returns a string representation of node resources.
