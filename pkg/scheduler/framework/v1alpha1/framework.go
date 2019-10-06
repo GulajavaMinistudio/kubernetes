@@ -33,6 +33,11 @@ import (
 	schedutil "k8s.io/kubernetes/pkg/scheduler/util"
 )
 
+const (
+	// Specifies the maximum timeout a permit plugin can return.
+	maxTimeout time.Duration = 15 * time.Minute
+)
+
 // framework is the component responsible for initializing and running scheduler
 // plugins.
 type framework struct {
@@ -53,10 +58,32 @@ type framework struct {
 	permitPlugins         []PermitPlugin
 }
 
-const (
-	// Specifies the maximum timeout a permit plugin can return.
-	maxTimeout time.Duration = 15 * time.Minute
-)
+// extensionPoint encapsulates desired and applied set of plugins at a specific extension
+// point. This is used to simplify iterating over all extension points supported by the
+// framework.
+type extensionPoint struct {
+	// the set of plugins to be configured at this extension point.
+	plugins *config.PluginSet
+	// a pointer to the slice storing plugins implementations that will run at this
+	// extenstion point.
+	slicePtr interface{}
+}
+
+func (f *framework) getExtensionPoints(plugins *config.Plugins) []extensionPoint {
+	return []extensionPoint{
+		{plugins.PreFilter, &f.preFilterPlugins},
+		{plugins.Filter, &f.filterPlugins},
+		{plugins.Reserve, &f.reservePlugins},
+		{plugins.PostFilter, &f.postFilterPlugins},
+		{plugins.Score, &f.scorePlugins},
+		{plugins.PreBind, &f.preBindPlugins},
+		{plugins.Bind, &f.bindPlugins},
+		{plugins.PostBind, &f.postBindPlugins},
+		{plugins.Unreserve, &f.unreservePlugins},
+		{plugins.Permit, &f.permitPlugins},
+		{plugins.QueueSort, &f.queueSortPlugins},
+	}
+}
 
 var _ = Framework(&framework{})
 
@@ -73,29 +100,30 @@ func NewFramework(r Registry, plugins *config.Plugins, args []config.PluginConfi
 	}
 
 	// get needed plugins from config
-	pg := pluginsNeeded(plugins)
+	pg := f.pluginsNeeded(plugins)
 	if len(pg) == 0 {
 		return f, nil
 	}
 
-	pluginConfig := pluginNameToConfig(args)
+	pluginConfig := make(map[string]*runtime.Unknown, 0)
+	for i := range args {
+		pluginConfig[args[i].Name] = &args[i].Args
+	}
+
 	pluginsMap := make(map[string]Plugin)
 	for name, factory := range r {
-		// initialize only needed plugins
+		// initialize only needed plugins.
 		if _, ok := pg[name]; !ok {
 			continue
 		}
 
-		// find the config args of a plugin
-		pc := pluginConfig[name]
-
-		p, err := factory(pc, f)
+		p, err := factory(pluginConfig[name], f)
 		if err != nil {
 			return nil, fmt.Errorf("error initializing plugin %q: %v", name, err)
 		}
 		pluginsMap[name] = p
 
-		// A weight of zero is not permitted, plugins can be disabled explicitly
+		// a weight of zero is not permitted, plugins can be disabled explicitly
 		// when configured.
 		f.pluginNameToWeightMap[name] = int(pg[name].Weight)
 		if f.pluginNameToWeightMap[name] == 0 {
@@ -103,50 +131,14 @@ func NewFramework(r Registry, plugins *config.Plugins, args []config.PluginConfi
 		}
 	}
 
-	if err := updatePluginList(reflect.ValueOf(&f.preFilterPlugins), plugins.PreFilter, reflect.TypeOf((*PreFilterPlugin)(nil)), pluginsMap); err != nil {
-		return nil, err
+	for _, e := range f.getExtensionPoints(plugins) {
+		if err := updatePluginList(e.slicePtr, e.plugins, pluginsMap); err != nil {
+			return nil, err
+		}
 	}
 
-	if err := updatePluginList(reflect.ValueOf(&f.filterPlugins), plugins.Filter, reflect.TypeOf((*FilterPlugin)(nil)), pluginsMap); err != nil {
-		return nil, err
-	}
-
-	if err := updatePluginList(reflect.ValueOf(&f.reservePlugins), plugins.Reserve, reflect.TypeOf((*ReservePlugin)(nil)), pluginsMap); err != nil {
-		return nil, err
-	}
-
-	if err := updatePluginList(reflect.ValueOf(&f.postFilterPlugins), plugins.PostFilter, reflect.TypeOf((*PostFilterPlugin)(nil)), pluginsMap); err != nil {
-		return nil, err
-	}
-
-	if err := updatePluginList(reflect.ValueOf(&f.scorePlugins), plugins.Score, reflect.TypeOf((*ScorePlugin)(nil)), pluginsMap); err != nil {
-		return nil, err
-	}
-
-	if err := updatePluginList(reflect.ValueOf(&f.preBindPlugins), plugins.PreBind, reflect.TypeOf((*PreBindPlugin)(nil)), pluginsMap); err != nil {
-		return nil, err
-	}
-
-	if err := updatePluginList(reflect.ValueOf(&f.bindPlugins), plugins.Bind, reflect.TypeOf((*BindPlugin)(nil)), pluginsMap); err != nil {
-		return nil, err
-	}
-
-	if err := updatePluginList(reflect.ValueOf(&f.postBindPlugins), plugins.PostBind, reflect.TypeOf((*PostBindPlugin)(nil)), pluginsMap); err != nil {
-		return nil, err
-	}
-
-	if err := updatePluginList(reflect.ValueOf(&f.unreservePlugins), plugins.Unreserve, reflect.TypeOf((*UnreservePlugin)(nil)), pluginsMap); err != nil {
-		return nil, err
-	}
-
-	if err := updatePluginList(reflect.ValueOf(&f.permitPlugins), plugins.Permit, reflect.TypeOf((*PermitPlugin)(nil)), pluginsMap); err != nil {
-		return nil, err
-	}
-
-	if err := updatePluginList(reflect.ValueOf(&f.queueSortPlugins), plugins.QueueSort, reflect.TypeOf((*QueueSortPlugin)(nil)), pluginsMap); err != nil {
-		return nil, err
-	}
-
+	// Verifying the score weights again since Plugin.Name() could return a different
+	// value from the one used in the configuration.
 	for _, scorePlugin := range f.scorePlugins {
 		if f.pluginNameToWeightMap[scorePlugin.Name()] == 0 {
 			return nil, fmt.Errorf("score plugin %q is not configured with weight", scorePlugin.Name())
@@ -160,26 +152,26 @@ func NewFramework(r Registry, plugins *config.Plugins, args []config.PluginConfi
 	return f, nil
 }
 
-func updatePluginList(pluginList reflect.Value, pluginSet *config.PluginSet, pluginType reflect.Type, pluginsMap map[string]Plugin) error {
+func updatePluginList(pluginList interface{}, pluginSet *config.PluginSet, pluginsMap map[string]Plugin) error {
 	if pluginSet == nil {
 		return nil
 	}
 
-	plugins := pluginList.Elem()
-	pluginType = pluginType.Elem()
+	plugins := reflect.ValueOf(pluginList).Elem()
+	pluginType := plugins.Type().Elem()
 	set := sets.NewString()
 	for _, ep := range pluginSet.Enabled {
 		pg, ok := pluginsMap[ep.Name]
 		if !ok {
-			return fmt.Errorf("%s %q does not exist", pluginType.String(), ep.Name)
+			return fmt.Errorf("%s %q does not exist", pluginType.Name(), ep.Name)
 		}
 
 		if !reflect.TypeOf(pg).Implements(pluginType) {
-			return fmt.Errorf("plugin %q does not extend %s plugin", ep.Name, pluginType.String())
+			return fmt.Errorf("plugin %q does not extend %s plugin", ep.Name, pluginType.Name())
 		}
 
 		if set.Has(ep.Name) {
-			return fmt.Errorf("plugin %q already registered as %q", ep.Name, pluginType.String())
+			return fmt.Errorf("plugin %q already registered as %q", ep.Name, pluginType.Name())
 		}
 
 		set.Insert(ep.Name)
@@ -205,9 +197,9 @@ func (f *framework) QueueSortFunc() LessFunc {
 // anything but Success. If a non-success status is returned, then the scheduling
 // cycle is aborted.
 func (f *framework) RunPreFilterPlugins(
-	pc *PluginContext, pod *v1.Pod) *Status {
+	state *CycleState, pod *v1.Pod) *Status {
 	for _, pl := range f.preFilterPlugins {
-		status := pl.PreFilter(pc, pod)
+		status := pl.PreFilter(state, pod)
 		if !status.IsSuccess() {
 			if status.IsUnschedulable() {
 				msg := fmt.Sprintf("rejected by %q at prefilter: %v", pl.Name(), status.Message())
@@ -226,13 +218,13 @@ func (f *framework) RunPreFilterPlugins(
 // RunPreFilterExtensionAddPod calls the AddPod interface for the set of configured
 // PreFilter plugins. It returns directly if any of the plugins return any
 // status other than Success.
-func (f *framework) RunPreFilterExtensionAddPod(pc *PluginContext, podToSchedule *v1.Pod,
+func (f *framework) RunPreFilterExtensionAddPod(state *CycleState, podToSchedule *v1.Pod,
 	podToAdd *v1.Pod, nodeInfo *schedulernodeinfo.NodeInfo) *Status {
 	for _, pl := range f.preFilterPlugins {
-		if pl.Extensions() == nil {
+		if pl.PreFilterExtensions() == nil {
 			continue
 		}
-		if status := pl.Extensions().AddPod(pc, podToSchedule, podToAdd, nodeInfo); !status.IsSuccess() {
+		if status := pl.PreFilterExtensions().AddPod(state, podToSchedule, podToAdd, nodeInfo); !status.IsSuccess() {
 			msg := fmt.Sprintf("error while running AddPod for plugin %q while scheduling pod %q: %v",
 				pl.Name(), podToSchedule.Name, status.Message())
 			klog.Error(msg)
@@ -246,13 +238,13 @@ func (f *framework) RunPreFilterExtensionAddPod(pc *PluginContext, podToSchedule
 // RunPreFilterExtensionRemovePod calls the RemovePod interface for the set of configured
 // PreFilter plugins. It returns directly if any of the plugins return any
 // status other than Success.
-func (f *framework) RunPreFilterExtensionRemovePod(pc *PluginContext, podToSchedule *v1.Pod,
+func (f *framework) RunPreFilterExtensionRemovePod(state *CycleState, podToSchedule *v1.Pod,
 	podToRemove *v1.Pod, nodeInfo *schedulernodeinfo.NodeInfo) *Status {
 	for _, pl := range f.preFilterPlugins {
-		if pl.Extensions() == nil {
+		if pl.PreFilterExtensions() == nil {
 			continue
 		}
-		if status := pl.Extensions().RemovePod(pc, podToSchedule, podToRemove, nodeInfo); !status.IsSuccess() {
+		if status := pl.PreFilterExtensions().RemovePod(state, podToSchedule, podToRemove, nodeInfo); !status.IsSuccess() {
 			msg := fmt.Sprintf("error while running RemovePod for plugin %q while scheduling pod %q: %v",
 				pl.Name(), podToSchedule.Name, status.Message())
 			klog.Error(msg)
@@ -267,10 +259,10 @@ func (f *framework) RunPreFilterExtensionRemovePod(pc *PluginContext, podToSched
 // the given node. If any of these plugins doesn't return "Success", the
 // given node is not suitable for running pod.
 // Meanwhile, the failure message and status are set for the given node.
-func (f *framework) RunFilterPlugins(pc *PluginContext,
+func (f *framework) RunFilterPlugins(state *CycleState,
 	pod *v1.Pod, nodeInfo *schedulernodeinfo.NodeInfo) *Status {
 	for _, pl := range f.filterPlugins {
-		status := pl.Filter(pc, pod, nodeInfo)
+		status := pl.Filter(state, pod, nodeInfo)
 		if !status.IsSuccess() {
 			if !status.IsUnschedulable() {
 				errMsg := fmt.Sprintf("error while running %q filter plugin for pod %q: %v",
@@ -289,13 +281,13 @@ func (f *framework) RunFilterPlugins(pc *PluginContext,
 // of these plugins returns any status other than "Success", the given node is
 // rejected. The filteredNodeStatuses is the set of filtered nodes and their statuses.
 func (f *framework) RunPostFilterPlugins(
-	pc *PluginContext,
+	state *CycleState,
 	pod *v1.Pod,
 	nodes []*v1.Node,
 	filteredNodesStatuses NodeToStatusMap,
 ) *Status {
 	for _, pl := range f.postFilterPlugins {
-		status := pl.PostFilter(pc, pod, nodes, filteredNodesStatuses)
+		status := pl.PostFilter(state, pod, nodes, filteredNodesStatuses)
 		if !status.IsSuccess() {
 			msg := fmt.Sprintf("error while running %q postfilter plugin for pod %q: %v", pl.Name(), pod.Name, status.Message())
 			klog.Error(msg)
@@ -310,7 +302,7 @@ func (f *framework) RunPostFilterPlugins(
 // stores for each scoring plugin name the corresponding NodeScoreList(s).
 // It also returns *Status, which is set to non-success if any of the plugins returns
 // a non-success status.
-func (f *framework) RunScorePlugins(pc *PluginContext, pod *v1.Pod, nodes []*v1.Node) (PluginToNodeScores, *Status) {
+func (f *framework) RunScorePlugins(state *CycleState, pod *v1.Pod, nodes []*v1.Node) (PluginToNodeScores, *Status) {
 	pluginToNodeScores := make(PluginToNodeScores, len(f.scorePlugins))
 	for _, pl := range f.scorePlugins {
 		pluginToNodeScores[pl.Name()] = make(NodeScoreList, len(nodes))
@@ -322,7 +314,7 @@ func (f *framework) RunScorePlugins(pc *PluginContext, pod *v1.Pod, nodes []*v1.
 	workqueue.ParallelizeUntil(ctx, 16, len(nodes), func(index int) {
 		for _, pl := range f.scorePlugins {
 			nodeName := nodes[index].Name
-			score, status := pl.Score(pc, pod, nodeName)
+			score, status := pl.Score(state, pod, nodeName)
 			if !status.IsSuccess() {
 				errCh.SendErrorWithCancel(fmt.Errorf(status.Message()), cancel)
 				return
@@ -343,10 +335,10 @@ func (f *framework) RunScorePlugins(pc *PluginContext, pod *v1.Pod, nodes []*v1.
 	workqueue.ParallelizeUntil(ctx, 16, len(f.scorePlugins), func(index int) {
 		pl := f.scorePlugins[index]
 		nodeScoreList := pluginToNodeScores[pl.Name()]
-		if pl.Extensions() == nil {
+		if pl.ScoreExtensions() == nil {
 			return
 		}
-		if status := pl.Extensions().NormalizeScore(pc, pod, nodeScoreList); !status.IsSuccess() {
+		if status := pl.ScoreExtensions().NormalizeScore(state, pod, nodeScoreList); !status.IsSuccess() {
 			err := fmt.Errorf("normalize score plugin %q failed with error %v", pl.Name(), status.Message())
 			errCh.SendErrorWithCancel(err, cancel)
 			return
@@ -388,9 +380,9 @@ func (f *framework) RunScorePlugins(pc *PluginContext, pod *v1.Pod, nodes []*v1.
 // failure (bool) if any of the plugins returns an error. It also returns an
 // error containing the rejection message or the error occurred in the plugin.
 func (f *framework) RunPreBindPlugins(
-	pc *PluginContext, pod *v1.Pod, nodeName string) *Status {
+	state *CycleState, pod *v1.Pod, nodeName string) *Status {
 	for _, pl := range f.preBindPlugins {
-		status := pl.PreBind(pc, pod, nodeName)
+		status := pl.PreBind(state, pod, nodeName)
 		if !status.IsSuccess() {
 			msg := fmt.Sprintf("error while running %q prebind plugin for pod %q: %v", pl.Name(), pod.Name, status.Message())
 			klog.Error(msg)
@@ -401,13 +393,13 @@ func (f *framework) RunPreBindPlugins(
 }
 
 // RunBindPlugins runs the set of configured bind plugins until one returns a non `Skip` status.
-func (f *framework) RunBindPlugins(pc *PluginContext, pod *v1.Pod, nodeName string) *Status {
+func (f *framework) RunBindPlugins(state *CycleState, pod *v1.Pod, nodeName string) *Status {
 	if len(f.bindPlugins) == 0 {
 		return NewStatus(Skip, "")
 	}
 	var status *Status
 	for _, bp := range f.bindPlugins {
-		status = bp.Bind(pc, pod, nodeName)
+		status = bp.Bind(state, pod, nodeName)
 		if status != nil && status.Code() == Skip {
 			continue
 		}
@@ -423,9 +415,9 @@ func (f *framework) RunBindPlugins(pc *PluginContext, pod *v1.Pod, nodeName stri
 
 // RunPostBindPlugins runs the set of configured postbind plugins.
 func (f *framework) RunPostBindPlugins(
-	pc *PluginContext, pod *v1.Pod, nodeName string) {
+	state *CycleState, pod *v1.Pod, nodeName string) {
 	for _, pl := range f.postBindPlugins {
-		pl.PostBind(pc, pod, nodeName)
+		pl.PostBind(state, pod, nodeName)
 	}
 }
 
@@ -433,9 +425,9 @@ func (f *framework) RunPostBindPlugins(
 // plugins returns an error, it does not continue running the remaining ones and
 // returns the error. In such case, pod will not be scheduled.
 func (f *framework) RunReservePlugins(
-	pc *PluginContext, pod *v1.Pod, nodeName string) *Status {
+	state *CycleState, pod *v1.Pod, nodeName string) *Status {
 	for _, pl := range f.reservePlugins {
-		status := pl.Reserve(pc, pod, nodeName)
+		status := pl.Reserve(state, pod, nodeName)
 		if !status.IsSuccess() {
 			msg := fmt.Sprintf("error while running %q reserve plugin for pod %q: %v", pl.Name(), pod.Name, status.Message())
 			klog.Error(msg)
@@ -447,9 +439,9 @@ func (f *framework) RunReservePlugins(
 
 // RunUnreservePlugins runs the set of configured unreserve plugins.
 func (f *framework) RunUnreservePlugins(
-	pc *PluginContext, pod *v1.Pod, nodeName string) {
+	state *CycleState, pod *v1.Pod, nodeName string) {
 	for _, pl := range f.unreservePlugins {
-		pl.Unreserve(pc, pod, nodeName)
+		pl.Unreserve(state, pod, nodeName)
 	}
 }
 
@@ -461,11 +453,11 @@ func (f *framework) RunUnreservePlugins(
 // Note that if multiple plugins asked to wait, then we wait for the minimum
 // timeout duration.
 func (f *framework) RunPermitPlugins(
-	pc *PluginContext, pod *v1.Pod, nodeName string) *Status {
+	state *CycleState, pod *v1.Pod, nodeName string) *Status {
 	timeout := maxTimeout
 	statusCode := Success
 	for _, pl := range f.permitPlugins {
-		status, d := pl.Permit(pc, pod, nodeName)
+		status, d := pl.Permit(state, pod, nodeName)
 		if !status.IsSuccess() {
 			if status.IsUnschedulable() {
 				msg := fmt.Sprintf("rejected by %q at permit: %v", pl.Name(), status.Message())
@@ -534,17 +526,33 @@ func (f *framework) GetWaitingPod(uid types.UID) WaitingPod {
 	return f.waitingPods.get(uid)
 }
 
-func pluginNameToConfig(args []config.PluginConfig) map[string]*runtime.Unknown {
-	pc := make(map[string]*runtime.Unknown, 0)
-	for i := range args {
-		// This is needed because the type of PluginConfig.Args is not pointer type.
-		p := args[i]
-		pc[p.Name] = &p.Args
+// ListPlugins returns a map of extension point name to plugin names configured at each extension
+// point. Returns nil if no plugins where configred.
+func (f *framework) ListPlugins() map[string][]string {
+	m := make(map[string][]string)
+
+	insert := func(ptr interface{}) {
+		plugins := reflect.ValueOf(ptr).Elem()
+		var names []string
+		for i := 0; i < plugins.Len(); i++ {
+			name := plugins.Index(i).Interface().(Plugin).Name()
+			names = append(names, name)
+		}
+		if len(names) > 0 {
+			extName := plugins.Type().Elem().Name()
+			m[extName] = names
+		}
 	}
-	return pc
+	for _, e := range f.getExtensionPoints(&config.Plugins{}) {
+		insert(e.slicePtr)
+	}
+	if len(m) > 0 {
+		return m
+	}
+	return nil
 }
 
-func pluginsNeeded(plugins *config.Plugins) map[string]config.Plugin {
+func (f *framework) pluginsNeeded(plugins *config.Plugins) map[string]config.Plugin {
 	pgMap := make(map[string]config.Plugin, 0)
 
 	if plugins == nil {
@@ -559,17 +567,8 @@ func pluginsNeeded(plugins *config.Plugins) map[string]config.Plugin {
 			pgMap[pg.Name] = pg
 		}
 	}
-	find(plugins.QueueSort)
-	find(plugins.PreFilter)
-	find(plugins.Filter)
-	find(plugins.PostFilter)
-	find(plugins.Score)
-	find(plugins.Reserve)
-	find(plugins.Permit)
-	find(plugins.PreBind)
-	find(plugins.Bind)
-	find(plugins.PostBind)
-	find(plugins.Unreserve)
-
+	for _, e := range f.getExtensionPoints(plugins) {
+		find(e.plugins)
+	}
 	return pgMap
 }
