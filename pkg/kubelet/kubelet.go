@@ -1835,7 +1835,7 @@ func (kl *Kubelet) syncLoop(updates <-chan kubetypes.PodUpdate, handler SyncHand
 	duration := base
 	for {
 		if err := kl.runtimeState.runtimeErrors(); err != nil {
-			klog.Infof("skipping pod synchronization - %v", err)
+			klog.Errorf("skipping pod synchronization - %v", err)
 			// exponential backoff
 			time.Sleep(duration)
 			duration = time.Duration(math.Min(float64(max), factor*float64(duration)))
@@ -2052,7 +2052,7 @@ func (kl *Kubelet) HandlePodAdditions(pods []*v1.Pod) {
 		// the apiserver and no action (other than cleanup) is required.
 		kl.podManager.AddPod(pod)
 
-		if kubepod.IsMirrorPod(pod) {
+		if kubetypes.IsMirrorPod(pod) {
 			kl.handleMirrorPod(pod, start)
 			continue
 		}
@@ -2087,7 +2087,7 @@ func (kl *Kubelet) HandlePodUpdates(pods []*v1.Pod) {
 	}
 	for _, pod := range pods {
 		kl.podManager.UpdatePod(pod)
-		if kubepod.IsMirrorPod(pod) {
+		if kubetypes.IsMirrorPod(pod) {
 			kl.handleMirrorPod(pod, start)
 			continue
 		}
@@ -2104,7 +2104,7 @@ func (kl *Kubelet) HandlePodRemoves(pods []*v1.Pod) {
 	start := kl.clock.Now()
 	for _, pod := range pods {
 		kl.podManager.DeletePod(pod)
-		if kubepod.IsMirrorPod(pod) {
+		if kubetypes.IsMirrorPod(pod) {
 			kl.handleMirrorPod(pod, start)
 			continue
 		}
