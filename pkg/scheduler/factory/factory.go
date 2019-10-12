@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/informers"
 	appsinformers "k8s.io/client-go/informers/apps/v1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	policyinformers "k8s.io/client-go/informers/policy/v1beta1"
@@ -78,9 +79,6 @@ type Config struct {
 
 	Algorithm core.ScheduleAlgorithm
 	GetBinder func(pod *v1.Pod) Binder
-	// PodPreemptor is used to evict pods and update 'NominatedNode' field of
-	// the preemptor pod.
-	PodPreemptor PodPreemptor
 	// Framework runs scheduler plugins at configured extension points.
 	Framework framework.Framework
 
@@ -88,7 +86,7 @@ type Config struct {
 	// is available. We don't use a channel for this, because scheduling
 	// a pod may take some amount of time and we don't want pods to get
 	// stale while they sit in a channel.
-	NextPod func() *v1.Pod
+	NextPod func() *framework.PodInfo
 
 	// WaitForCacheSync waits for scheduler cache to populate.
 	// It returns true if it was successful, false if the controller should shutdown.
@@ -96,7 +94,7 @@ type Config struct {
 
 	// Error is called if there is an error. It is passed the pod in
 	// question, and the error
-	Error func(*v1.Pod, error)
+	Error func(*framework.PodInfo, error)
 
 	// Recorder is the EventRecorder to use
 	Recorder events.EventRecorder
@@ -118,19 +116,13 @@ type Config struct {
 	PluginConfig []config.PluginConfig
 }
 
-// PodPreemptor has methods needed to delete a pod and to update 'NominatedPod'
-// field of the preemptor pod.
-type PodPreemptor interface {
-	GetUpdatedPod(pod *v1.Pod) (*v1.Pod, error)
-	DeletePod(pod *v1.Pod) error
-	SetNominatedNodeName(pod *v1.Pod, nominatedNode string) error
-	RemoveNominatedNodeName(pod *v1.Pod) error
-}
-
 // Configurator defines I/O, caching, and other functionality needed to
 // construct a new scheduler.
 type Configurator struct {
 	client clientset.Interface
+
+	informerFactory informers.SharedInformerFactory
+
 	// a means to list all PersistentVolumes
 	pVLister corelisters.PersistentVolumeLister
 	// a means to list all PersistentVolumeClaims
@@ -196,6 +188,7 @@ type Configurator struct {
 // ConfigFactoryArgs is a set arguments passed to NewConfigFactory.
 type ConfigFactoryArgs struct {
 	Client                         clientset.Interface
+	InformerFactory                informers.SharedInformerFactory
 	NodeInformer                   coreinformers.NodeInformer
 	PodInformer                    coreinformers.PodInformer
 	PvInformer                     coreinformers.PersistentVolumeInformer
@@ -207,6 +200,8 @@ type ConfigFactoryArgs struct {
 	PdbInformer                    policyinformers.PodDisruptionBudgetInformer
 	StorageClassInformer           storageinformersv1.StorageClassInformer
 	CSINodeInformer                storageinformersv1beta1.CSINodeInformer
+	VolumeBinder                   *volumebinder.VolumeBinder
+	SchedulerCache                 internalcache.Cache
 	HardPodAffinitySymmetricWeight int32
 	DisablePreemption              bool
 	PercentageOfNodesToScore       int32
@@ -227,7 +222,6 @@ func NewConfigFactory(args *ConfigFactoryArgs) *Configurator {
 	if stopEverything == nil {
 		stopEverything = wait.NeverStop
 	}
-	schedulerCache := internalcache.New(30*time.Second, stopEverything)
 
 	// storageClassInformer is only enabled through VolumeScheduling feature gate
 	var storageClassLister storagelistersv1.StorageClassLister
@@ -242,6 +236,7 @@ func NewConfigFactory(args *ConfigFactoryArgs) *Configurator {
 
 	c := &Configurator{
 		client:                         args.Client,
+		informerFactory:                args.InformerFactory,
 		pVLister:                       args.PvInformer.Lister(),
 		pVCLister:                      args.PvcInformer.Lister(),
 		serviceLister:                  args.ServiceInformer.Lister(),
@@ -253,7 +248,8 @@ func NewConfigFactory(args *ConfigFactoryArgs) *Configurator {
 		podLister:                      args.PodInformer.Lister(),
 		storageClassLister:             storageClassLister,
 		csiNodeLister:                  csiNodeLister,
-		schedulerCache:                 schedulerCache,
+		volumeBinder:                   args.VolumeBinder,
+		schedulerCache:                 args.SchedulerCache,
 		StopEverything:                 stopEverything,
 		hardPodAffinitySymmetricWeight: args.HardPodAffinitySymmetricWeight,
 		disablePreemption:              args.DisablePreemption,
@@ -267,8 +263,6 @@ func NewConfigFactory(args *ConfigFactoryArgs) *Configurator {
 		pluginConfig:                   args.PluginConfig,
 		pluginConfigProducerRegistry:   args.PluginConfigProducerRegistry,
 	}
-	// Setup volume binder
-	c.volumeBinder = volumebinder.NewVolumeBinder(args.Client, args.NodeInformer, args.PvcInformer, args.PvInformer, args.StorageClassInformer, time.Duration(args.BindTimeoutSeconds)*time.Second)
 	c.scheduledPodsHasSynced = args.PodInformer.Informer().HasSynced
 
 	return c
@@ -416,6 +410,7 @@ func (c *Configurator) CreateFromKeys(predicateKeys, priorityKeys sets.String, e
 		&plugins,
 		pluginConfig,
 		framework.WithClientSet(c.client),
+		framework.WithInformerFactory(c.informerFactory),
 	)
 	if err != nil {
 		klog.Fatalf("error initializing the scheduling framework: %v", err)
@@ -464,13 +459,12 @@ func (c *Configurator) CreateFromKeys(predicateKeys, priorityKeys sets.String, e
 		SchedulerCache: c.schedulerCache,
 		Algorithm:      algo,
 		GetBinder:      getBinderFunc(c.client, extenders),
-		PodPreemptor:   &podPreemptor{c.client},
 		Framework:      framework,
 		WaitForCacheSync: func() bool {
 			return cache.WaitForCacheSync(c.StopEverything, c.scheduledPodsHasSynced)
 		},
 		NextPod:         internalqueue.MakeNextPodFunc(podQueue),
-		Error:           MakeDefaultErrorFunc(c.client, podQueue, c.schedulerCache, c.StopEverything),
+		Error:           MakeDefaultErrorFunc(c.client, podQueue, c.schedulerCache),
 		StopEverything:  c.StopEverything,
 		VolumeBinder:    c.volumeBinder,
 		SchedulingQueue: podQueue,
@@ -636,8 +630,9 @@ func NewPodInformer(client clientset.Interface, resyncPeriod time.Duration) core
 }
 
 // MakeDefaultErrorFunc construct a function to handle pod scheduler error
-func MakeDefaultErrorFunc(client clientset.Interface, podQueue internalqueue.SchedulingQueue, schedulerCache internalcache.Cache, stopEverything <-chan struct{}) func(pod *v1.Pod, err error) {
-	return func(pod *v1.Pod, err error) {
+func MakeDefaultErrorFunc(client clientset.Interface, podQueue internalqueue.SchedulingQueue, schedulerCache internalcache.Cache) func(*framework.PodInfo, error) {
+	return func(podInfo *framework.PodInfo, err error) {
+		pod := podInfo.Pod
 		if err == core.ErrNoNodesAvailable {
 			klog.V(2).Infof("Unable to schedule %v/%v: no nodes are registered to the cluster; waiting", pod.Namespace, pod.Name)
 		} else {
@@ -681,7 +676,8 @@ func MakeDefaultErrorFunc(client clientset.Interface, podQueue internalqueue.Sch
 				pod, err := client.CoreV1().Pods(podID.Namespace).Get(podID.Name, metav1.GetOptions{})
 				if err == nil {
 					if len(pod.Spec.NodeName) == 0 {
-						if err := podQueue.AddUnschedulableIfNotPresent(pod, podSchedulingCycle); err != nil {
+						podInfo.Pod = pod
+						if err := podQueue.AddUnschedulableIfNotPresent(podInfo, podSchedulingCycle); err != nil {
 							klog.Error(err)
 						}
 					}
@@ -709,30 +705,4 @@ type binder struct {
 func (b *binder) Bind(binding *v1.Binding) error {
 	klog.V(3).Infof("Attempting to bind %v to %v", binding.Name, binding.Target.Name)
 	return b.Client.CoreV1().Pods(binding.Namespace).Bind(binding)
-}
-
-type podPreemptor struct {
-	Client clientset.Interface
-}
-
-func (p *podPreemptor) GetUpdatedPod(pod *v1.Pod) (*v1.Pod, error) {
-	return p.Client.CoreV1().Pods(pod.Namespace).Get(pod.Name, metav1.GetOptions{})
-}
-
-func (p *podPreemptor) DeletePod(pod *v1.Pod) error {
-	return p.Client.CoreV1().Pods(pod.Namespace).Delete(pod.Name, &metav1.DeleteOptions{})
-}
-
-func (p *podPreemptor) SetNominatedNodeName(pod *v1.Pod, nominatedNodeName string) error {
-	podCopy := pod.DeepCopy()
-	podCopy.Status.NominatedNodeName = nominatedNodeName
-	_, err := p.Client.CoreV1().Pods(pod.Namespace).UpdateStatus(podCopy)
-	return err
-}
-
-func (p *podPreemptor) RemoveNominatedNodeName(pod *v1.Pod) error {
-	if len(pod.Status.NominatedNodeName) == 0 {
-		return nil
-	}
-	return p.SetNominatedNodeName(pod, "")
 }

@@ -194,7 +194,7 @@ github.com/coredns/corefile-migration/migration
 github.com/coredns/corefile-migration/migration/corefile
 # github.com/coreos/bbolt v1.3.1-coreos.6 => github.com/coreos/bbolt v1.3.1-coreos.6
 github.com/coreos/bbolt
-# github.com/coreos/etcd v3.3.15+incompatible => github.com/coreos/etcd v3.3.15+incompatible
+# github.com/coreos/etcd v3.3.17+incompatible => github.com/coreos/etcd v3.3.17+incompatible
 github.com/coreos/etcd/alarm
 github.com/coreos/etcd/auth
 github.com/coreos/etcd/auth/authpb
@@ -627,7 +627,7 @@ github.com/mohae/deepcopy
 github.com/morikuni/aec
 # github.com/mrunalp/fileutils v0.0.0-20171103030105-7d4729fb3618 => github.com/mrunalp/fileutils v0.0.0-20171103030105-7d4729fb3618
 github.com/mrunalp/fileutils
-# github.com/munnerz/goautoneg v0.0.0-20120707110453-a547fc61f48d => github.com/munnerz/goautoneg v0.0.0-20120707110453-a547fc61f48d
+# github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 => github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 github.com/munnerz/goautoneg
 # github.com/mvdan/xurls v1.1.0 => github.com/mvdan/xurls v1.1.0
 github.com/mvdan/xurls
@@ -1826,6 +1826,8 @@ k8s.io/kubectl/pkg/util/term
 k8s.io/kubectl/pkg/validation
 # k8s.io/kubelet v0.0.0 => ./staging/src/k8s.io/kubelet
 k8s.io/kubelet/config/v1beta1
+k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1
+k8s.io/kubelet/pkg/apis/pluginregistration/v1
 # k8s.io/legacy-cloud-providers v0.0.0 => ./staging/src/k8s.io/legacy-cloud-providers
 k8s.io/legacy-cloud-providers/aws
 k8s.io/legacy-cloud-providers/azure
@@ -1885,7 +1887,7 @@ k8s.io/sample-apiserver/pkg/generated/openapi
 k8s.io/sample-apiserver/pkg/registry
 k8s.io/sample-apiserver/pkg/registry/wardle/fischer
 k8s.io/sample-apiserver/pkg/registry/wardle/flunder
-# k8s.io/utils v0.0.0-20190920012459-5008bf6f8cd6 => k8s.io/utils v0.0.0-20190920012459-5008bf6f8cd6
+# k8s.io/utils v0.0.0-20191010214722-8d271d903fe4 => k8s.io/utils v0.0.0-20191010214722-8d271d903fe4
 k8s.io/utils/buffer
 k8s.io/utils/clock
 k8s.io/utils/exec

@@ -19,18 +19,49 @@ package plugins
 import (
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/runtime"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
+	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
+	"k8s.io/kubernetes/pkg/scheduler/algorithm/priorities"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodename"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumerestrictions"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
+	internalcache "k8s.io/kubernetes/pkg/scheduler/internal/cache"
+	"k8s.io/kubernetes/pkg/scheduler/volumebinder"
 )
+
+// RegistryArgs arguments needed to create default plugin factories.
+type RegistryArgs struct {
+	SchedulerCache     internalcache.Cache
+	ServiceLister      algorithm.ServiceLister
+	ControllerLister   algorithm.ControllerLister
+	ReplicaSetLister   algorithm.ReplicaSetLister
+	StatefulSetLister  algorithm.StatefulSetLister
+	PDBLister          algorithm.PDBLister
+	PVLister           corelisters.PersistentVolumeLister
+	PVCLister          corelisters.PersistentVolumeClaimLister
+	StorageClassLister storagelistersv1.StorageClassLister
+	VolumeBinder       *volumebinder.VolumeBinder
+}
 
 // NewDefaultRegistry builds a default registry with all the default plugins.
 // This is the registry that Kubernetes default scheduler uses. A scheduler that
 // runs custom plugins, can pass a different Registry when initializing the scheduler.
-func NewDefaultRegistry() framework.Registry {
+func NewDefaultRegistry(args *RegistryArgs) framework.Registry {
 	return framework.Registry{
 		tainttoleration.Name: tainttoleration.New,
+		nodename.Name:        nodename.New,
+		nodeaffinity.Name:    nodeaffinity.New,
+		volumebinding.Name: func(_ *runtime.Unknown, _ framework.FrameworkHandle) (framework.Plugin, error) {
+			return volumebinding.NewFromVolumeBinder(args.VolumeBinder), nil
+		},
+		volumerestrictions.Name: volumerestrictions.New,
 	}
 }
 
@@ -61,6 +92,32 @@ func NewDefaultConfigProducerRegistry() *ConfigProducerRegistry {
 	registry.RegisterPredicate(predicates.PodToleratesNodeTaintsPred,
 		func(_ ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
 			plugins.Filter = appendToPluginSet(plugins.Filter, tainttoleration.Name, nil)
+			return
+		})
+	registry.RegisterPredicate(predicates.HostNamePred,
+		func(_ ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
+			plugins.Filter = appendToPluginSet(plugins.Filter, nodename.Name, nil)
+			return
+		})
+	registry.RegisterPredicate(predicates.MatchNodeSelectorPred,
+		func(_ ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
+			plugins.Filter = appendToPluginSet(plugins.Filter, nodeaffinity.Name, nil)
+			return
+		})
+	registry.RegisterPredicate(predicates.CheckVolumeBindingPred,
+		func(args ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
+			plugins.Filter = appendToPluginSet(plugins.Filter, volumebinding.Name, nil)
+			return
+		})
+	registry.RegisterPredicate(predicates.NoDiskConflictPred,
+		func(_ ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
+			plugins.Filter = appendToPluginSet(plugins.Filter, volumerestrictions.Name, nil)
+			return
+		})
+
+	registry.RegisterPriority(priorities.TaintTolerationPriority,
+		func(args ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
+			plugins.Score = appendToPluginSet(plugins.Score, tainttoleration.Name, &args.Weight)
 			return
 		})
 

@@ -14,38 +14,37 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package noop
+package nodeaffinity
 
 import (
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-
+	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/migration"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	"k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 )
 
-// Filter is a plugin that implements the filter plugin and always returns Success.
-// This is just to make sure that all code dependencies are properly addressed while
-// working on legitimate plugins.
-// Note: The struct cannot be named NoOpFilter, otherwise the golint check cannot pass
-type Filter struct{}
+// NodeAffinity is a plugin that checks if a pod node selector matches the node label.
+type NodeAffinity struct{}
 
-var _ = framework.FilterPlugin(Filter{})
+var _ = framework.FilterPlugin(&NodeAffinity{})
 
-// Name is the name of the plugin used in Registry and configurations.
-const Name = "noop-filter"
+// Name is the name of the plugin used in the plugin registry and configurations.
+const Name = "NodeAffinity"
 
 // Name returns name of the plugin. It is used in logs, etc.
-func (n Filter) Name() string {
+func (pl *NodeAffinity) Name() string {
 	return Name
 }
 
 // Filter invoked at the filter extension point.
-func (n Filter) Filter(state *framework.CycleState, pod *v1.Pod, nodeInfo *nodeinfo.NodeInfo) *framework.Status {
-	return nil
+func (pl *NodeAffinity) Filter(_ *framework.CycleState, pod *v1.Pod, nodeInfo *nodeinfo.NodeInfo) *framework.Status {
+	_, reasons, err := predicates.PodMatchNodeSelector(pod, nil, nodeInfo)
+	return migration.PredicateResultToFrameworkStatus(reasons, err)
 }
 
 // New initializes a new plugin and returns it.
 func New(_ *runtime.Unknown, _ framework.FrameworkHandle) (framework.Plugin, error) {
-	return &Filter{}, nil
+	return &NodeAffinity{}, nil
 }

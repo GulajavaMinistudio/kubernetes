@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
@@ -58,7 +59,8 @@ type framework struct {
 	unreservePlugins      []UnreservePlugin
 	permitPlugins         []PermitPlugin
 
-	clientSet clientset.Interface
+	clientSet       clientset.Interface
+	informerFactory informers.SharedInformerFactory
 }
 
 // extensionPoint encapsulates desired and applied set of plugins at a specific extension
@@ -89,7 +91,8 @@ func (f *framework) getExtensionPoints(plugins *config.Plugins) []extensionPoint
 }
 
 type frameworkOptions struct {
-	clientSet clientset.Interface
+	clientSet       clientset.Interface
+	informerFactory informers.SharedInformerFactory
 }
 
 // Option for the framework.
@@ -99,6 +102,13 @@ type Option func(*frameworkOptions)
 func WithClientSet(clientSet clientset.Interface) Option {
 	return func(o *frameworkOptions) {
 		o.clientSet = clientSet
+	}
+}
+
+// WithInformerFactory sets informer factory for the scheduling framework.
+func WithInformerFactory(informerFactory informers.SharedInformerFactory) Option {
+	return func(o *frameworkOptions) {
+		o.informerFactory = informerFactory
 	}
 }
 
@@ -119,6 +129,7 @@ func NewFramework(r Registry, plugins *config.Plugins, args []config.PluginConfi
 		pluginNameToWeightMap: make(map[string]int),
 		waitingPods:           newWaitingPodsMap(),
 		clientSet:             options.clientSet,
+		informerFactory:       options.informerFactory,
 	}
 	if plugins == nil {
 		return f, nil
@@ -553,18 +564,24 @@ func (f *framework) GetWaitingPod(uid types.UID) WaitingPod {
 
 // ListPlugins returns a map of extension point name to plugin names configured at each extension
 // point. Returns nil if no plugins where configred.
-func (f *framework) ListPlugins() map[string][]string {
-	m := make(map[string][]string)
+func (f *framework) ListPlugins() map[string][]config.Plugin {
+	m := make(map[string][]config.Plugin)
+
 	for _, e := range f.getExtensionPoints(&config.Plugins{}) {
 		plugins := reflect.ValueOf(e.slicePtr).Elem()
-		var names []string
+		extName := plugins.Type().Elem().Name()
+		var cfgs []config.Plugin
 		for i := 0; i < plugins.Len(); i++ {
 			name := plugins.Index(i).Interface().(Plugin).Name()
-			names = append(names, name)
+			p := config.Plugin{Name: name}
+			if extName == "ScorePlugin" {
+				// Weights apply only to score plugins.
+				p.Weight = int32(f.pluginNameToWeightMap[name])
+			}
+			cfgs = append(cfgs, p)
 		}
-		if len(names) > 0 {
-			extName := plugins.Type().Elem().Name()
-			m[extName] = names
+		if len(cfgs) > 0 {
+			m[extName] = cfgs
 		}
 	}
 	if len(m) > 0 {
@@ -578,8 +595,13 @@ func (f *framework) ClientSet() clientset.Interface {
 	return f.clientSet
 }
 
+// SharedInformerFactory returns a shared informer factory.
+func (f *framework) SharedInformerFactory() informers.SharedInformerFactory {
+	return f.informerFactory
+}
+
 func (f *framework) pluginsNeeded(plugins *config.Plugins) map[string]config.Plugin {
-	pgMap := make(map[string]config.Plugin, 0)
+	pgMap := make(map[string]config.Plugin)
 
 	if plugins == nil {
 		return pgMap
