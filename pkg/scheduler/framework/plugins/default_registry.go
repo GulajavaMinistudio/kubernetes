@@ -26,11 +26,15 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/priorities"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/imagelocality"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodename"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumerestrictions"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	internalcache "k8s.io/kubernetes/pkg/scheduler/internal/cache"
 	"k8s.io/kubernetes/pkg/scheduler/volumebinder"
@@ -54,14 +58,24 @@ type RegistryArgs struct {
 // This is the registry that Kubernetes default scheduler uses. A scheduler that
 // runs custom plugins, can pass a different Registry when initializing the scheduler.
 func NewDefaultRegistry(args *RegistryArgs) framework.Registry {
+	pvInfo := &predicates.CachedPersistentVolumeInfo{PersistentVolumeLister: args.PVLister}
+	pvcInfo := &predicates.CachedPersistentVolumeClaimInfo{PersistentVolumeClaimLister: args.PVCLister}
+	classInfo := &predicates.CachedStorageClassInfo{StorageClassLister: args.StorageClassLister}
+
 	return framework.Registry{
+		imagelocality.Name:   imagelocality.New,
 		tainttoleration.Name: tainttoleration.New,
+		noderesources.Name:   noderesources.New,
 		nodename.Name:        nodename.New,
+		nodeports.Name:       nodeports.New,
 		nodeaffinity.Name:    nodeaffinity.New,
 		volumebinding.Name: func(_ *runtime.Unknown, _ framework.FrameworkHandle) (framework.Plugin, error) {
 			return volumebinding.NewFromVolumeBinder(args.VolumeBinder), nil
 		},
 		volumerestrictions.Name: volumerestrictions.New,
+		volumezone.Name: func(_ *runtime.Unknown, _ framework.FrameworkHandle) (framework.Plugin, error) {
+			return volumezone.New(pvInfo, pvcInfo, classInfo), nil
+		},
 	}
 }
 
@@ -94,9 +108,19 @@ func NewDefaultConfigProducerRegistry() *ConfigProducerRegistry {
 			plugins.Filter = appendToPluginSet(plugins.Filter, tainttoleration.Name, nil)
 			return
 		})
+	registry.RegisterPredicate(predicates.PodFitsResourcesPred,
+		func(_ ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
+			plugins.Filter = appendToPluginSet(plugins.Filter, noderesources.Name, nil)
+			return
+		})
 	registry.RegisterPredicate(predicates.HostNamePred,
 		func(_ ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
 			plugins.Filter = appendToPluginSet(plugins.Filter, nodename.Name, nil)
+			return
+		})
+	registry.RegisterPredicate(predicates.PodFitsHostPortsPred,
+		func(_ ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
+			plugins.Filter = appendToPluginSet(plugins.Filter, nodeports.Name, nil)
 			return
 		})
 	registry.RegisterPredicate(predicates.MatchNodeSelectorPred,
@@ -114,10 +138,21 @@ func NewDefaultConfigProducerRegistry() *ConfigProducerRegistry {
 			plugins.Filter = appendToPluginSet(plugins.Filter, volumerestrictions.Name, nil)
 			return
 		})
+	registry.RegisterPredicate(predicates.NoVolumeZoneConflictPred,
+		func(_ ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
+			plugins.Filter = appendToPluginSet(plugins.Filter, volumezone.Name, nil)
+			return
+		})
 
 	registry.RegisterPriority(priorities.TaintTolerationPriority,
 		func(args ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
 			plugins.Score = appendToPluginSet(plugins.Score, tainttoleration.Name, &args.Weight)
+			return
+		})
+
+	registry.RegisterPriority(priorities.ImageLocalityPriority,
+		func(args ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
+			plugins.Score = appendToPluginSet(plugins.Score, imagelocality.Name, &args.Weight)
 			return
 		})
 
