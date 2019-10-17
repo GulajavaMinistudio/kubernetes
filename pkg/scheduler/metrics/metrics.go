@@ -238,6 +238,24 @@ var (
 			StabilityLevel: metrics.ALPHA,
 		})
 
+	FrameworkExtensionPointDuration = metrics.NewHistogramVec(
+		&metrics.HistogramOpts{
+			Subsystem:      SchedulerSubsystem,
+			Name:           "framework_extension_point_duration_seconds",
+			Help:           "Latency for running all plugins of a specific extension point.",
+			Buckets:        nil,
+			StabilityLevel: metrics.ALPHA,
+		},
+		[]string{"extension_point", "status"})
+
+	SchedulerQueueIncomingPods = metrics.NewCounterVec(
+		&metrics.CounterOpts{
+			Subsystem:      SchedulerSubsystem,
+			Name:           "queue_incoming_pods_total",
+			Help:           "Number of pods added to scheduling queues by event and queue type.",
+			StabilityLevel: metrics.ALPHA,
+		}, []string{"queue", "event"})
+
 	metricsList = []metrics.Registerable{
 		scheduleAttempts,
 		SchedulingLatency,
@@ -259,6 +277,8 @@ var (
 		pendingPods,
 		PodSchedulingDuration,
 		PodSchedulingAttempts,
+		FrameworkExtensionPointDuration,
+		SchedulerQueueIncomingPods,
 	}
 )
 
