@@ -17,10 +17,11 @@ limitations under the License.
 package volumezone
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
@@ -153,8 +154,10 @@ func TestSingleZone(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			node := &schedulernodeinfo.NodeInfo{}
 			node.SetNode(test.Node)
-			p := New(pvInfo, pvcInfo, nil)
-			gotStatus := p.(framework.FilterPlugin).Filter(nil, test.Pod, node)
+			p := &VolumeZone{
+				predicate: predicates.NewVolumeZonePredicate(pvInfo, pvcInfo, nil),
+			}
+			gotStatus := p.Filter(context.Background(), nil, test.Pod, node)
 			if !reflect.DeepEqual(gotStatus, test.wantStatus) {
 				t.Errorf("status does not match: %v, want: %v", gotStatus, test.wantStatus)
 			}
@@ -236,8 +239,10 @@ func TestMultiZone(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			node := &schedulernodeinfo.NodeInfo{}
 			node.SetNode(test.Node)
-			p := New(pvInfo, pvcInfo, nil)
-			gotStatus := p.(framework.FilterPlugin).Filter(nil, test.Pod, node)
+			p := &VolumeZone{
+				predicate: predicates.NewVolumeZonePredicate(pvInfo, pvcInfo, nil),
+			}
+			gotStatus := p.Filter(context.Background(), nil, test.Pod, node)
 			if !reflect.DeepEqual(gotStatus, test.wantStatus) {
 				t.Errorf("status does not match: %v, want: %v", gotStatus, test.wantStatus)
 			}
@@ -339,8 +344,10 @@ func TestWithBinding(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			node := &schedulernodeinfo.NodeInfo{}
 			node.SetNode(test.Node)
-			p := New(pvInfo, pvcInfo, classInfo)
-			gotStatus := p.(framework.FilterPlugin).Filter(nil, test.Pod, node)
+			p := &VolumeZone{
+				predicate: predicates.NewVolumeZonePredicate(pvInfo, pvcInfo, classInfo),
+			}
+			gotStatus := p.Filter(context.Background(), nil, test.Pod, node)
 			if !reflect.DeepEqual(gotStatus, test.wantStatus) {
 				t.Errorf("status does not match: %v, want: %v", gotStatus, test.wantStatus)
 			}

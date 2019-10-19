@@ -31,6 +31,7 @@ import (
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/apiserver/pkg/server/dynamiccertificates"
 )
 
 const (
@@ -60,24 +61,38 @@ func (s *SecureServingInfo) tlsConfig(stopCh <-chan struct{}) (*tls.Config, erro
 	if len(s.CipherSuites) > 0 {
 		tlsConfig.CipherSuites = s.CipherSuites
 	}
-	if s.Cert != nil {
-		tlsConfig.Certificates = []tls.Certificate{*s.Cert}
-	}
-	// append all named certs. Otherwise, the go tls stack will think no SNI processing
-	// is necessary because there is only one cert anyway.
-	// Moreover, if ServerCert.CertFile/ServerCert.KeyFile are not set, the first SNI
-	// cert will become the default cert. That's what we expect anyway.
-	for _, c := range s.SNICerts {
-		tlsConfig.Certificates = append(tlsConfig.Certificates, *c)
+
+	// if s.Cert is not nil, this logic is contained within the dynamic serving controller
+	if s.Cert == nil {
+		// append all named certs. Otherwise, the go tls stack will think no SNI processing
+		// is necessary because there is only one cert anyway.
+		// Moreover, if ServerCert.CertFile/ServerCert.KeyFile are not set, the first SNI
+		// cert will become the default cert. That's what we expect anyway.
+		for _, c := range s.SNICerts {
+			tlsConfig.Certificates = append(tlsConfig.Certificates, *c)
+		}
 	}
 
-	// TODO this will become dynamic.
 	if s.ClientCA != nil {
 		// Populate PeerCertificates in requests, but don't reject connections without certificates
 		// This allows certificates to be validated by authenticators, while still allowing other auth types
 		tlsConfig.ClientAuth = tls.RequestClientCert
-		// Specify allowed CAs for client certificates
-		tlsConfig.ClientCAs = s.ClientCA
+	}
+
+	if s.ClientCA != nil || s.Cert != nil {
+		dynamicCertificateController := dynamiccertificates.NewDynamicServingCertificateController(
+			*tlsConfig,
+			s.ClientCA,
+			s.Cert,
+			nil, // TODO see how to plumb an event recorder down in here. For now this results in simply klog messages.
+		)
+		// runonce to be sure that we have a value.
+		if err := dynamicCertificateController.RunOnce(); err != nil {
+			return nil, err
+		}
+		go dynamicCertificateController.Run(1, stopCh)
+
+		tlsConfig.GetConfigForClient = dynamicCertificateController.GetConfigForClient
 	}
 
 	return tlsConfig, nil

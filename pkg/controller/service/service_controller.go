@@ -42,7 +42,6 @@ import (
 	servicehelper "k8s.io/cloud-provider/service/helpers"
 	"k8s.io/component-base/metrics/prometheus/ratelimiter"
 	"k8s.io/klog"
-	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 )
 
 const (
@@ -316,7 +315,7 @@ func (s *ServiceController) syncLoadBalancerIfNeeded(service *v1.Service, key st
 	// which may involve service interruption.  Also, we would like user-friendly events.
 
 	// Save the state so we can avoid a write if it doesn't change
-	previousStatus := v1helper.LoadBalancerStatusDeepCopy(&service.Status.LoadBalancer)
+	previousStatus := service.Status.LoadBalancer.DeepCopy()
 	var newStatus *v1.LoadBalancerStatus
 	var op loadBalancerOperation
 	var err error
@@ -548,33 +547,18 @@ func (s *ServiceController) needsUpdate(oldService *v1.Service, newService *v1.S
 	return false
 }
 
-func getPortsForLB(service *v1.Service) ([]*v1.ServicePort, error) {
-	var protocol v1.Protocol
-
+func getPortsForLB(service *v1.Service) []*v1.ServicePort {
 	ports := []*v1.ServicePort{}
 	for i := range service.Spec.Ports {
 		sp := &service.Spec.Ports[i]
-		// The check on protocol was removed here.  The cloud provider itself is now responsible for all protocol validation
 		ports = append(ports, sp)
-		if protocol == "" {
-			protocol = sp.Protocol
-		} else if protocol != sp.Protocol && wantsLoadBalancer(service) {
-			// TODO:  Convert error messages to use event recorder
-			return nil, fmt.Errorf("mixed protocol external load balancers are not supported")
-		}
 	}
-	return ports, nil
+	return ports
 }
 
 func portsEqualForLB(x, y *v1.Service) bool {
-	xPorts, err := getPortsForLB(x)
-	if err != nil {
-		return false
-	}
-	yPorts, err := getPortsForLB(y)
-	if err != nil {
-		return false
-	}
+	xPorts := getPortsForLB(x)
+	yPorts := getPortsForLB(y)
 	return portSlicesEqualForLB(xPorts, yPorts)
 }
 
@@ -866,7 +850,7 @@ func removeString(slice []string, s string) []string {
 
 // patchStatus patches the service with the given LoadBalancerStatus.
 func (s *ServiceController) patchStatus(service *v1.Service, previousStatus, newStatus *v1.LoadBalancerStatus) error {
-	if v1helper.LoadBalancerStatusEqual(previousStatus, newStatus) {
+	if servicehelper.LoadBalancerStatusEqual(previousStatus, newStatus) {
 		return nil
 	}
 
