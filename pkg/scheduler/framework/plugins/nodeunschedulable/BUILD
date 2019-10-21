@@ -2,13 +2,14 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "go_default_library",
-    srcs = ["image_locality.go"],
-    importpath = "k8s.io/kubernetes/pkg/scheduler/framework/plugins/imagelocality",
+    srcs = ["node_unschedulable.go"],
+    importpath = "k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeunschedulable",
     visibility = ["//visibility:public"],
     deps = [
-        "//pkg/scheduler/algorithm/priorities:go_default_library",
+        "//pkg/scheduler/algorithm/predicates:go_default_library",
         "//pkg/scheduler/framework/plugins/migration:go_default_library",
         "//pkg/scheduler/framework/v1alpha1:go_default_library",
+        "//pkg/scheduler/nodeinfo:go_default_library",
         "//staging/src/k8s.io/api/core/v1:go_default_library",
         "//staging/src/k8s.io/apimachinery/pkg/runtime:go_default_library",
     ],
@@ -16,18 +17,14 @@ go_library(
 
 go_test(
     name = "go_default_test",
-    srcs = ["image_locality_test.go"],
+    srcs = ["node_unschedulable_test.go"],
     embed = [":go_default_library"],
     deps = [
-        "//pkg/scheduler/algorithm/priorities:go_default_library",
-        "//pkg/scheduler/framework/plugins/migration:go_default_library",
+        "//pkg/scheduler/algorithm/predicates:go_default_library",
+        "//pkg/scheduler/api:go_default_library",
         "//pkg/scheduler/framework/v1alpha1:go_default_library",
         "//pkg/scheduler/nodeinfo:go_default_library",
-        "//pkg/util/parsers:go_default_library",
         "//staging/src/k8s.io/api/core/v1:go_default_library",
-        "//staging/src/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//staging/src/k8s.io/client-go/informers:go_default_library",
-        "//staging/src/k8s.io/client-go/kubernetes/fake:go_default_library",
     ],
 )
 

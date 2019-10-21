@@ -30,6 +30,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodepreferavoidpods"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeunschedulable"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
@@ -52,20 +53,24 @@ type RegistryArgs struct {
 // runs custom plugins, can pass a different Registry when initializing the scheduler.
 func NewDefaultRegistry(args *RegistryArgs) framework.Registry {
 	return framework.Registry{
-		imagelocality.Name:       imagelocality.New,
-		tainttoleration.Name:     tainttoleration.New,
-		noderesources.Name:       noderesources.New,
-		nodename.Name:            nodename.New,
-		nodeports.Name:           nodeports.New,
-		nodepreferavoidpods.Name: nodepreferavoidpods.New,
-		nodeaffinity.Name:        nodeaffinity.New,
-		podtopologyspread.Name:   podtopologyspread.New,
+		imagelocality.Name:                   imagelocality.New,
+		tainttoleration.Name:                 tainttoleration.New,
+		nodename.Name:                        nodename.New,
+		nodeports.Name:                       nodeports.New,
+		nodepreferavoidpods.Name:             nodepreferavoidpods.New,
+		nodeaffinity.Name:                    nodeaffinity.New,
+		podtopologyspread.Name:               podtopologyspread.New,
+		nodeunschedulable.Name:               nodeunschedulable.New,
+		noderesources.FitName:                noderesources.NewFit,
+		noderesources.BalancedAllocationName: noderesources.NewBalancedAllocation,
+		noderesources.MostAllocatedName:      noderesources.NewMostAllocated,
+		noderesources.LeastAllocatedName:     noderesources.NewLeastAllocated,
 		volumebinding.Name: func(_ *runtime.Unknown, _ framework.FrameworkHandle) (framework.Plugin, error) {
 			return volumebinding.NewFromVolumeBinder(args.VolumeBinder), nil
 		},
 		volumerestrictions.Name: volumerestrictions.New,
 		volumezone.Name:         volumezone.New,
-		nodevolumelimits.Name:   nodevolumelimits.New(args.SchedulerCache),
+		nodevolumelimits.Name:   nodevolumelimits.New,
 		interpodaffinity.Name: func(_ *runtime.Unknown, _ framework.FrameworkHandle) (framework.Plugin, error) {
 			return interpodaffinity.New(args.SchedulerCache, args.SchedulerCache), nil
 		},
@@ -100,7 +105,7 @@ func NewDefaultConfigProducerRegistry() *ConfigProducerRegistry {
 	registry.RegisterPredicate(predicates.GeneralPred,
 		func(_ ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
 			// GeneralPredicate is a combination of predicates.
-			plugins.Filter = appendToPluginSet(plugins.Filter, noderesources.Name, nil)
+			plugins.Filter = appendToPluginSet(plugins.Filter, noderesources.FitName, nil)
 			plugins.Filter = appendToPluginSet(plugins.Filter, nodename.Name, nil)
 			plugins.Filter = appendToPluginSet(plugins.Filter, nodeports.Name, nil)
 			plugins.Filter = appendToPluginSet(plugins.Filter, nodeaffinity.Name, nil)
@@ -113,7 +118,7 @@ func NewDefaultConfigProducerRegistry() *ConfigProducerRegistry {
 		})
 	registry.RegisterPredicate(predicates.PodFitsResourcesPred,
 		func(_ ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
-			plugins.Filter = appendToPluginSet(plugins.Filter, noderesources.Name, nil)
+			plugins.Filter = appendToPluginSet(plugins.Filter, noderesources.FitName, nil)
 			return
 		})
 	registry.RegisterPredicate(predicates.HostNamePred,
@@ -129,6 +134,11 @@ func NewDefaultConfigProducerRegistry() *ConfigProducerRegistry {
 	registry.RegisterPredicate(predicates.MatchNodeSelectorPred,
 		func(_ ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
 			plugins.Filter = appendToPluginSet(plugins.Filter, nodeaffinity.Name, nil)
+			return
+		})
+	registry.RegisterPredicate(predicates.CheckNodeUnschedulablePred,
+		func(args ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
+			plugins.Filter = appendToPluginSet(plugins.Filter, nodeunschedulable.Name, nil)
 			return
 		})
 	registry.RegisterPredicate(predicates.CheckVolumeBindingPred,
@@ -180,6 +190,24 @@ func NewDefaultConfigProducerRegistry() *ConfigProducerRegistry {
 	registry.RegisterPriority(priorities.NodePreferAvoidPodsPriority,
 		func(args ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
 			plugins.Score = appendToPluginSet(plugins.Score, nodepreferavoidpods.Name, &args.Weight)
+			return
+		})
+
+	registry.RegisterPriority(priorities.MostRequestedPriority,
+		func(args ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
+			plugins.Score = appendToPluginSet(plugins.Score, noderesources.MostAllocatedName, &args.Weight)
+			return
+		})
+
+	registry.RegisterPriority(priorities.BalancedResourceAllocation,
+		func(args ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
+			plugins.Score = appendToPluginSet(plugins.Score, noderesources.BalancedAllocationName, &args.Weight)
+			return
+		})
+
+	registry.RegisterPriority(priorities.LeastRequestedPriority,
+		func(args ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
+			plugins.Score = appendToPluginSet(plugins.Score, noderesources.LeastAllocatedName, &args.Weight)
 			return
 		})
 

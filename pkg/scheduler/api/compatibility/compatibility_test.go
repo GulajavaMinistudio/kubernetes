@@ -61,7 +61,8 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 		}`,
 			wantPlugins: map[string][]kubeschedulerconfig.Plugin{
 				"FilterPlugin": {
-					{Name: "NodeResources"},
+					{Name: "NodeUnschedulable"},
+					{Name: "NodeResourcesFit"},
 					{Name: "NodeName"},
 					{Name: "NodePorts"},
 					{Name: "NodeAffinity"},
@@ -95,17 +96,20 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 				"TestLabelsPresence",
 			),
 			wantPrioritizers: sets.NewString(
-				"LeastRequestedPriority",
 				"ServiceSpreadingPriority",
 				"TestServiceAntiAffinity",
 				"TestLabelPreference",
 			),
 			wantPlugins: map[string][]kubeschedulerconfig.Plugin{
 				"FilterPlugin": {
+					{Name: "NodeUnschedulable"},
 					{Name: "NodeAffinity"},
-					{Name: "NodeResources"},
+					{Name: "NodeResourcesFit"},
 					{Name: "VolumeRestrictions"},
 					{Name: "TaintToleration"},
+				},
+				"ScorePlugin": {
+					{Name: "NodeResourcesLeastAllocated", Weight: 1},
 				},
 			},
 		},
@@ -139,20 +143,23 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 			),
 			wantPrioritizers: sets.NewString(
 				"EqualPriority",
-				"LeastRequestedPriority",
-				"BalancedResourceAllocation",
 				"SelectorSpreadPriority",
 				"TestServiceAntiAffinity",
 				"TestLabelPreference",
 			),
 			wantPlugins: map[string][]kubeschedulerconfig.Plugin{
 				"FilterPlugin": {
+					{Name: "NodeUnschedulable"},
 					{Name: "NodeName"},
 					{Name: "NodePorts"},
 					{Name: "NodeAffinity"},
-					{Name: "NodeResources"},
+					{Name: "NodeResourcesFit"},
 					{Name: "VolumeRestrictions"},
 					{Name: "TaintToleration"},
+				},
+				"ScorePlugin": {
+					{Name: "NodeResourcesBalancedAllocation", Weight: 2},
+					{Name: "NodeResourcesLeastAllocated", Weight: 2},
 				},
 			},
 		},
@@ -195,24 +202,25 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 			),
 			wantPrioritizers: sets.NewString(
 				"EqualPriority",
-				"LeastRequestedPriority",
-				"BalancedResourceAllocation",
 				"SelectorSpreadPriority",
 				"TestServiceAntiAffinity",
 				"TestLabelPreference",
 			),
 			wantPlugins: map[string][]kubeschedulerconfig.Plugin{
 				"FilterPlugin": {
+					{Name: "NodeUnschedulable"},
 					{Name: "NodeName"},
 					{Name: "NodePorts"},
 					{Name: "NodeAffinity"},
-					{Name: "NodeResources"},
+					{Name: "NodeResourcesFit"},
 					{Name: "VolumeRestrictions"},
 					{Name: "TaintToleration"},
 					{Name: "VolumeZone"},
 				},
 				"ScorePlugin": {
+					{Name: "NodeResourcesBalancedAllocation", Weight: 2},
 					{Name: "ImageLocality", Weight: 2},
+					{Name: "NodeResourcesLeastAllocated", Weight: 2},
 					{Name: "NodeAffinity", Weight: 2},
 				},
 			},
@@ -260,24 +268,25 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 			),
 			wantPrioritizers: sets.NewString(
 				"EqualPriority",
-				"LeastRequestedPriority",
-				"BalancedResourceAllocation",
 				"SelectorSpreadPriority",
 				"InterPodAffinityPriority",
 			),
 			wantPlugins: map[string][]kubeschedulerconfig.Plugin{
 				"FilterPlugin": {
+					{Name: "NodeUnschedulable"},
 					{Name: "NodeName"},
 					{Name: "NodePorts"},
 					{Name: "NodeAffinity"},
-					{Name: "NodeResources"},
+					{Name: "NodeResourcesFit"},
 					{Name: "VolumeRestrictions"},
 					{Name: "TaintToleration"},
 					{Name: "VolumeZone"},
 					{Name: "InterPodAffinity"},
 				},
 				"ScorePlugin": {
+					{Name: "NodeResourcesBalancedAllocation", Weight: 2},
 					{Name: "ImageLocality", Weight: 2},
+					{Name: "NodeResourcesLeastAllocated", Weight: 2},
 					{Name: "NodeAffinity", Weight: 2},
 					{Name: "TaintToleration", Weight: 2},
 				},
@@ -330,25 +339,26 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 			),
 			wantPrioritizers: sets.NewString(
 				"EqualPriority",
-				"LeastRequestedPriority",
-				"BalancedResourceAllocation",
 				"SelectorSpreadPriority",
 				"InterPodAffinityPriority",
-				"MostRequestedPriority",
 			),
 			wantPlugins: map[string][]kubeschedulerconfig.Plugin{
 				"FilterPlugin": {
+					{Name: "NodeUnschedulable"},
 					{Name: "NodeName"},
 					{Name: "NodePorts"},
 					{Name: "NodeAffinity"},
-					{Name: "NodeResources"},
+					{Name: "NodeResourcesFit"},
 					{Name: "VolumeRestrictions"},
 					{Name: "TaintToleration"},
 					{Name: "VolumeZone"},
 					{Name: "InterPodAffinity"},
 				},
 				"ScorePlugin": {
+					{Name: "NodeResourcesBalancedAllocation", Weight: 2},
 					{Name: "ImageLocality", Weight: 2},
+					{Name: "NodeResourcesLeastAllocated", Weight: 2},
+					{Name: "NodeResourcesMostAllocated", Weight: 2},
 					{Name: "NodeAffinity", Weight: 2},
 					{Name: "NodePreferAvoidPods", Weight: 2},
 					{Name: "TaintToleration", Weight: 2},
@@ -411,25 +421,26 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 			),
 			wantPrioritizers: sets.NewString(
 				"EqualPriority",
-				"LeastRequestedPriority",
-				"BalancedResourceAllocation",
 				"SelectorSpreadPriority",
 				"InterPodAffinityPriority",
-				"MostRequestedPriority",
 			),
 			wantPlugins: map[string][]kubeschedulerconfig.Plugin{
 				"FilterPlugin": {
+					{Name: "NodeUnschedulable"},
 					{Name: "NodeName"},
 					{Name: "NodePorts"},
 					{Name: "NodeAffinity"},
-					{Name: "NodeResources"},
+					{Name: "NodeResourcesFit"},
 					{Name: "VolumeRestrictions"},
 					{Name: "TaintToleration"},
 					{Name: "VolumeZone"},
 					{Name: "InterPodAffinity"},
 				},
 				"ScorePlugin": {
+					{Name: "NodeResourcesBalancedAllocation", Weight: 2},
 					{Name: "ImageLocality", Weight: 2},
+					{Name: "NodeResourcesLeastAllocated", Weight: 2},
+					{Name: "NodeResourcesMostAllocated", Weight: 2},
 					{Name: "NodeAffinity", Weight: 2},
 					{Name: "NodePreferAvoidPods", Weight: 2},
 					{Name: "TaintToleration", Weight: 2},
@@ -505,25 +516,26 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 			),
 			wantPrioritizers: sets.NewString(
 				"EqualPriority",
-				"LeastRequestedPriority",
-				"BalancedResourceAllocation",
 				"SelectorSpreadPriority",
 				"InterPodAffinityPriority",
-				"MostRequestedPriority",
 			),
 			wantPlugins: map[string][]kubeschedulerconfig.Plugin{
 				"FilterPlugin": {
+					{Name: "NodeUnschedulable"},
 					{Name: "NodeName"},
 					{Name: "NodePorts"},
 					{Name: "NodeAffinity"},
-					{Name: "NodeResources"},
+					{Name: "NodeResourcesFit"},
 					{Name: "VolumeRestrictions"},
 					{Name: "TaintToleration"},
 					{Name: "VolumeZone"},
 					{Name: "InterPodAffinity"},
 				},
 				"ScorePlugin": {
+					{Name: "NodeResourcesBalancedAllocation", Weight: 2},
 					{Name: "ImageLocality", Weight: 2},
+					{Name: "NodeResourcesLeastAllocated", Weight: 2},
+					{Name: "NodeResourcesMostAllocated", Weight: 2},
 					{Name: "NodeAffinity", Weight: 2},
 					{Name: "NodePreferAvoidPods", Weight: 2},
 					{Name: "TaintToleration", Weight: 2},
@@ -600,18 +612,16 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 			),
 			wantPrioritizers: sets.NewString(
 				"EqualPriority",
-				"LeastRequestedPriority",
-				"BalancedResourceAllocation",
 				"SelectorSpreadPriority",
 				"InterPodAffinityPriority",
-				"MostRequestedPriority",
 			),
 			wantPlugins: map[string][]kubeschedulerconfig.Plugin{
 				"FilterPlugin": {
+					{Name: "NodeUnschedulable"},
 					{Name: "NodeName"},
 					{Name: "NodePorts"},
 					{Name: "NodeAffinity"},
-					{Name: "NodeResources"},
+					{Name: "NodeResourcesFit"},
 					{Name: "VolumeRestrictions"},
 					{Name: "TaintToleration"},
 					{Name: "VolumeBinding"},
@@ -619,7 +629,10 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 					{Name: "InterPodAffinity"},
 				},
 				"ScorePlugin": {
+					{Name: "NodeResourcesBalancedAllocation", Weight: 2},
 					{Name: "ImageLocality", Weight: 2},
+					{Name: "NodeResourcesLeastAllocated", Weight: 2},
+					{Name: "NodeResourcesMostAllocated", Weight: 2},
 					{Name: "NodeAffinity", Weight: 2},
 					{Name: "NodePreferAvoidPods", Weight: 2},
 					{Name: "TaintToleration", Weight: 2},
@@ -701,18 +714,16 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 			),
 			wantPrioritizers: sets.NewString(
 				"EqualPriority",
-				"LeastRequestedPriority",
-				"BalancedResourceAllocation",
 				"SelectorSpreadPriority",
 				"InterPodAffinityPriority",
-				"MostRequestedPriority",
 			),
 			wantPlugins: map[string][]kubeschedulerconfig.Plugin{
 				"FilterPlugin": {
+					{Name: "NodeUnschedulable"},
 					{Name: "NodeName"},
 					{Name: "NodePorts"},
 					{Name: "NodeAffinity"},
-					{Name: "NodeResources"},
+					{Name: "NodeResourcesFit"},
 					{Name: "VolumeRestrictions"},
 					{Name: "TaintToleration"},
 					{Name: "VolumeBinding"},
@@ -720,7 +731,10 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 					{Name: "InterPodAffinity"},
 				},
 				"ScorePlugin": {
+					{Name: "NodeResourcesBalancedAllocation", Weight: 2},
 					{Name: "ImageLocality", Weight: 2},
+					{Name: "NodeResourcesLeastAllocated", Weight: 2},
+					{Name: "NodeResourcesMostAllocated", Weight: 2},
 					{Name: "NodeAffinity", Weight: 2},
 					{Name: "NodePreferAvoidPods", Weight: 2},
 					{Name: "TaintToleration", Weight: 2},
@@ -814,19 +828,17 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 			),
 			wantPrioritizers: sets.NewString(
 				"EqualPriority",
-				"LeastRequestedPriority",
-				"BalancedResourceAllocation",
 				"SelectorSpreadPriority",
 				"InterPodAffinityPriority",
-				"MostRequestedPriority",
 				"RequestedToCapacityRatioPriority",
 			),
 			wantPlugins: map[string][]kubeschedulerconfig.Plugin{
 				"FilterPlugin": {
+					{Name: "NodeUnschedulable"},
 					{Name: "NodeName"},
 					{Name: "NodePorts"},
 					{Name: "NodeAffinity"},
-					{Name: "NodeResources"},
+					{Name: "NodeResourcesFit"},
 					{Name: "VolumeRestrictions"},
 					{Name: "TaintToleration"},
 					{Name: "VolumeBinding"},
@@ -834,7 +846,10 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 					{Name: "InterPodAffinity"},
 				},
 				"ScorePlugin": {
+					{Name: "NodeResourcesBalancedAllocation", Weight: 2},
 					{Name: "ImageLocality", Weight: 2},
+					{Name: "NodeResourcesLeastAllocated", Weight: 2},
+					{Name: "NodeResourcesMostAllocated", Weight: 2},
 					{Name: "NodeAffinity", Weight: 2},
 					{Name: "NodePreferAvoidPods", Weight: 2},
 					{Name: "TaintToleration", Weight: 2},
@@ -929,19 +944,17 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 			),
 			wantPrioritizers: sets.NewString(
 				"EqualPriority",
-				"LeastRequestedPriority",
-				"BalancedResourceAllocation",
 				"SelectorSpreadPriority",
 				"InterPodAffinityPriority",
-				"MostRequestedPriority",
 				"RequestedToCapacityRatioPriority",
 			),
 			wantPlugins: map[string][]kubeschedulerconfig.Plugin{
 				"FilterPlugin": {
+					{Name: "NodeUnschedulable"},
 					{Name: "NodeName"},
 					{Name: "NodePorts"},
 					{Name: "NodeAffinity"},
-					{Name: "NodeResources"},
+					{Name: "NodeResourcesFit"},
 					{Name: "VolumeRestrictions"},
 					{Name: "TaintToleration"},
 					{Name: "NodeVolumeLimits"},
@@ -950,7 +963,10 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 					{Name: "InterPodAffinity"},
 				},
 				"ScorePlugin": {
+					{Name: "NodeResourcesBalancedAllocation", Weight: 2},
 					{Name: "ImageLocality", Weight: 2},
+					{Name: "NodeResourcesLeastAllocated", Weight: 2},
+					{Name: "NodeResourcesMostAllocated", Weight: 2},
 					{Name: "NodeAffinity", Weight: 2},
 					{Name: "NodePreferAvoidPods", Weight: 2},
 					{Name: "TaintToleration", Weight: 2},
@@ -1045,19 +1061,17 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 			),
 			wantPrioritizers: sets.NewString(
 				"EqualPriority",
-				"LeastRequestedPriority",
-				"BalancedResourceAllocation",
 				"SelectorSpreadPriority",
 				"InterPodAffinityPriority",
-				"MostRequestedPriority",
 				"RequestedToCapacityRatioPriority",
 			),
 			wantPlugins: map[string][]kubeschedulerconfig.Plugin{
 				"FilterPlugin": {
+					{Name: "NodeUnschedulable"},
 					{Name: "NodeName"},
 					{Name: "NodePorts"},
 					{Name: "NodeAffinity"},
-					{Name: "NodeResources"},
+					{Name: "NodeResourcesFit"},
 					{Name: "VolumeRestrictions"},
 					{Name: "TaintToleration"},
 					{Name: "NodeVolumeLimits"},
@@ -1066,7 +1080,10 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 					{Name: "InterPodAffinity"},
 				},
 				"ScorePlugin": {
+					{Name: "NodeResourcesBalancedAllocation", Weight: 2},
 					{Name: "ImageLocality", Weight: 2},
+					{Name: "NodeResourcesLeastAllocated", Weight: 2},
+					{Name: "NodeResourcesMostAllocated", Weight: 2},
 					{Name: "NodeAffinity", Weight: 2},
 					{Name: "NodePreferAvoidPods", Weight: 2},
 					{Name: "TaintToleration", Weight: 2},
@@ -1165,19 +1182,17 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 			),
 			wantPrioritizers: sets.NewString(
 				"EqualPriority",
-				"LeastRequestedPriority",
-				"BalancedResourceAllocation",
 				"SelectorSpreadPriority",
 				"InterPodAffinityPriority",
-				"MostRequestedPriority",
 				"RequestedToCapacityRatioPriority",
 			),
 			wantPlugins: map[string][]kubeschedulerconfig.Plugin{
 				"FilterPlugin": {
+					{Name: "NodeUnschedulable"},
 					{Name: "NodeName"},
 					{Name: "NodePorts"},
 					{Name: "NodeAffinity"},
-					{Name: "NodeResources"},
+					{Name: "NodeResourcesFit"},
 					{Name: "VolumeRestrictions"},
 					{Name: "TaintToleration"},
 					{Name: "NodeVolumeLimits"},
@@ -1186,7 +1201,10 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 					{Name: "InterPodAffinity"},
 				},
 				"ScorePlugin": {
+					{Name: "NodeResourcesBalancedAllocation", Weight: 2},
 					{Name: "ImageLocality", Weight: 2},
+					{Name: "NodeResourcesLeastAllocated", Weight: 2},
+					{Name: "NodeResourcesMostAllocated", Weight: 2},
 					{Name: "NodeAffinity", Weight: 2},
 					{Name: "NodePreferAvoidPods", Weight: 2},
 					{Name: "TaintToleration", Weight: 2},
@@ -1211,13 +1229,14 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 	registeredPriorities := sets.NewString(scheduler.ListRegisteredPriorityFunctions()...)
 	seenPredicates := sets.NewString()
 	seenPriorities := sets.NewString()
-	mandatoryPredicates := sets.NewString("CheckNodeUnschedulable")
-	generalPredicateFilters := []string{"NodeResources", "NodeName", "NodePorts", "NodeAffinity"}
+	mandatoryPredicates := sets.NewString()
+	generalPredicateFilters := []string{"NodeResourcesFit", "NodeName", "NodePorts", "NodeAffinity"}
 	filterToPredicateMap := map[string]string{
+		"NodeUnschedulable":  "CheckNodeUnschedulable",
 		"TaintToleration":    "PodToleratesNodeTaints",
 		"NodeName":           "HostName",
 		"NodePorts":          "PodFitsHostPorts",
-		"NodeResources":      "PodFitsResources",
+		"NodeResourcesFit":   "PodFitsResources",
 		"NodeAffinity":       "MatchNodeSelector",
 		"VolumeBinding":      "CheckVolumeBinding",
 		"VolumeRestrictions": "NoDiskConflict",
@@ -1226,10 +1245,13 @@ func TestCompatibility_v1_Scheduler(t *testing.T) {
 		"InterPodAffinity":   "MatchInterPodAffinity",
 	}
 	scoreToPriorityMap := map[string]string{
-		"ImageLocality":       "ImageLocalityPriority",
-		"NodeAffinity":        "NodeAffinityPriority",
-		"NodePreferAvoidPods": "NodePreferAvoidPodsPriority",
-		"TaintToleration":     "TaintTolerationPriority",
+		"ImageLocality":                   "ImageLocalityPriority",
+		"NodeAffinity":                    "NodeAffinityPriority",
+		"NodePreferAvoidPods":             "NodePreferAvoidPodsPriority",
+		"TaintToleration":                 "TaintTolerationPriority",
+		"NodeResourcesLeastAllocated":     "LeastRequestedPriority",
+		"NodeResourcesBalancedAllocation": "BalancedResourceAllocation",
+		"NodeResourcesMostAllocated":      "MostRequestedPriority",
 	}
 
 	for v, tc := range schedulerFiles {
