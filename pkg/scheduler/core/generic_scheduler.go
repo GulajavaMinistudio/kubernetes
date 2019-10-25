@@ -49,6 +49,7 @@ import (
 	internalqueue "k8s.io/kubernetes/pkg/scheduler/internal/queue"
 	"k8s.io/kubernetes/pkg/scheduler/metrics"
 	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
+	nodeinfosnapshot "k8s.io/kubernetes/pkg/scheduler/nodeinfo/snapshot"
 	"k8s.io/kubernetes/pkg/scheduler/util"
 	"k8s.io/kubernetes/pkg/scheduler/volumebinder"
 	utiltrace "k8s.io/utils/trace"
@@ -153,13 +154,14 @@ type genericScheduler struct {
 	framework                framework.Framework
 	extenders                []algorithm.SchedulerExtender
 	alwaysCheckAllPredicates bool
-	nodeInfoSnapshot         *schedulernodeinfo.Snapshot
+	nodeInfoSnapshot         *nodeinfosnapshot.Snapshot
 	volumeBinder             *volumebinder.VolumeBinder
 	pvcLister                corelisters.PersistentVolumeClaimLister
 	pdbLister                policylisters.PodDisruptionBudgetLister
 	disablePreemption        bool
 	percentageOfNodesToScore int32
 	enableNonPreempting      bool
+	lastProcessedNodeIndex   int
 }
 
 // snapshot snapshots scheduler cache and node infos for all fit and priority
@@ -330,9 +332,15 @@ func (g *genericScheduler) Preempt(ctx context.Context, state *framework.CycleSt
 		// In this case, we should clean-up any existing nominated node name of the pod.
 		return nil, nil, []*v1.Pod{pod}, nil
 	}
-	pdbs, err := g.pdbLister.List(labels.Everything())
-	if err != nil {
-		return nil, nil, nil, err
+	var (
+		pdbs []*policy.PodDisruptionBudget
+		err  error
+	)
+	if g.pdbLister != nil {
+		pdbs, err = g.pdbLister.List(labels.Everything())
+		if err != nil {
+			return nil, nil, nil, err
+		}
 	}
 	nodeToVictims, err := g.selectNodesForPreemption(ctx, state, pod, potentialNodes, pdbs)
 	if err != nil {
@@ -460,8 +468,8 @@ func (g *genericScheduler) findNodesThatFit(ctx context.Context, state *framewor
 	if len(g.predicates) == 0 && !g.framework.HasFilterPlugins() {
 		filtered = g.nodeInfoSnapshot.ListNodes()
 	} else {
-		allNodes := int32(len(g.nodeInfoSnapshot.NodeInfoList))
-		numNodesToFind := g.numFeasibleNodesToFind(allNodes)
+		allNodes := len(g.nodeInfoSnapshot.NodeInfoList)
+		numNodesToFind := g.numFeasibleNodesToFind(int32(allNodes))
 
 		// Create filtered list with enough space to avoid growing it
 		// and allow assigning.
@@ -479,7 +487,9 @@ func (g *genericScheduler) findNodesThatFit(ctx context.Context, state *framewor
 		state.Write(migration.PredicatesStateKey, &migration.PredicatesStateData{Reference: meta})
 
 		checkNode := func(i int) {
-			nodeInfo := g.nodeInfoSnapshot.NodeInfoList[i]
+			// We check the nodes starting from where we left off in the previous scheduling cycle,
+			// this is to make sure all nodes have the same chance of being examined across pods.
+			nodeInfo := g.nodeInfoSnapshot.NodeInfoList[(g.lastProcessedNodeIndex+i)%allNodes]
 			fits, failedPredicates, status, err := g.podFitsOnNode(
 				ctx,
 				state,
@@ -514,7 +524,9 @@ func (g *genericScheduler) findNodesThatFit(ctx context.Context, state *framewor
 
 		// Stops searching for more nodes once the configured number of feasible nodes
 		// are found.
-		workqueue.ParallelizeUntil(ctx, 16, int(allNodes), checkNode)
+		workqueue.ParallelizeUntil(ctx, 16, allNodes, checkNode)
+		processedNodes := int(filteredLen) + len(filteredNodesStatuses) + len(failedPredicateMap)
+		g.lastProcessedNodeIndex = (g.lastProcessedNodeIndex + processedNodes) % allNodes
 
 		filtered = filtered[:filteredLen]
 		if err := errCh.ReceiveError(); err != nil {

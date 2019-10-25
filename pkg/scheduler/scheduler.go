@@ -29,11 +29,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
+	policyv1beta1informers "k8s.io/client-go/informers/policy/v1beta1"
+	storagev1beta1informers "k8s.io/client-go/informers/storage/v1beta1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/events"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
+	kubefeatures "k8s.io/kubernetes/pkg/features"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 	latestschedulerapi "k8s.io/kubernetes/pkg/scheduler/api/latest"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
@@ -95,10 +100,6 @@ type Scheduler struct {
 	// stale while they sit in a channel.
 	NextPod func() *framework.PodInfo
 
-	// WaitForCacheSync waits for scheduler cache to populate.
-	// It returns true if it was successful, false if the controller should shutdown.
-	WaitForCacheSync func() bool
-
 	// Error is called if there is an error. It is passed the pod in
 	// question, and the error
 	Error func(*framework.PodInfo, error)
@@ -117,6 +118,8 @@ type Scheduler struct {
 
 	// SchedulingQueue holds pods to be scheduled
 	SchedulingQueue internalqueue.SchedulingQueue
+
+	scheduledPodsHasSynced func() bool
 }
 
 // Cache returns the cache in scheduler for test to check the data in scheduler.
@@ -280,6 +283,16 @@ func New(client clientset.Interface,
 	}
 	registry.Merge(options.frameworkOutOfTreeRegistry)
 
+	var pdbInformer policyv1beta1informers.PodDisruptionBudgetInformer
+	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.PodDisruptionBudget) {
+		pdbInformer = informerFactory.Policy().V1beta1().PodDisruptionBudgets()
+	}
+
+	var csiNodeInformer storagev1beta1informers.CSINodeInformer
+	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.CSINodeInfo) {
+		csiNodeInformer = informerFactory.Storage().V1beta1().CSINodes()
+	}
+
 	// Set up the configurator which can create schedulers from configs.
 	configurator := NewConfigFactory(&ConfigFactoryArgs{
 		Client:                         client,
@@ -292,9 +305,9 @@ func New(client clientset.Interface,
 		ReplicaSetInformer:             informerFactory.Apps().V1().ReplicaSets(),
 		StatefulSetInformer:            informerFactory.Apps().V1().StatefulSets(),
 		ServiceInformer:                informerFactory.Core().V1().Services(),
-		PdbInformer:                    informerFactory.Policy().V1beta1().PodDisruptionBudgets(),
+		PdbInformer:                    pdbInformer,
 		StorageClassInformer:           informerFactory.Storage().V1().StorageClasses(),
-		CSINodeInformer:                informerFactory.Storage().V1beta1().CSINodes(),
+		CSINodeInformer:                csiNodeInformer,
 		VolumeBinder:                   volumeBinder,
 		SchedulerCache:                 schedulerCache,
 		HardPodAffinitySymmetricWeight: options.hardPodAffinitySymmetricWeight,
@@ -348,6 +361,7 @@ func New(client clientset.Interface,
 	sched := NewFromConfig(config)
 	sched.podConditionUpdater = &podConditionUpdaterImpl{client}
 	sched.podPreemptor = &podPreemptorImpl{client}
+	sched.scheduledPodsHasSynced = podInformer.Informer().HasSynced
 
 	AddAllEventHandlers(sched, options.schedulerName, informerFactory, podInformer)
 	return sched, nil
@@ -398,7 +412,6 @@ func NewFromConfig(config *Config) *Scheduler {
 		GetBinder:         config.GetBinder,
 		Framework:         config.Framework,
 		NextPod:           config.NextPod,
-		WaitForCacheSync:  config.WaitForCacheSync,
 		Error:             config.Error,
 		Recorder:          config.Recorder,
 		StopEverything:    config.StopEverything,
@@ -410,7 +423,7 @@ func NewFromConfig(config *Config) *Scheduler {
 
 // Run begins watching and scheduling. It waits for cache to be synced, then starts scheduling and blocked until the context is done.
 func (sched *Scheduler) Run(ctx context.Context) {
-	if !sched.WaitForCacheSync() {
+	if !cache.WaitForCacheSync(ctx.Done(), sched.scheduledPodsHasSynced) {
 		return
 	}
 
@@ -736,8 +749,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 		} else {
 			// Calculating nodeResourceString can be heavy. Avoid it if klog verbosity is below 2.
 			if klog.V(2) {
-				node, _ := sched.Cache().GetNodeInfo(scheduleResult.SuggestedHost)
-				klog.Infof("pod %v/%v is bound successfully on node %q, %d nodes evaluated, %d nodes were found feasible. Bound node resource: %q.", assumedPod.Namespace, assumedPod.Name, scheduleResult.SuggestedHost, scheduleResult.EvaluatedNodes, scheduleResult.FeasibleNodes, nodeResourceString(node))
+				klog.Infof("pod %v/%v is bound successfully on node %q, %d nodes evaluated, %d nodes were found feasible.", assumedPod.Namespace, assumedPod.Name, scheduleResult.SuggestedHost, scheduleResult.EvaluatedNodes, scheduleResult.FeasibleNodes)
 			}
 
 			metrics.PodScheduleSuccesses.Inc()
@@ -787,16 +799,4 @@ func (p *podPreemptorImpl) removeNominatedNodeName(pod *v1.Pod) error {
 		return nil
 	}
 	return p.setNominatedNodeName(pod, "")
-}
-
-// nodeResourceString returns a string representation of node resources.
-func nodeResourceString(n *v1.Node) string {
-	if n == nil {
-		return "N/A"
-	}
-	return fmt.Sprintf("Capacity: %s; Allocatable: %s.", resourceString(&n.Status.Capacity), resourceString(&n.Status.Allocatable))
-}
-
-func resourceString(r *v1.ResourceList) string {
-	return fmt.Sprintf("CPU<%s>|Memory<%s>|Pods<%s>|StorageEphemeral<%s>", r.Cpu().String(), r.Memory().String(), r.Pods().String(), r.StorageEphemeral().String())
 }

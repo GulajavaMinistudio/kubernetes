@@ -148,12 +148,12 @@ var _ = SIGDescribe("Services", func() {
 		name1 := "pod1"
 		name2 := "pod2"
 
-		e2epod.CreatePodOrFail(cs, ns, name1, jig.Labels, []v1.ContainerPort{{ContainerPort: 80}})
+		createPodOrFail(cs, ns, name1, jig.Labels, []v1.ContainerPort{{ContainerPort: 80}})
 		names[name1] = true
 		err = e2eendpoints.ValidateEndpointsPorts(cs, ns, serviceName, e2eendpoints.PortsByPodName{name1: {80}})
 		framework.ExpectNoError(err, "failed to validate endpoints for service %s in namespace: %s", serviceName, ns)
 
-		e2epod.CreatePodOrFail(cs, ns, name2, jig.Labels, []v1.ContainerPort{{ContainerPort: 80}})
+		createPodOrFail(cs, ns, name2, jig.Labels, []v1.ContainerPort{{ContainerPort: 80}})
 		names[name2] = true
 		err = e2eendpoints.ValidateEndpointsPorts(cs, ns, serviceName, e2eendpoints.PortsByPodName{name1: {80}, name2: {80}})
 		framework.ExpectNoError(err, "failed to validate endpoints for service %s in namespace: %s", serviceName, ns)
@@ -234,12 +234,12 @@ var _ = SIGDescribe("Services", func() {
 		podname1 := "pod1"
 		podname2 := "pod2"
 
-		e2epod.CreatePodOrFail(cs, ns, podname1, jig.Labels, containerPorts1)
+		createPodOrFail(cs, ns, podname1, jig.Labels, containerPorts1)
 		names[podname1] = true
 		err = e2eendpoints.ValidateEndpointsPorts(cs, ns, serviceName, e2eendpoints.PortsByPodName{podname1: {port1}})
 		framework.ExpectNoError(err, "failed to validate endpoints for service %s in namespace: %s", serviceName, ns)
 
-		e2epod.CreatePodOrFail(cs, ns, podname2, jig.Labels, containerPorts2)
+		createPodOrFail(cs, ns, podname2, jig.Labels, containerPorts2)
 		names[podname2] = true
 		err = e2eendpoints.ValidateEndpointsPorts(cs, ns, serviceName, e2eendpoints.PortsByPodName{podname1: {port1}, podname2: {port2}})
 		framework.ExpectNoError(err, "failed to validate endpoints for service %s in namespace: %s", serviceName, ns)
@@ -562,12 +562,7 @@ var _ = SIGDescribe("Services", func() {
 		if framework.ProviderIs("aws") {
 			loadBalancerLagTimeout = e2eservice.LoadBalancerLagTimeoutAWS
 		}
-		loadBalancerCreateTimeout := e2eservice.LoadBalancerCreateTimeoutDefault
-		nodes, err := e2enode.GetReadySchedulableNodes(cs)
-		framework.ExpectNoError(err)
-		if len(nodes.Items) > e2eservice.LargeClusterMinNodesNumber {
-			loadBalancerCreateTimeout = e2eservice.LoadBalancerCreateTimeoutLarge
-		}
+		loadBalancerCreateTimeout := e2eservice.GetServiceLoadBalancerCreationTimeout(cs)
 
 		// This test is more monolithic than we'd like because LB turnup can be
 		// very slow, so we lumped all the tests into one LB lifecycle.
@@ -1495,12 +1490,7 @@ var _ = SIGDescribe("Services", func() {
 		if framework.ProviderIs("aws") {
 			loadBalancerLagTimeout = e2eservice.LoadBalancerLagTimeoutAWS
 		}
-		loadBalancerCreateTimeout := e2eservice.LoadBalancerCreateTimeoutDefault
-		nodes, err := e2enode.GetReadySchedulableNodes(cs)
-		framework.ExpectNoError(err)
-		if len(nodes.Items) > e2eservice.LargeClusterMinNodesNumber {
-			loadBalancerCreateTimeout = e2eservice.LoadBalancerCreateTimeoutLarge
-		}
+		loadBalancerCreateTimeout := e2eservice.GetServiceLoadBalancerCreationTimeout(cs)
 
 		namespace := f.Namespace.Name
 		serviceName := "lb-sourcerange"
@@ -1515,7 +1505,7 @@ var _ = SIGDescribe("Services", func() {
 		ginkgo.By("creating a pod to be part of the service " + serviceName)
 		// This container is an nginx container listening on port 80
 		// See kubernetes/contrib/ingress/echoheaders/nginx.conf for content of response
-		_, err = jig.Run(nil)
+		_, err := jig.Run(nil)
 		framework.ExpectNoError(err)
 		// Make sure acceptPod is running. There are certain chances that pod might be teminated due to unexpected reasons.
 		acceptPod, err = cs.CoreV1().Pods(namespace).Get(acceptPod.Name, metav1.GetOptions{})
@@ -1545,8 +1535,8 @@ var _ = SIGDescribe("Services", func() {
 		svcIP := e2eservice.GetIngressPoint(&svc.Status.LoadBalancer.Ingress[0])
 		// Wait longer as this is our first request after creation.  We can't check using a separate method,
 		// because the LB should only be reachable from the "accept" pod
-		framework.CheckReachabilityFromPod(true, loadBalancerLagTimeout, namespace, acceptPod.Name, svcIP)
-		framework.CheckReachabilityFromPod(false, normalReachabilityTimeout, namespace, dropPod.Name, svcIP)
+		checkReachabilityFromPod(true, loadBalancerLagTimeout, namespace, acceptPod.Name, svcIP)
+		checkReachabilityFromPod(false, normalReachabilityTimeout, namespace, dropPod.Name, svcIP)
 
 		// Make sure dropPod is running. There are certain chances that the pod might be teminated due to unexpected reasons.		dropPod, err = cs.CoreV1().Pods(namespace).Get(dropPod.Name, metav1.GetOptions{})
 		dropPod, err = cs.CoreV1().Pods(namespace).Get(dropPod.Name, metav1.GetOptions{})
@@ -1560,29 +1550,23 @@ var _ = SIGDescribe("Services", func() {
 			svc.Spec.LoadBalancerSourceRanges = []string{dropPod.Status.PodIP + "/32"}
 		})
 		framework.ExpectNoError(err)
-		framework.CheckReachabilityFromPod(false, normalReachabilityTimeout, namespace, acceptPod.Name, svcIP)
-		framework.CheckReachabilityFromPod(true, normalReachabilityTimeout, namespace, dropPod.Name, svcIP)
+		checkReachabilityFromPod(false, normalReachabilityTimeout, namespace, acceptPod.Name, svcIP)
+		checkReachabilityFromPod(true, normalReachabilityTimeout, namespace, dropPod.Name, svcIP)
 
 		ginkgo.By("Delete LoadBalancerSourceRange field and check reachability")
 		_, err = jig.UpdateService(func(svc *v1.Service) {
 			svc.Spec.LoadBalancerSourceRanges = nil
 		})
 		framework.ExpectNoError(err)
-		framework.CheckReachabilityFromPod(true, normalReachabilityTimeout, namespace, acceptPod.Name, svcIP)
-		framework.CheckReachabilityFromPod(true, normalReachabilityTimeout, namespace, dropPod.Name, svcIP)
+		checkReachabilityFromPod(true, normalReachabilityTimeout, namespace, acceptPod.Name, svcIP)
+		checkReachabilityFromPod(true, normalReachabilityTimeout, namespace, dropPod.Name, svcIP)
 	})
 
 	// TODO: Get rid of [DisabledForLargeClusters] tag when issue #56138 is fixed.
 	ginkgo.It("should be able to create an internal type load balancer [Slow] [DisabledForLargeClusters]", func() {
 		framework.SkipUnlessProviderIs("azure", "gke", "gce")
 
-		createTimeout := e2eservice.LoadBalancerCreateTimeoutDefault
-		nodes, err := e2enode.GetReadySchedulableNodes(cs)
-		framework.ExpectNoError(err)
-		if len(nodes.Items) > e2eservice.LargeClusterMinNodesNumber {
-			createTimeout = e2eservice.LoadBalancerCreateTimeoutLarge
-		}
-
+		createTimeout := e2eservice.GetServiceLoadBalancerCreationTimeout(cs)
 		pollInterval := framework.Poll * 10
 
 		namespace := f.Namespace.Name
@@ -1590,7 +1574,7 @@ var _ = SIGDescribe("Services", func() {
 		jig := e2eservice.NewTestJig(cs, namespace, serviceName)
 
 		ginkgo.By("creating pod to be part of service " + serviceName)
-		_, err = jig.Run(nil)
+		_, err := jig.Run(nil)
 		framework.ExpectNoError(err)
 
 		enableILB, disableILB := e2eservice.EnableAndDisableInternalLB()
@@ -1732,7 +1716,7 @@ var _ = SIGDescribe("Services", func() {
 			e2eservice.WaitForServiceDeletedWithFinalizer(cs, svc.Namespace, svc.Name)
 		}()
 
-		svc, err = jig.WaitForLoadBalancer(e2eservice.LoadBalancerCreateTimeoutDefault)
+		svc, err = jig.WaitForLoadBalancer(e2eservice.GetServiceLoadBalancerCreationTimeout(cs))
 		framework.ExpectNoError(err)
 
 		hcName := gcecloud.MakeNodesHealthCheckName(clusterID)
@@ -1758,7 +1742,7 @@ var _ = SIGDescribe("Services", func() {
 
 		ginkgo.By("health check should be reconciled")
 		pollInterval := framework.Poll * 10
-		if pollErr := wait.PollImmediate(pollInterval, e2eservice.LoadBalancerCreateTimeoutDefault, func() (bool, error) {
+		if pollErr := wait.PollImmediate(pollInterval, e2eservice.LoadBalancerPropagationTimeoutDefault, func() (bool, error) {
 			hc, err := gceCloud.GetHTTPHealthCheck(hcName)
 			if err != nil {
 				framework.Logf("ginkgo.Failed to get HttpHealthCheck(%q): %v", hcName, err)
@@ -2059,7 +2043,7 @@ var _ = SIGDescribe("Services", func() {
 // TODO: Get rid of [DisabledForLargeClusters] tag when issue #56138 is fixed.
 var _ = SIGDescribe("ESIPP [Slow] [DisabledForLargeClusters]", func() {
 	f := framework.NewDefaultFramework("esipp")
-	loadBalancerCreateTimeout := e2eservice.LoadBalancerCreateTimeoutDefault
+	var loadBalancerCreateTimeout time.Duration
 
 	var cs clientset.Interface
 	serviceLBNames := []string{}
@@ -2069,11 +2053,7 @@ var _ = SIGDescribe("ESIPP [Slow] [DisabledForLargeClusters]", func() {
 		framework.SkipUnlessProviderIs("gce", "gke")
 
 		cs = f.ClientSet
-		nodes, err := e2enode.GetReadySchedulableNodes(cs)
-		framework.ExpectNoError(err)
-		if len(nodes.Items) > e2eservice.LargeClusterMinNodesNumber {
-			loadBalancerCreateTimeout = e2eservice.LoadBalancerCreateTimeoutLarge
-		}
+		loadBalancerCreateTimeout = e2eservice.GetServiceLoadBalancerCreationTimeout(cs)
 	})
 
 	ginkgo.AfterEach(func() {
@@ -2275,7 +2255,7 @@ var _ = SIGDescribe("ESIPP [Slow] [DisabledForLargeClusters]", func() {
 
 		var srcIP string
 		ginkgo.By(fmt.Sprintf("Hitting external lb %v from pod %v on node %v", ingressIP, pausePod.Name, pausePod.Spec.NodeName))
-		if pollErr := wait.PollImmediate(framework.Poll, e2eservice.LoadBalancerCreateTimeoutDefault, func() (bool, error) {
+		if pollErr := wait.PollImmediate(framework.Poll, e2eservice.LoadBalancerPropagationTimeoutDefault, func() (bool, error) {
 			stdout, err := framework.RunHostCmd(pausePod.Namespace, pausePod.Name, cmd)
 			if err != nil {
 				framework.Logf("got err: %v, retry until timeout", err)
@@ -2520,7 +2500,7 @@ func execAffinityTestForLBServiceWithOptionalTransition(f *framework.Framework, 
 	framework.ExpectNoError(err, "failed to create replication controller with service in the namespace: %s", ns)
 	jig := e2eservice.NewTestJig(cs, ns, serviceName)
 	ginkgo.By("waiting for loadbalancer for service " + ns + "/" + serviceName)
-	svc, err = jig.WaitForLoadBalancer(e2eservice.LoadBalancerCreateTimeoutDefault)
+	svc, err = jig.WaitForLoadBalancer(e2eservice.GetServiceLoadBalancerCreationTimeout(cs))
 	framework.ExpectNoError(err)
 	defer func() {
 		podNodePairs, err := e2enode.PodNodePairs(cs, ns)
@@ -2582,6 +2562,32 @@ func createPausePodDeployment(cs clientset.Interface, name, ns string, replicas 
 	return deployment
 }
 
+// createPodOrFail creates a pod with the specified containerPorts.
+func createPodOrFail(c clientset.Interface, ns, name string, labels map[string]string, containerPorts []v1.ContainerPort) {
+	ginkgo.By(fmt.Sprintf("Creating pod %s in namespace %s", name, ns))
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   name,
+			Labels: labels,
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
+				{
+					Name:  "pause",
+					Image: imageutils.GetE2EImage(imageutils.Agnhost),
+					Args:  []string{"pause"},
+					Ports: containerPorts,
+					// Add a dummy environment variable to work around a docker issue.
+					// https://github.com/docker/docker/issues/14203
+					Env: []v1.EnvVar{{Name: "FOO", Value: " "}},
+				},
+			},
+		},
+	}
+	_, err := c.CoreV1().Pods(ns).Create(pod)
+	framework.ExpectNoError(err, "failed to create pod %s in namespace %s", name, ns)
+}
+
 // launchHostExecPod launches a hostexec pod in the given namespace and waits
 // until it's Running
 func launchHostExecPod(client clientset.Interface, ns, name string) *v1.Pod {
@@ -2591,4 +2597,23 @@ func launchHostExecPod(client clientset.Interface, ns, name string) *v1.Pod {
 	err = e2epod.WaitForPodRunningInNamespace(client, pod)
 	framework.ExpectNoError(err)
 	return pod
+}
+
+// checkReachabilityFromPod checks reachability from the specified pod.
+func checkReachabilityFromPod(expectToBeReachable bool, timeout time.Duration, namespace, pod, target string) {
+	cmd := fmt.Sprintf("wget -T 5 -qO- %q", target)
+	err := wait.PollImmediate(framework.Poll, timeout, func() (bool, error) {
+		_, err := framework.RunHostCmd(namespace, pod, cmd)
+		if expectToBeReachable && err != nil {
+			framework.Logf("Expect target to be reachable. But got err: %v. Retry until timeout", err)
+			return false, nil
+		}
+
+		if !expectToBeReachable && err == nil {
+			framework.Logf("Expect target NOT to be reachable. But it is reachable. Retry until timeout")
+			return false, nil
+		}
+		return true, nil
+	})
+	framework.ExpectNoError(err)
 }

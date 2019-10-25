@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,23 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package printers
+package podlogs
 
 import (
-	"io"
+	"testing"
 
-	"github.com/liggitt/tabwriter"
+	"k8s.io/kubernetes/test/integration/framework"
 )
 
-const (
-	tabwriterMinWidth = 6
-	tabwriterWidth    = 4
-	tabwriterPadding  = 3
-	tabwriterPadChar  = ' '
-	tabwriterFlags    = tabwriter.RememberWidths
-)
-
-// GetNewTabWriter returns a tabwriter that translates tabbed columns in input into properly aligned text.
-func GetNewTabWriter(output io.Writer) *tabwriter.Writer {
-	return tabwriter.NewWriter(output, tabwriterMinWidth, tabwriterWidth, tabwriterPadding, tabwriterPadChar, tabwriterFlags)
+func TestMain(m *testing.M) {
+	framework.EtcdMain(m.Run)
 }
