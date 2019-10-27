@@ -1858,7 +1858,7 @@ func TestServiceAffinity(t *testing.T) {
 				nodeInfo.SetNode(test.node)
 				nodeInfoMap := map[string]*schedulernodeinfo.NodeInfo{test.node.Name: nodeInfo}
 				// Reimplementing the logic that the scheduler implements: Any time it makes a predicate, it registers any precomputations.
-				predicate, precompute := NewServiceAffinityPredicate(fakelisters.NodeLister(nodes), fakelisters.PodLister(test.pods), fakelisters.ServiceLister(test.services), test.labels)
+				predicate, precompute := NewServiceAffinityPredicate(fakelisters.NewNodeInfoLister(nodes), fakelisters.PodLister(test.pods), fakelisters.ServiceLister(test.services), test.labels)
 				// Register a precomputation or Rewrite the precomputation to a no-op, depending on the state we want to test.
 				RegisterPredicateMetadataProducer("ServiceAffinityMetaProducer", func(pm *predicateMetadata) {
 					if !skipPrecompute {
@@ -2931,8 +2931,8 @@ func TestInterPodAffinity(t *testing.T) {
 			}
 
 			fit := PodAffinityChecker{
-				nodeLister: fakelisters.NodeLister([]*v1.Node{node}),
-				podLister:  fakelisters.PodLister(test.pods),
+				nodeInfoLister: fakelisters.NewNodeInfoLister([]*v1.Node{node}),
+				podLister:      fakelisters.PodLister(test.pods),
 			}
 			nodeInfo := schedulernodeinfo.NewNodeInfo(podsOnNode...)
 			nodeInfo.SetNode(test.node)
@@ -4044,8 +4044,8 @@ func TestInterPodAffinityWithMultipleNodes(t *testing.T) {
 
 			for indexNode, node := range test.nodes {
 				testFit := PodAffinityChecker{
-					nodeLister: fakelisters.NodeLister(test.nodes),
-					podLister:  fakelisters.PodLister(test.pods),
+					nodeInfoLister: fakelisters.NewNodeInfoLister(test.nodes),
+					podLister:      fakelisters.PodLister(test.pods),
 				}
 
 				var meta PredicateMetadata
@@ -4302,7 +4302,7 @@ func createPodWithVolume(pod, pv, pvc string) *v1.Pod {
 }
 
 func TestVolumeZonePredicate(t *testing.T) {
-	pvInfo := fakelisters.PersistentVolumeInfo{
+	pvLister := fakelisters.PersistentVolumeLister{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "Vol_1", Labels: map[string]string{v1.LabelZoneFailureDomain: "us-west1-a"}},
 		},
@@ -4314,7 +4314,7 @@ func TestVolumeZonePredicate(t *testing.T) {
 		},
 	}
 
-	pvcInfo := fakelisters.PersistentVolumeClaimInfo{
+	pvcLister := fakelisters.PersistentVolumeClaimLister{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "PVC_1", Namespace: "default"},
 			Spec:       v1.PersistentVolumeClaimSpec{VolumeName: "Vol_1"},
@@ -4412,7 +4412,7 @@ func TestVolumeZonePredicate(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			fit := NewVolumeZonePredicate(pvInfo, pvcInfo, nil)
+			fit := NewVolumeZonePredicate(pvLister, pvcLister, nil)
 			node := &schedulernodeinfo.NodeInfo{}
 			node.SetNode(test.Node)
 
@@ -4431,7 +4431,7 @@ func TestVolumeZonePredicate(t *testing.T) {
 }
 
 func TestVolumeZonePredicateMultiZone(t *testing.T) {
-	pvInfo := fakelisters.PersistentVolumeInfo{
+	pvLister := fakelisters.PersistentVolumeLister{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "Vol_1", Labels: map[string]string{v1.LabelZoneFailureDomain: "us-west1-a"}},
 		},
@@ -4443,7 +4443,7 @@ func TestVolumeZonePredicateMultiZone(t *testing.T) {
 		},
 	}
 
-	pvcInfo := fakelisters.PersistentVolumeClaimInfo{
+	pvcLister := fakelisters.PersistentVolumeClaimLister{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "PVC_1", Namespace: "default"},
 			Spec:       v1.PersistentVolumeClaimSpec{VolumeName: "Vol_1"},
@@ -4506,7 +4506,7 @@ func TestVolumeZonePredicateMultiZone(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			fit := NewVolumeZonePredicate(pvInfo, pvcInfo, nil)
+			fit := NewVolumeZonePredicate(pvLister, pvcLister, nil)
 			node := &schedulernodeinfo.NodeInfo{}
 			node.SetNode(test.Node)
 
@@ -4533,7 +4533,7 @@ func TestVolumeZonePredicateWithVolumeBinding(t *testing.T) {
 		classImmediate = "Class_Immediate"
 	)
 
-	classInfo := fakelisters.StorageClassInfo{
+	scLister := fakelisters.StorageClassLister{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: classImmediate},
 		},
@@ -4543,13 +4543,13 @@ func TestVolumeZonePredicateWithVolumeBinding(t *testing.T) {
 		},
 	}
 
-	pvInfo := fakelisters.PersistentVolumeInfo{
+	pvLister := fakelisters.PersistentVolumeLister{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "Vol_1", Labels: map[string]string{v1.LabelZoneFailureDomain: "us-west1-a"}},
 		},
 	}
 
-	pvcInfo := fakelisters.PersistentVolumeClaimInfo{
+	pvcLister := fakelisters.PersistentVolumeClaimLister{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "PVC_1", Namespace: "default"},
 			Spec:       v1.PersistentVolumeClaimSpec{VolumeName: "Vol_1"},
@@ -4622,7 +4622,7 @@ func TestVolumeZonePredicateWithVolumeBinding(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			fit := NewVolumeZonePredicate(pvInfo, pvcInfo, classInfo)
+			fit := NewVolumeZonePredicate(pvLister, pvcLister, scLister)
 			node := &schedulernodeinfo.NodeInfo{}
 			node.SetNode(test.Node)
 

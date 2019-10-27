@@ -30,6 +30,7 @@ import (
 	storagelisters "k8s.io/client-go/listers/storage/v1"
 	v1beta1storagelisters "k8s.io/client-go/listers/storage/v1beta1"
 	schedulerlisters "k8s.io/kubernetes/pkg/scheduler/listers"
+	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 )
 
 var _ schedulerlisters.PodLister = &PodLister{}
@@ -115,7 +116,7 @@ func (f ControllerLister) GetPodControllers(pod *v1.Pod) (controllers []*v1.Repl
 		}
 	}
 	if len(controllers) == 0 {
-		err = fmt.Errorf("Could not find Replication Controller for pod %s in namespace %s with labels: %v", pod.Name, pod.Namespace, pod.Labels)
+		err = fmt.Errorf("could not find Replication Controller for pod %s in namespace %s with labels: %v", pod.Name, pod.Namespace, pod.Labels)
 	}
 
 	return
@@ -154,7 +155,7 @@ func (f ReplicaSetLister) GetPodReplicaSets(pod *v1.Pod) (rss []*appsv1.ReplicaS
 		}
 	}
 	if len(rss) == 0 {
-		err = fmt.Errorf("Could not find ReplicaSet for pod %s in namespace %s with labels: %v", pod.Name, pod.Namespace, pod.Labels)
+		err = fmt.Errorf("could not find ReplicaSet for pod %s in namespace %s with labels: %v", pod.Name, pod.Namespace, pod.Labels)
 	}
 
 	return
@@ -192,7 +193,7 @@ func (f StatefulSetLister) GetPodStatefulSets(pod *v1.Pod) (sss []*appsv1.Statef
 		}
 	}
 	if len(sss) == 0 {
-		err = fmt.Errorf("Could not find StatefulSet for pod %s in namespace %s with labels: %v", pod.Name, pod.Namespace, pod.Labels)
+		err = fmt.Errorf("could not find StatefulSet for pod %s in namespace %s with labels: %v", pod.Name, pod.Namespace, pod.Labels)
 	}
 	return
 }
@@ -200,24 +201,6 @@ func (f StatefulSetLister) GetPodStatefulSets(pod *v1.Pod) (sss []*appsv1.Statef
 // StatefulSets returns nil
 func (f StatefulSetLister) StatefulSets(namespace string) appslisters.StatefulSetNamespaceLister {
 	return nil
-}
-
-// PersistentVolumeClaimLister implements PersistentVolumeClaimLister on []*v1.PersistentVolumeClaim for test purposes.
-type PersistentVolumeClaimLister []*v1.PersistentVolumeClaim
-
-var _ corelisters.PersistentVolumeClaimLister = PersistentVolumeClaimLister{}
-
-// List lists all PersistentVolumeClaims in the indexer.
-func (f PersistentVolumeClaimLister) List(selector labels.Selector) (ret []*v1.PersistentVolumeClaim, err error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
-// PersistentVolumeClaims returns a fake PersistentVolumeClaimLister object.
-func (f PersistentVolumeClaimLister) PersistentVolumeClaims(namespace string) corelisters.PersistentVolumeClaimNamespaceLister {
-	return &persistentVolumeClaimNamespaceLister{
-		pvcs:      f,
-		namespace: namespace,
-	}
 }
 
 // persistentVolumeClaimNamespaceLister is implementation of PersistentVolumeClaimNamespaceLister returned by List() above.
@@ -239,28 +222,18 @@ func (f persistentVolumeClaimNamespaceLister) List(selector labels.Selector) (re
 	return nil, fmt.Errorf("not implemented")
 }
 
-// PersistentVolumeClaimInfo declares a []v1.PersistentVolumeClaim type for testing.
-type PersistentVolumeClaimInfo []v1.PersistentVolumeClaim
+// PersistentVolumeClaimLister declares a []v1.PersistentVolumeClaim type for testing.
+type PersistentVolumeClaimLister []v1.PersistentVolumeClaim
 
-var _ corelisters.PersistentVolumeClaimLister = PersistentVolumeClaimInfo{}
-
-// GetPersistentVolumeClaimInfo gets PVC matching the namespace and PVC ID.
-func (pvcs PersistentVolumeClaimInfo) GetPersistentVolumeClaimInfo(namespace string, pvcID string) (*v1.PersistentVolumeClaim, error) {
-	for _, pvc := range pvcs {
-		if pvc.Name == pvcID && pvc.Namespace == namespace {
-			return &pvc, nil
-		}
-	}
-	return nil, fmt.Errorf("Unable to find persistent volume claim: %s/%s", namespace, pvcID)
-}
+var _ corelisters.PersistentVolumeClaimLister = PersistentVolumeClaimLister{}
 
 // List gets PVC matching the namespace and PVC ID.
-func (pvcs PersistentVolumeClaimInfo) List(selector labels.Selector) (ret []*v1.PersistentVolumeClaim, err error) {
+func (pvcs PersistentVolumeClaimLister) List(selector labels.Selector) (ret []*v1.PersistentVolumeClaim, err error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
 // PersistentVolumeClaims returns a fake PersistentVolumeClaimLister object.
-func (pvcs PersistentVolumeClaimInfo) PersistentVolumeClaims(namespace string) corelisters.PersistentVolumeClaimNamespaceLister {
+func (pvcs PersistentVolumeClaimLister) PersistentVolumeClaims(namespace string) corelisters.PersistentVolumeClaimNamespaceLister {
 	ps := make([]*v1.PersistentVolumeClaim, len(pvcs))
 	for i := range pvcs {
 		ps[i] = &pvcs[i]
@@ -271,58 +244,59 @@ func (pvcs PersistentVolumeClaimInfo) PersistentVolumeClaims(namespace string) c
 	}
 }
 
-// NodeLister declares a *v1.Node type for testing.
-type NodeLister []*v1.Node
+// NodeInfoLister declares a schedulernodeinfo.NodeInfo type for testing.
+type NodeInfoLister []*schedulernodeinfo.NodeInfo
 
-// GetNodeInfo returns a fake node object in the fake nodes.
-func (nodes NodeLister) GetNodeInfo(nodeName string) (*v1.Node, error) {
+// Get returns a fake node object in the fake nodes.
+func (nodes NodeInfoLister) Get(nodeName string) (*schedulernodeinfo.NodeInfo, error) {
 	for _, node := range nodes {
-		if node != nil && node.Name == nodeName {
+		if node != nil && node.Node().Name == nodeName {
 			return node, nil
 		}
 	}
-	return nil, fmt.Errorf("Unable to find node: %s", nodeName)
+	return nil, fmt.Errorf("unable to find node: %s", nodeName)
 }
 
-var _ v1beta1storagelisters.CSINodeLister = CSINodeInfo{}
-
-// CSINodeInfo declares a storagev1beta1.CSINode type for testing.
-type CSINodeInfo storagev1beta1.CSINode
-
-// GetCSINodeInfo returns a fake CSINode object.
-func (n CSINodeInfo) GetCSINodeInfo(name string) (*storagev1beta1.CSINode, error) {
-	csiNode := storagev1beta1.CSINode(n)
-	return &csiNode, nil
+// List lists all nodes.
+func (nodes NodeInfoLister) List() ([]*schedulernodeinfo.NodeInfo, error) {
+	return nodes, nil
 }
+
+// NewNodeInfoLister create a new fake NodeInfoLister from a slice of v1.Nodes.
+func NewNodeInfoLister(nodes []*v1.Node) schedulerlisters.NodeInfoLister {
+	nodeInfoList := make([]*schedulernodeinfo.NodeInfo, len(nodes))
+	for _, node := range nodes {
+		nodeInfo := schedulernodeinfo.NewNodeInfo()
+		nodeInfo.SetNode(node)
+		nodeInfoList = append(nodeInfoList, nodeInfo)
+	}
+
+	return NodeInfoLister(nodeInfoList)
+}
+
+var _ v1beta1storagelisters.CSINodeLister = CSINodeLister{}
+
+// CSINodeLister declares a storagev1beta1.CSINode type for testing.
+type CSINodeLister storagev1beta1.CSINode
 
 // Get returns a fake CSINode object.
-func (n CSINodeInfo) Get(name string) (*storagev1beta1.CSINode, error) {
+func (n CSINodeLister) Get(name string) (*storagev1beta1.CSINode, error) {
 	csiNode := storagev1beta1.CSINode(n)
 	return &csiNode, nil
 }
 
 // List lists all CSINodes in the indexer.
-func (n CSINodeInfo) List(selector labels.Selector) (ret []*storagev1beta1.CSINode, err error) {
+func (n CSINodeLister) List(selector labels.Selector) (ret []*storagev1beta1.CSINode, err error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
-// PersistentVolumeInfo declares a []v1.PersistentVolume type for testing.
-type PersistentVolumeInfo []v1.PersistentVolume
+// PersistentVolumeLister declares a []v1.PersistentVolume type for testing.
+type PersistentVolumeLister []v1.PersistentVolume
 
-var _ corelisters.PersistentVolumeLister = PersistentVolumeInfo{}
-
-// GetPersistentVolumeInfo returns a fake PV object in the fake PVs by PV ID.
-func (pvs PersistentVolumeInfo) GetPersistentVolumeInfo(pvID string) (*v1.PersistentVolume, error) {
-	for _, pv := range pvs {
-		if pv.Name == pvID {
-			return &pv, nil
-		}
-	}
-	return nil, fmt.Errorf("Unable to find persistent volume: %s", pvID)
-}
+var _ corelisters.PersistentVolumeLister = PersistentVolumeLister{}
 
 // Get returns a fake PV object in the fake PVs by PV ID.
-func (pvs PersistentVolumeInfo) Get(pvID string) (*v1.PersistentVolume, error) {
+func (pvs PersistentVolumeLister) Get(pvID string) (*v1.PersistentVolume, error) {
 	for _, pv := range pvs {
 		if pv.Name == pvID {
 			return &pv, nil
@@ -332,27 +306,17 @@ func (pvs PersistentVolumeInfo) Get(pvID string) (*v1.PersistentVolume, error) {
 }
 
 // List lists all PersistentVolumes in the indexer.
-func (pvs PersistentVolumeInfo) List(selector labels.Selector) ([]*v1.PersistentVolume, error) {
+func (pvs PersistentVolumeLister) List(selector labels.Selector) ([]*v1.PersistentVolume, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
-// StorageClassInfo declares a []storagev1.StorageClass type for testing.
-type StorageClassInfo []storagev1.StorageClass
+// StorageClassLister declares a []storagev1.StorageClass type for testing.
+type StorageClassLister []storagev1.StorageClass
 
-var _ storagelisters.StorageClassLister = StorageClassInfo{}
-
-// GetStorageClassInfo returns a fake storage class object in the fake storage classes by name.
-func (classes StorageClassInfo) GetStorageClassInfo(name string) (*storagev1.StorageClass, error) {
-	for _, sc := range classes {
-		if sc.Name == name {
-			return &sc, nil
-		}
-	}
-	return nil, fmt.Errorf("Unable to find storage class: %s", name)
-}
+var _ storagelisters.StorageClassLister = StorageClassLister{}
 
 // Get returns a fake storage class object in the fake storage classes by name.
-func (classes StorageClassInfo) Get(name string) (*storagev1.StorageClass, error) {
+func (classes StorageClassLister) Get(name string) (*storagev1.StorageClass, error) {
 	for _, sc := range classes {
 		if sc.Name == name {
 			return &sc, nil
@@ -362,6 +326,6 @@ func (classes StorageClassInfo) Get(name string) (*storagev1.StorageClass, error
 }
 
 // List lists all StorageClass in the indexer.
-func (classes StorageClassInfo) List(selector labels.Selector) ([]*storagev1.StorageClass, error) {
+func (classes StorageClassLister) List(selector labels.Selector) ([]*storagev1.StorageClass, error) {
 	return nil, fmt.Errorf("not implemented")
 }
