@@ -612,10 +612,7 @@ func (f *framework) SnapshotSharedLister() schedulerlisters.SharedLister {
 	return f.nodeInfoSnapshot
 }
 
-// NodeInfoSnapshot returns the latest NodeInfo snapshot. The snapshot
-// is taken at the beginning of a scheduling cycle and remains unchanged until a
-// pod finishes "Reserve". There is no guarantee that the information remains
-// unchanged after "Reserve".
+// NodeInfoSnapshot returns the NodeInfo Snapshot handler.
 func (f *framework) NodeInfoSnapshot() *nodeinfosnapshot.Snapshot {
 	return f.nodeInfoSnapshot
 }
@@ -633,6 +630,11 @@ func (f *framework) GetWaitingPod(uid types.UID) WaitingPod {
 // HasFilterPlugins returns true if at least one filter plugin is defined.
 func (f *framework) HasFilterPlugins() bool {
 	return len(f.filterPlugins) > 0
+}
+
+// HasScorePlugins returns true if at least one score plugin is defined.
+func (f *framework) HasScorePlugins() bool {
+	return len(f.scorePlugins) > 0
 }
 
 // ListPlugins returns a map of extension point name to plugin names configured at each extension

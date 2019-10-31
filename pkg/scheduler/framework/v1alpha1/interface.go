@@ -442,11 +442,17 @@ type Framework interface {
 	// code=4("skip") status.
 	RunBindPlugins(ctx context.Context, state *CycleState, pod *v1.Pod, nodeName string) *Status
 
-	// HasFilterPlugins return true if at least one filter plugin is defined
+	// HasFilterPlugins returns true if at least one filter plugin is defined.
 	HasFilterPlugins() bool
+
+	// HasScorePlugins returns true if at least one score plugin is defined.
+	HasScorePlugins() bool
 
 	// ListPlugins returns a map of extension point name to list of configured Plugins.
 	ListPlugins() map[string][]config.Plugin
+
+	// NodeInfoSnapshot return the NodeInfo.Snapshot handler.
+	NodeInfoSnapshot() *nodeinfosnapshot.Snapshot
 }
 
 // FrameworkHandle provides data and some tools that plugins can use. It is
@@ -461,15 +467,6 @@ type FrameworkHandle interface {
 	// otherwise a concurrent read/write error might occur, they should use scheduler
 	// cache instead.
 	SnapshotSharedLister() schedulerlisters.SharedLister
-
-	// NodeInfoSnapshot return the latest NodeInfo snapshot. The snapshot
-	// is taken at the beginning of a scheduling cycle and remains unchanged until
-	// a pod finishes "Reserve" point. There is no guarantee that the information
-	// remains unchanged in the binding phase of scheduling, so plugins in the binding
-	// cycle(permit/pre-bind/bind/post-bind/un-reserve plugin) should not use it,
-	// otherwise a concurrent read/write error might occur, they should use scheduler
-	// cache instead.
-	NodeInfoSnapshot() *nodeinfosnapshot.Snapshot
 
 	// IterateOverWaitingPods acquires a read lock and iterates over the WaitingPods map.
 	IterateOverWaitingPods(callback func(WaitingPod))

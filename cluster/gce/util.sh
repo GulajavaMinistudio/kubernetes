@@ -950,9 +950,6 @@ function print-common-kubelet-config {
   declare quoted_dns_server_ip
   declare quoted_dns_domain
   quoted_dns_server_ip=$(yaml-quote "${DNS_SERVER_IP}")
-  if [[ "${ENABLE_NODELOCAL_DNS:-}" == "true" ]]; then
-    quoted_dns_server_ip=$(yaml-quote "${LOCAL_DNS_IP}")
-  fi
   quoted_dns_domain=$(yaml-quote "${DNS_DOMAIN}")
   cat <<EOF
 kind: KubeletConfiguration
@@ -1124,7 +1121,6 @@ SERVICE_CLUSTER_IP_RANGE: $(yaml-quote ${SERVICE_CLUSTER_IP_RANGE})
 KUBERNETES_MASTER_NAME: $(yaml-quote ${KUBERNETES_MASTER_NAME})
 ALLOCATE_NODE_CIDRS: $(yaml-quote ${ALLOCATE_NODE_CIDRS:-false})
 ENABLE_CLUSTER_MONITORING: $(yaml-quote ${ENABLE_CLUSTER_MONITORING:-none})
-ENABLE_PROMETHEUS_MONITORING: $(yaml-quote ${ENABLE_PROMETHEUS_MONITORING:-false})
 ENABLE_METRICS_SERVER: $(yaml-quote ${ENABLE_METRICS_SERVER:-false})
 ENABLE_METADATA_AGENT: $(yaml-quote ${ENABLE_METADATA_AGENT:-none})
 METADATA_AGENT_CPU_REQUEST: $(yaml-quote ${METADATA_AGENT_CPU_REQUEST:-})
