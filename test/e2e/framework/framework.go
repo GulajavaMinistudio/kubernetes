@@ -47,7 +47,6 @@ import (
 	e2emetrics "k8s.io/kubernetes/test/e2e/framework/metrics"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
-	e2epsp "k8s.io/kubernetes/test/e2e/framework/psp"
 	testutils "k8s.io/kubernetes/test/utils"
 
 	"github.com/onsi/ginkgo"
@@ -399,7 +398,7 @@ func (f *Framework) CreateNamespace(baseName string, labels map[string]string) (
 	f.AddNamespacesToDelete(ns)
 
 	if err == nil && !f.SkipPrivilegedPSPBinding {
-		e2epsp.CreatePrivilegedPSPBinding(f.ClientSet, ns.Name)
+		CreatePrivilegedPSPBinding(f.ClientSet, ns.Name)
 	}
 
 	return ns, err
@@ -479,7 +478,7 @@ func (f *Framework) WriteFileViaContainer(podName, containerName string, path st
 			return fmt.Errorf("Unsupported character in string to write: %v", c)
 		}
 	}
-	command := fmt.Sprintf("echo '%s' > '%s'", contents, path)
+	command := fmt.Sprintf("\"echo '%s' > '%s'; sync\"", contents, path)
 	stdout, stderr, err := kubectlExecWithRetry(f.Namespace.Name, podName, containerName, "--", "/bin/sh", "-c", command)
 	if err != nil {
 		Logf("error running kubectl exec to write file: %v\nstdout=%v\nstderr=%v)", err, string(stdout), string(stderr))
