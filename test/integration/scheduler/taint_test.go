@@ -36,7 +36,6 @@ import (
 	"k8s.io/kubernetes/pkg/controller/nodelifecycle"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler/algorithmprovider"
-	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 	"k8s.io/kubernetes/plugin/pkg/admission/defaulttolerationseconds"
 	"k8s.io/kubernetes/plugin/pkg/admission/podtolerationrestriction"
 	pluginapi "k8s.io/kubernetes/plugin/pkg/admission/podtolerationrestriction/apis/podtolerationrestriction"
@@ -86,6 +85,8 @@ func TestTaintNodeByCondition(t *testing.T) {
 	defer algorithmprovider.ApplyFeatureGates()()
 
 	context = initTestScheduler(t, context, false, nil)
+	defer cleanupTest(t, context)
+
 	cs := context.clientSet
 	informers := context.informerFactory
 	nsName := context.ns.Name
@@ -135,37 +136,37 @@ func TestTaintNodeByCondition(t *testing.T) {
 	}
 
 	notReadyToleration := v1.Toleration{
-		Key:      schedulerapi.TaintNodeNotReady,
+		Key:      v1.TaintNodeNotReady,
 		Operator: v1.TolerationOpExists,
 		Effect:   v1.TaintEffectNoSchedule,
 	}
 
 	unschedulableToleration := v1.Toleration{
-		Key:      schedulerapi.TaintNodeUnschedulable,
+		Key:      v1.TaintNodeUnschedulable,
 		Operator: v1.TolerationOpExists,
 		Effect:   v1.TaintEffectNoSchedule,
 	}
 
 	memoryPressureToleration := v1.Toleration{
-		Key:      schedulerapi.TaintNodeMemoryPressure,
+		Key:      v1.TaintNodeMemoryPressure,
 		Operator: v1.TolerationOpExists,
 		Effect:   v1.TaintEffectNoSchedule,
 	}
 
 	diskPressureToleration := v1.Toleration{
-		Key:      schedulerapi.TaintNodeDiskPressure,
+		Key:      v1.TaintNodeDiskPressure,
 		Operator: v1.TolerationOpExists,
 		Effect:   v1.TaintEffectNoSchedule,
 	}
 
 	networkUnavailableToleration := v1.Toleration{
-		Key:      schedulerapi.TaintNodeNetworkUnavailable,
+		Key:      v1.TaintNodeNetworkUnavailable,
 		Operator: v1.TolerationOpExists,
 		Effect:   v1.TaintEffectNoSchedule,
 	}
 
 	pidPressureToleration := v1.Toleration{
-		Key:      schedulerapi.TaintNodePIDPressure,
+		Key:      v1.TaintNodePIDPressure,
 		Operator: v1.TolerationOpExists,
 		Effect:   v1.TaintEffectNoSchedule,
 	}
@@ -199,7 +200,7 @@ func TestTaintNodeByCondition(t *testing.T) {
 			},
 			expectedTaints: []v1.Taint{
 				{
-					Key:    schedulerapi.TaintNodeNotReady,
+					Key:    v1.TaintNodeNotReady,
 					Effect: v1.TaintEffectNoSchedule,
 				},
 			},
@@ -234,7 +235,7 @@ func TestTaintNodeByCondition(t *testing.T) {
 			},
 			expectedTaints: []v1.Taint{
 				{
-					Key:    schedulerapi.TaintNodeUnschedulable,
+					Key:    v1.TaintNodeUnschedulable,
 					Effect: v1.TaintEffectNoSchedule,
 				},
 			},
@@ -272,7 +273,7 @@ func TestTaintNodeByCondition(t *testing.T) {
 			},
 			expectedTaints: []v1.Taint{
 				{
-					Key:    schedulerapi.TaintNodeMemoryPressure,
+					Key:    v1.TaintNodeMemoryPressure,
 					Effect: v1.TaintEffectNoSchedule,
 				},
 			},
@@ -317,7 +318,7 @@ func TestTaintNodeByCondition(t *testing.T) {
 			},
 			expectedTaints: []v1.Taint{
 				{
-					Key:    schedulerapi.TaintNodeDiskPressure,
+					Key:    v1.TaintNodeDiskPressure,
 					Effect: v1.TaintEffectNoSchedule,
 				},
 			},
@@ -361,7 +362,7 @@ func TestTaintNodeByCondition(t *testing.T) {
 			},
 			expectedTaints: []v1.Taint{
 				{
-					Key:    schedulerapi.TaintNodeNetworkUnavailable,
+					Key:    v1.TaintNodeNetworkUnavailable,
 					Effect: v1.TaintEffectNoSchedule,
 				},
 			},
@@ -401,11 +402,11 @@ func TestTaintNodeByCondition(t *testing.T) {
 			},
 			expectedTaints: []v1.Taint{
 				{
-					Key:    schedulerapi.TaintNodeNetworkUnavailable,
+					Key:    v1.TaintNodeNetworkUnavailable,
 					Effect: v1.TaintEffectNoSchedule,
 				},
 				{
-					Key:    schedulerapi.TaintNodeNotReady,
+					Key:    v1.TaintNodeNotReady,
 					Effect: v1.TaintEffectNoSchedule,
 				},
 			},
@@ -453,7 +454,7 @@ func TestTaintNodeByCondition(t *testing.T) {
 			},
 			expectedTaints: []v1.Taint{
 				{
-					Key:    schedulerapi.TaintNodePIDPressure,
+					Key:    v1.TaintNodePIDPressure,
 					Effect: v1.TaintEffectNoSchedule,
 				},
 			},
@@ -499,15 +500,15 @@ func TestTaintNodeByCondition(t *testing.T) {
 			},
 			expectedTaints: []v1.Taint{
 				{
-					Key:    schedulerapi.TaintNodeDiskPressure,
+					Key:    v1.TaintNodeDiskPressure,
 					Effect: v1.TaintEffectNoSchedule,
 				},
 				{
-					Key:    schedulerapi.TaintNodeMemoryPressure,
+					Key:    v1.TaintNodeMemoryPressure,
 					Effect: v1.TaintEffectNoSchedule,
 				},
 				{
-					Key:    schedulerapi.TaintNodePIDPressure,
+					Key:    v1.TaintNodePIDPressure,
 					Effect: v1.TaintEffectNoSchedule,
 				},
 			},
@@ -591,7 +592,7 @@ func TestTaintBasedEvictions(t *testing.T) {
 			},
 			Tolerations: []v1.Toleration{
 				{
-					Key:      schedulerapi.TaintNodeNotReady,
+					Key:      v1.TaintNodeNotReady,
 					Operator: v1.TolerationOpExists,
 					Effect:   v1.TaintEffectNoExecute,
 				},
@@ -609,14 +610,14 @@ func TestTaintBasedEvictions(t *testing.T) {
 	}{
 		{
 			name:                "Taint based evictions for NodeNotReady and 200 tolerationseconds",
-			nodeTaints:          []v1.Taint{{Key: schedulerapi.TaintNodeNotReady, Effect: v1.TaintEffectNoExecute}},
+			nodeTaints:          []v1.Taint{{Key: v1.TaintNodeNotReady, Effect: v1.TaintEffectNoExecute}},
 			nodeConditions:      []v1.NodeCondition{{Type: v1.NodeReady, Status: v1.ConditionFalse}},
 			pod:                 testPod,
 			waitForPodCondition: "updated with tolerationSeconds of 200",
 		},
 		{
 			name:           "Taint based evictions for NodeNotReady with no pod tolerations",
-			nodeTaints:     []v1.Taint{{Key: schedulerapi.TaintNodeNotReady, Effect: v1.TaintEffectNoExecute}},
+			nodeTaints:     []v1.Taint{{Key: v1.TaintNodeNotReady, Effect: v1.TaintEffectNoExecute}},
 			nodeConditions: []v1.NodeCondition{{Type: v1.NodeReady, Status: v1.ConditionFalse}},
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{Name: "testpod1"},
@@ -630,14 +631,14 @@ func TestTaintBasedEvictions(t *testing.T) {
 		},
 		{
 			name:                "Taint based evictions for NodeNotReady and 0 tolerationseconds",
-			nodeTaints:          []v1.Taint{{Key: schedulerapi.TaintNodeNotReady, Effect: v1.TaintEffectNoExecute}},
+			nodeTaints:          []v1.Taint{{Key: v1.TaintNodeNotReady, Effect: v1.TaintEffectNoExecute}},
 			nodeConditions:      []v1.NodeCondition{{Type: v1.NodeReady, Status: v1.ConditionFalse}},
 			pod:                 testPod,
 			waitForPodCondition: "terminating",
 		},
 		{
 			name:           "Taint based evictions for NodeUnreachable",
-			nodeTaints:     []v1.Taint{{Key: schedulerapi.TaintNodeUnreachable, Effect: v1.TaintEffectNoExecute}},
+			nodeTaints:     []v1.Taint{{Key: v1.TaintNodeUnreachable, Effect: v1.TaintEffectNoExecute}},
 			nodeConditions: []v1.NodeCondition{{Type: v1.NodeReady, Status: v1.ConditionUnknown}},
 		},
 	}
@@ -656,6 +657,8 @@ func TestTaintBasedEvictions(t *testing.T) {
 	for i, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			context := initTestMaster(t, "taint-based-evictions", admission)
+			defer cleanupTest(t, context)
+
 			// Build clientset and informers for controllers.
 			externalClientset := kubernetes.NewForConfigOrDie(&restclient.Config{
 				QPS:           -1,
@@ -733,6 +736,34 @@ func TestTaintBasedEvictions(t *testing.T) {
 					t.Errorf("Failed to create node, err: %v", err)
 				}
 			}
+
+			// Regularly send heartbeat event to APIServer so that the cluster doesn't enter fullyDisruption mode.
+			// TODO(Huang-Wei): use "NodeDisruptionExclusion" feature to simply the below logic when it's beta.
+			var heartbeatChans []chan struct{}
+			for i := 0; i < nodeCount; i++ {
+				heartbeatChans = append(heartbeatChans, make(chan struct{}))
+			}
+			for i := 0; i < nodeCount; i++ {
+				// Spin up <nodeCount> goroutines to send heartbeat event to APIServer periodically.
+				go func(i int) {
+					for {
+						select {
+						case <-heartbeatChans[i]:
+							return
+						case <-time.Tick(2 * time.Second):
+							nodes[i].Status.Conditions = []v1.NodeCondition{
+								{
+									Type:              v1.NodeReady,
+									Status:            v1.ConditionTrue,
+									LastHeartbeatTime: metav1.Now(),
+								},
+							}
+							updateNodeStatus(cs, nodes[i])
+						}
+					}
+				}(i)
+			}
+
 			neededNode := nodes[1]
 			if test.pod != nil {
 				test.pod.Name = fmt.Sprintf("testpod-%d", i)
@@ -759,6 +790,13 @@ func TestTaintBasedEvictions(t *testing.T) {
 				}
 			}
 
+			for i := 0; i < nodeCount; i++ {
+				// Stop the neededNode's heartbeat goroutine.
+				if neededNode.Name == fmt.Sprintf("node-%d", i) {
+					heartbeatChans[i] <- struct{}{}
+					break
+				}
+			}
 			neededNode.Status.Conditions = test.nodeConditions
 			// Update node condition.
 			err = updateNodeStatus(cs, neededNode)
@@ -788,6 +826,10 @@ func TestTaintBasedEvictions(t *testing.T) {
 				}
 				cleanupPods(cs, t, []*v1.Pod{test.pod})
 			}
+			// Close all heartbeat channels.
+			for i := 0; i < nodeCount; i++ {
+				close(heartbeatChans[i])
+			}
 			cleanupNodes(cs, t)
 			waitForSchedulerCacheCleanup(context.scheduler, t)
 		})
@@ -796,7 +838,7 @@ func TestTaintBasedEvictions(t *testing.T) {
 
 func getTolerationSeconds(tolerations []v1.Toleration) (int64, error) {
 	for _, t := range tolerations {
-		if t.Key == schedulerapi.TaintNodeNotReady && t.Effect == v1.TaintEffectNoExecute && t.Operator == v1.TolerationOpExists {
+		if t.Key == v1.TaintNodeNotReady && t.Effect == v1.TaintEffectNoExecute && t.Operator == v1.TolerationOpExists {
 			return *t.TolerationSeconds, nil
 		}
 	}

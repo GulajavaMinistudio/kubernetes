@@ -43,7 +43,6 @@ import (
 	_ "k8s.io/kubernetes/pkg/scheduler/algorithmprovider"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
-	schedulerlisters "k8s.io/kubernetes/pkg/scheduler/listers"
 	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 	"k8s.io/kubernetes/test/integration/framework"
 )
@@ -63,12 +62,12 @@ func PredicateTwo(pod *v1.Pod, meta predicates.PredicateMetadata, nodeInfo *sche
 	return true, nil, nil
 }
 
-func PriorityOne(pod *v1.Pod, sharedLister schedulerlisters.SharedLister, nodes []*v1.Node) (schedulerframework.NodeScoreList, error) {
-	return []schedulerframework.NodeScore{}, nil
+func PriorityOne(pod *v1.Pod, meta interface{}, nodeInfo *schedulernodeinfo.NodeInfo) (schedulerframework.NodeScore, error) {
+	return schedulerframework.NodeScore{}, nil
 }
 
-func PriorityTwo(pod *v1.Pod, sharedLister schedulerlisters.SharedLister, nodes []*v1.Node) (schedulerframework.NodeScoreList, error) {
-	return []schedulerframework.NodeScore{}, nil
+func PriorityTwo(pod *v1.Pod, meta interface{}, nodeInfo *schedulernodeinfo.NodeInfo) (schedulerframework.NodeScore, error) {
+	return schedulerframework.NodeScore{}, nil
 }
 
 // TestSchedulerCreationFromConfigMap verifies that scheduler can be created
@@ -88,8 +87,8 @@ func TestSchedulerCreationFromConfigMap(t *testing.T) {
 	// Pre-register some predicate and priority functions
 	scheduler.RegisterFitPredicate("PredicateOne", PredicateOne)
 	scheduler.RegisterFitPredicate("PredicateTwo", PredicateTwo)
-	scheduler.RegisterPriorityFunction("PriorityOne", PriorityOne, 1)
-	scheduler.RegisterPriorityFunction("PriorityTwo", PriorityTwo, 1)
+	scheduler.RegisterPriorityMapReduceFunction("PriorityOne", PriorityOne, nil, 1)
+	scheduler.RegisterPriorityMapReduceFunction("PriorityTwo", PriorityTwo, nil, 1)
 
 	for i, test := range []struct {
 		policy               string
@@ -132,7 +131,6 @@ func TestSchedulerCreationFromConfigMap(t *testing.T) {
 			}`,
 			expectedPrioritizers: sets.NewString(
 				"InterPodAffinityPriority",
-				"SelectorSpreadPriority",
 			),
 			expectedPlugins: map[string][]kubeschedulerconfig.Plugin{
 				"FilterPlugin": {
@@ -157,6 +155,7 @@ func TestSchedulerCreationFromConfigMap(t *testing.T) {
 					{Name: "NodeResourcesLeastAllocated", Weight: 1},
 					{Name: "NodeAffinity", Weight: 1},
 					{Name: "NodePreferAvoidPods", Weight: 10000},
+					{Name: "DefaultPodTopologySpread", Weight: 1},
 					{Name: "TaintToleration", Weight: 1},
 				},
 			},
@@ -210,7 +209,6 @@ kind: Policy
 `,
 			expectedPrioritizers: sets.NewString(
 				"InterPodAffinityPriority",
-				"SelectorSpreadPriority",
 			),
 			expectedPlugins: map[string][]kubeschedulerconfig.Plugin{
 				"FilterPlugin": {
@@ -235,6 +233,7 @@ kind: Policy
 					{Name: "NodeResourcesLeastAllocated", Weight: 1},
 					{Name: "NodeAffinity", Weight: 1},
 					{Name: "NodePreferAvoidPods", Weight: 10000},
+					{Name: "DefaultPodTopologySpread", Weight: 1},
 					{Name: "TaintToleration", Weight: 1},
 				},
 			},

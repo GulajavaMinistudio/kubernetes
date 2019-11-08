@@ -31,7 +31,6 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	schedulerlisters "k8s.io/kubernetes/pkg/scheduler/listers"
 	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
-	nodeinfosnapshot "k8s.io/kubernetes/pkg/scheduler/nodeinfo/snapshot"
 )
 
 // NodeScoreList declares a list of nodes and their scores.
@@ -447,9 +446,6 @@ type Framework interface {
 
 	// ListPlugins returns a map of extension point name to list of configured Plugins.
 	ListPlugins() map[string][]config.Plugin
-
-	// NodeInfoSnapshot return the NodeInfo.Snapshot handler.
-	NodeInfoSnapshot() *nodeinfosnapshot.Snapshot
 }
 
 // FrameworkHandle provides data and some tools that plugins can use. It is
@@ -470,6 +466,9 @@ type FrameworkHandle interface {
 
 	// GetWaitingPod returns a waiting pod given its UID.
 	GetWaitingPod(uid types.UID) WaitingPod
+
+	// RejectWaitingPod rejects a waiting pod given its UID.
+	RejectWaitingPod(uid types.UID)
 
 	// ClientSet returns a kubernetes clientSet.
 	ClientSet() clientset.Interface

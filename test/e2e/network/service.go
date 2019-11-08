@@ -83,6 +83,43 @@ func getServeHostnameService(name string) *v1.Service {
 	return svc
 }
 
+// restartKubeProxy restarts kube-proxy on the given host.
+func restartKubeProxy(host string) error {
+	// TODO: Make it work for all providers.
+	if !framework.ProviderIs("gce", "gke", "aws") {
+		return fmt.Errorf("unsupported provider for restartKubeProxy: %s", framework.TestContext.Provider)
+	}
+	// kubelet will restart the kube-proxy since it's running in a static pod
+	framework.Logf("Killing kube-proxy on node %v", host)
+	result, err := e2essh.SSH("sudo pkill kube-proxy", host, framework.TestContext.Provider)
+	if err != nil || result.Code != 0 {
+		e2essh.LogResult(result)
+		return fmt.Errorf("couldn't restart kube-proxy: %v", err)
+	}
+	// wait for kube-proxy to come back up
+	sshCmd := "sudo /bin/sh -c 'pgrep kube-proxy | wc -l'"
+	err = wait.Poll(5*time.Second, 60*time.Second, func() (bool, error) {
+		framework.Logf("Waiting for kubeproxy to come back up with %v on %v", sshCmd, host)
+		result, err := e2essh.SSH(sshCmd, host, framework.TestContext.Provider)
+		if err != nil {
+			return false, err
+		}
+		if result.Code != 0 {
+			e2essh.LogResult(result)
+			return false, fmt.Errorf("failed to run command, exited %d", result.Code)
+		}
+		if result.Stdout == "0\n" {
+			return false, nil
+		}
+		framework.Logf("kube-proxy is back up.")
+		return true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("kube-proxy didn't recover: %v", err)
+	}
+	return nil
+}
+
 var _ = SIGDescribe("Services", func() {
 	f := framework.NewDefaultFramework("services")
 
@@ -262,7 +299,7 @@ var _ = SIGDescribe("Services", func() {
 
 		// This behavior is not supported if Kube-proxy is in "userspace" mode.
 		// So we check the kube-proxy mode and skip this test if that's the case.
-		if proxyMode, err := framework.ProxyMode(f); err == nil {
+		if proxyMode, err := proxyMode(f); err == nil {
 			if proxyMode == "userspace" {
 				framework.Skipf("The test doesn't work with kube-proxy in userspace mode")
 			}
@@ -466,7 +503,7 @@ var _ = SIGDescribe("Services", func() {
 		framework.ExpectNoError(e2eservice.VerifyServeHostnameServiceUp(cs, ns, host, podNames2, svc2IP, servicePort))
 
 		ginkgo.By(fmt.Sprintf("Restarting kube-proxy on %v", host))
-		if err := framework.RestartKubeProxy(host); err != nil {
+		if err := restartKubeProxy(host); err != nil {
 			framework.Failf("error restarting kube-proxy: %v", err)
 		}
 		framework.ExpectNoError(e2eservice.VerifyServeHostnameServiceUp(cs, ns, host, podNames1, svc1IP, servicePort))
@@ -2617,4 +2654,34 @@ func checkReachabilityFromPod(expectToBeReachable bool, timeout time.Duration, n
 		return true, nil
 	})
 	framework.ExpectNoError(err)
+}
+
+// proxyMode returns a proxyMode of a kube-proxy.
+func proxyMode(f *framework.Framework) (string, error) {
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "kube-proxy-mode-detector",
+			Namespace: f.Namespace.Name,
+		},
+		Spec: v1.PodSpec{
+			HostNetwork: true,
+			Containers: []v1.Container{
+				{
+					Name:  "detector",
+					Image: framework.AgnHostImage,
+					Args:  []string{"pause"},
+				},
+			},
+		},
+	}
+	f.PodClient().CreateSync(pod)
+	defer f.PodClient().DeleteSync(pod.Name, &metav1.DeleteOptions{}, framework.DefaultPodDeletionTimeout)
+
+	cmd := "curl -q -s --connect-timeout 1 http://localhost:10249/proxyMode"
+	stdout, err := framework.RunHostCmd(pod.Namespace, pod.Name, cmd)
+	if err != nil {
+		return "", err
+	}
+	framework.Logf("proxyMode: %s", stdout)
+	return stdout, nil
 }
