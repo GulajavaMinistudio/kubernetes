@@ -63,7 +63,6 @@ require (
 	github.com/gogo/protobuf v1.2.2-0.20190723190241-65acae22fc9d
 	github.com/golang/groupcache v0.0.0-20160516000752-02826c3e7903
 	github.com/golang/mock v1.2.0
-	github.com/golang/protobuf v1.3.2
 	github.com/google/cadvisor v0.34.0
 	github.com/google/go-cmp v0.3.0
 	github.com/google/gofuzz v1.0.0
@@ -162,6 +161,7 @@ require (
 	k8s.io/metrics v0.0.0
 	k8s.io/repo-infra v0.0.1-alpha.1
 	k8s.io/sample-apiserver v0.0.0
+	k8s.io/system-validators v1.0.4
 	k8s.io/utils v0.0.0-20191030222137-2b95a09bc58d
 	sigs.k8s.io/kustomize v2.0.3+incompatible
 	sigs.k8s.io/yaml v1.1.0
@@ -548,6 +548,7 @@ replace (
 	k8s.io/sample-apiserver => ./staging/src/k8s.io/sample-apiserver
 	k8s.io/sample-cli-plugin => ./staging/src/k8s.io/sample-cli-plugin
 	k8s.io/sample-controller => ./staging/src/k8s.io/sample-controller
+	k8s.io/system-validators => k8s.io/system-validators v1.0.4
 	k8s.io/utils => k8s.io/utils v0.0.0-20191030222137-2b95a09bc58d
 	modernc.org/cc => modernc.org/cc v1.0.0
 	modernc.org/golex => modernc.org/golex v1.0.0
