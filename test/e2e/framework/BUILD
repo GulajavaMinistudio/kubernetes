@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "go_default_library",
     srcs = [
+        "checks.go",
         "cleanup.go",
         "exec_util.go",
         "expect.go",
@@ -57,7 +58,6 @@ go_library(
         "//staging/src/k8s.io/apimachinery/pkg/util/version:go_default_library",
         "//staging/src/k8s.io/apimachinery/pkg/util/wait:go_default_library",
         "//staging/src/k8s.io/apimachinery/pkg/util/yaml:go_default_library",
-        "//staging/src/k8s.io/apimachinery/pkg/watch:go_default_library",
         "//staging/src/k8s.io/apiserver/pkg/authentication/serviceaccount:go_default_library",
         "//staging/src/k8s.io/apiserver/pkg/util/feature:go_default_library",
         "//staging/src/k8s.io/client-go/discovery:go_default_library",
@@ -134,6 +134,7 @@ filegroup(
         "//test/e2e/framework/pv:all-srcs",
         "//test/e2e/framework/replicaset:all-srcs",
         "//test/e2e/framework/resource:all-srcs",
+        "//test/e2e/framework/security:all-srcs",
         "//test/e2e/framework/service:all-srcs",
         "//test/e2e/framework/ssh:all-srcs",
         "//test/e2e/framework/statefulset:all-srcs",

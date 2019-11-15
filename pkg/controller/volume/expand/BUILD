@@ -11,6 +11,7 @@ go_library(
         "//pkg/controller/volume/events:go_default_library",
         "//pkg/util/mount:go_default_library",
         "//pkg/volume:go_default_library",
+        "//pkg/volume/csimigration:go_default_library",
         "//pkg/volume/util:go_default_library",
         "//pkg/volume/util/operationexecutor:go_default_library",
         "//pkg/volume/util/subpath:go_default_library",
@@ -33,6 +34,7 @@ go_library(
         "//staging/src/k8s.io/client-go/util/workqueue:go_default_library",
         "//staging/src/k8s.io/cloud-provider:go_default_library",
         "//vendor/k8s.io/klog:go_default_library",
+        "//vendor/k8s.io/utils/exec:go_default_library",
     ],
 )
 
@@ -62,6 +64,7 @@ go_test(
         "//pkg/features:go_default_library",
         "//pkg/volume:go_default_library",
         "//pkg/volume/awsebs:go_default_library",
+        "//pkg/volume/csimigration:go_default_library",
         "//pkg/volume/util/operationexecutor:go_default_library",
         "//pkg/volume/util/types:go_default_library",
         "//staging/src/k8s.io/api/core/v1:go_default_library",

@@ -89,10 +89,6 @@ func (plugin *nfsPlugin) CanSupport(spec *volume.Spec) bool {
 		(spec.Volume != nil && spec.Volume.NFS != nil)
 }
 
-func (plugin *nfsPlugin) IsMigratedToCSI() bool {
-	return false
-}
-
 func (plugin *nfsPlugin) RequiresRemount() bool {
 	return false
 }
@@ -206,15 +202,15 @@ func (nfsMounter *nfsMounter) CanMount() error {
 	exec := nfsMounter.plugin.host.GetExec(nfsMounter.plugin.GetPluginName())
 	switch runtime.GOOS {
 	case "linux":
-		if _, err := exec.Run("test", "-x", "/sbin/mount.nfs"); err != nil {
+		if _, err := exec.Command("test", "-x", "/sbin/mount.nfs").CombinedOutput(); err != nil {
 			return fmt.Errorf("Required binary /sbin/mount.nfs is missing")
 		}
-		if _, err := exec.Run("test", "-x", "/sbin/mount.nfs4"); err != nil {
+		if _, err := exec.Command("test", "-x", "/sbin/mount.nfs4").CombinedOutput(); err != nil {
 			return fmt.Errorf("Required binary /sbin/mount.nfs4 is missing")
 		}
 		return nil
 	case "darwin":
-		if _, err := exec.Run("test", "-x", "/sbin/mount_nfs"); err != nil {
+		if _, err := exec.Command("test", "-x", "/sbin/mount_nfs").CombinedOutput(); err != nil {
 			return fmt.Errorf("Required binary /sbin/mount_nfs is missing")
 		}
 	}

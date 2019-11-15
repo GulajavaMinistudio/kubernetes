@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -41,6 +40,9 @@ import (
 	"k8s.io/client-go/tools/record"
 	utiltesting "k8s.io/client-go/util/testing"
 	cloudprovider "k8s.io/cloud-provider"
+	"k8s.io/utils/exec"
+	"k8s.io/utils/exec/testing"
+
 	"k8s.io/kubernetes/pkg/util/mount"
 	. "k8s.io/kubernetes/pkg/volume"
 	"k8s.io/kubernetes/pkg/volume/util"
@@ -73,7 +75,7 @@ type fakeVolumeHost struct {
 	cloud           cloudprovider.Interface
 	mounter         mount.Interface
 	hostUtil        hostutil.HostUtils
-	exec            mount.Exec
+	exec            *testingexec.FakeExec
 	nodeLabels      map[string]string
 	nodeName        string
 	subpather       subpath.Interface
@@ -111,7 +113,7 @@ func newFakeVolumeHost(rootDir string, kubeClient clientset.Interface, plugins [
 	host := &fakeVolumeHost{rootDir: rootDir, kubeClient: kubeClient, cloud: cloud}
 	host.mounter = mount.NewFakeMounter(nil)
 	host.hostUtil = hostutil.NewFakeHostUtil(pathToTypeMap)
-	host.exec = mount.NewFakeExec(nil)
+	host.exec = &testingexec.FakeExec{DisableScripts: true}
 	host.pluginMgr.InitPlugins(plugins, nil /* prober */, host)
 	host.subpather = &subpath.FakeSubpath{}
 	host.informerFactory = informers.NewSharedInformerFactory(kubeClient, time.Minute)
@@ -213,7 +215,7 @@ func (f *fakeVolumeHost) GetSecretFunc() func(namespace, name string) (*v1.Secre
 	}
 }
 
-func (f *fakeVolumeHost) GetExec(pluginName string) mount.Exec {
+func (f *fakeVolumeHost) GetExec(pluginName string) exec.Interface {
 	return f.exec
 }
 
@@ -246,6 +248,64 @@ func (f *fakeVolumeHost) GetNodeName() types.NodeName {
 
 func (f *fakeVolumeHost) GetEventRecorder() record.EventRecorder {
 	return nil
+}
+
+func (f *fakeVolumeHost) ScriptCommands(scripts []CommandScript) {
+	ScriptCommands(f.exec, scripts)
+}
+
+// CommandScript is used to pre-configure a command that will be executed and
+// optionally set it's output (stdout and stderr combined) and return code.
+type CommandScript struct {
+	// Cmd is the command to execute, e.g. "ls"
+	Cmd string
+	// Args is a slice of arguments to pass to the command, e.g. "-a"
+	Args []string
+	// Output is the combined stdout and stderr of the command to return
+	Output string
+	// ReturnCode is the exit code for the command. Setting this to non-zero will
+	// cause the command to return an error with this exit code set.
+	ReturnCode int
+}
+
+// ScriptCommands configures fe, the FakeExec, to have a pre-configured list of
+// commands to expect. Calling more commands using fe than those scripted will
+// result in a panic. By default, the fe does not enforce command argument checking
+// or order -- if you have given an Output to the command, the first command scripted
+// will return its output on the first command call, even if the command called is
+// different than the one scripted. This is mostly useful to make sure that the
+// right number of commands were called. If you want to check the exact commands
+// and arguments were called, set fe.ExectOrder to true.
+func ScriptCommands(fe *testingexec.FakeExec, scripts []CommandScript) {
+	fe.DisableScripts = false
+	for _, script := range scripts {
+		fakeCmd := &testingexec.FakeCmd{}
+		cmdAction := makeFakeCmd(fakeCmd, script.Cmd, script.Args...)
+		outputAction := makeFakeOutput(script.Output, script.ReturnCode)
+		fakeCmd.CombinedOutputScript = append(fakeCmd.CombinedOutputScript, outputAction)
+		fe.CommandScript = append(fe.CommandScript, cmdAction)
+	}
+}
+
+func makeFakeCmd(fakeCmd *testingexec.FakeCmd, cmd string, args ...string) testingexec.FakeCommandAction {
+	fc := fakeCmd
+	c := cmd
+	a := args
+	return func(cmd string, args ...string) exec.Cmd {
+		command := testingexec.InitFakeCmd(fc, c, a...)
+		return command
+	}
+}
+
+func makeFakeOutput(output string, rc int) testingexec.FakeCombinedOutputAction {
+	o := output
+	var e error
+	if rc != 0 {
+		e = testingexec.FakeExitError{Status: rc}
+	}
+	return func() ([]byte, error) {
+		return []byte(o), e
+	}
 }
 
 func ProbeVolumePlugins(config VolumeConfig) []VolumePlugin {
@@ -349,10 +409,6 @@ func (plugin *FakeVolumePlugin) GetVolumeName(spec *Spec) (string, error) {
 func (plugin *FakeVolumePlugin) CanSupport(spec *Spec) bool {
 	// TODO: maybe pattern-match on spec.Name() to decide?
 	return true
-}
-
-func (plugin *FakeVolumePlugin) IsMigratedToCSI() bool {
-	return false
 }
 
 func (plugin *FakeVolumePlugin) RequiresRemount() bool {
@@ -593,10 +649,6 @@ func (f *FakeBasicVolumePlugin) CanSupport(spec *Spec) bool {
 	return strings.HasPrefix(spec.Name(), f.GetPluginName())
 }
 
-func (plugin *FakeBasicVolumePlugin) IsMigratedToCSI() bool {
-	return false
-}
-
 func (f *FakeBasicVolumePlugin) ConstructVolumeSpec(ame, mountPath string) (*Spec, error) {
 	return f.Plugin.ConstructVolumeSpec(ame, mountPath)
 }
@@ -690,10 +742,6 @@ func (plugin *FakeFileVolumePlugin) CanSupport(spec *Spec) bool {
 	return true
 }
 
-func (plugin *FakeFileVolumePlugin) IsMigratedToCSI() bool {
-	return false
-}
-
 func (plugin *FakeFileVolumePlugin) RequiresRemount() bool {
 	return false
 }
@@ -744,7 +792,8 @@ type FakeVolume struct {
 	GetDeviceMountPathCallCount int
 	SetUpDeviceCallCount        int
 	TearDownDeviceCallCount     int
-	MapDeviceCallCount          int
+	MapPodDeviceCallCount       int
+	UnmapPodDeviceCallCount     int
 	GlobalMapPathCallCount      int
 	PodDeviceMapPathCallCount   int
 }
@@ -820,11 +869,11 @@ func (fv *FakeVolume) TearDownAt(dir string) error {
 }
 
 // Block volume support
-func (fv *FakeVolume) SetUpDevice() (string, error) {
+func (fv *FakeVolume) SetUpDevice() error {
 	fv.Lock()
 	defer fv.Unlock()
 	fv.SetUpDeviceCallCount++
-	return "", nil
+	return nil
 }
 
 // Block volume support
@@ -890,18 +939,33 @@ func (fv *FakeVolume) GetTearDownDeviceCallCount() int {
 }
 
 // Block volume support
-func (fv *FakeVolume) MapDevice(devicePath, globalMapPath, volumeMapPath, volumeMapName string, pod types.UID) error {
+func (fv *FakeVolume) UnmapPodDevice() error {
 	fv.Lock()
 	defer fv.Unlock()
-	fv.MapDeviceCallCount++
+	fv.UnmapPodDeviceCallCount++
 	return nil
 }
 
 // Block volume support
-func (fv *FakeVolume) GetMapDeviceCallCount() int {
+func (fv *FakeVolume) GetUnmapPodDeviceCallCount() int {
 	fv.RLock()
 	defer fv.RUnlock()
-	return fv.MapDeviceCallCount
+	return fv.UnmapPodDeviceCallCount
+}
+
+// Block volume support
+func (fv *FakeVolume) MapPodDevice() (string, error) {
+	fv.Lock()
+	defer fv.Unlock()
+	fv.MapPodDeviceCallCount++
+	return "", nil
+}
+
+// Block volume support
+func (fv *FakeVolume) GetMapPodDeviceCallCount() int {
+	fv.RLock()
+	defer fv.RUnlock()
+	return fv.MapPodDeviceCallCount
 }
 
 func (fv *FakeVolume) Attach(spec *Spec, nodeName types.NodeName) (string, error) {
@@ -1078,12 +1142,12 @@ type FakeVolumePathHandler struct {
 	sync.RWMutex
 }
 
-func (fv *FakeVolumePathHandler) MapDevice(devicePath string, mapDir string, linkName string) error {
+func (fv *FakeVolumePathHandler) MapDevice(devicePath string, mapDir string, linkName string, bindMount bool) error {
 	// nil is success, else error
 	return nil
 }
 
-func (fv *FakeVolumePathHandler) UnmapDevice(mapDir string, linkName string) error {
+func (fv *FakeVolumePathHandler) UnmapDevice(mapDir string, linkName string, bindMount bool) error {
 	// nil is success, else error
 	return nil
 }
@@ -1098,7 +1162,12 @@ func (fv *FakeVolumePathHandler) IsSymlinkExist(mapPath string) (bool, error) {
 	return true, nil
 }
 
-func (fv *FakeVolumePathHandler) GetDeviceSymlinkRefs(devPath string, mapPath string) ([]string, error) {
+func (fv *FakeVolumePathHandler) IsDeviceBindMountExist(mapPath string) (bool, error) {
+	// nil is success, else error
+	return true, nil
+}
+
+func (fv *FakeVolumePathHandler) GetDeviceBindMountRefs(devPath string, mapPath string) ([]string, error) {
 	// nil is success, else error
 	return []string{}, nil
 }
@@ -1113,14 +1182,14 @@ func (fv *FakeVolumePathHandler) AttachFileDevice(path string) (string, error) {
 	return "", nil
 }
 
+func (fv *FakeVolumePathHandler) DetachFileDevice(path string) error {
+	// nil is success, else error
+	return nil
+}
+
 func (fv *FakeVolumePathHandler) GetLoopDevice(path string) (string, error) {
 	// nil is success, else error
 	return "/dev/loop1", nil
-}
-
-func (fv *FakeVolumePathHandler) RemoveLoopDevice(device string) error {
-	// nil is success, else error
-	return nil
 }
 
 // FindEmptyDirectoryUsageOnTmpfs finds the expected usage of an empty directory existing on
@@ -1131,7 +1200,7 @@ func FindEmptyDirectoryUsageOnTmpfs() (*resource.Quantity, error) {
 		return nil, err
 	}
 	defer os.RemoveAll(tmpDir)
-	out, err := exec.Command("nice", "-n", "19", "du", "-x", "-s", "-B", "1", tmpDir).CombinedOutput()
+	out, err := exec.New().Command("nice", "-n", "19", "du", "-x", "-s", "-B", "1", tmpDir).CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("failed command 'du' on %s with error %v", tmpDir, err)
 	}
@@ -1428,22 +1497,22 @@ func VerifyGetPodDeviceMapPathCallCount(
 		expectedPodDeviceMapPathCallCount)
 }
 
-// VerifyGetMapDeviceCallCount ensures that at least one of the Mappers for this
-// plugin has the expectedMapDeviceCallCount number of calls. Otherwise it
+// VerifyGetMapPodDeviceCallCount ensures that at least one of the Mappers for this
+// plugin has the expectedMapPodDeviceCallCount number of calls. Otherwise it
 // returns an error.
-func VerifyGetMapDeviceCallCount(
-	expectedMapDeviceCallCount int,
+func VerifyGetMapPodDeviceCallCount(
+	expectedMapPodDeviceCallCount int,
 	fakeVolumePlugin *FakeVolumePlugin) error {
 	for _, mapper := range fakeVolumePlugin.GetBlockVolumeMapper() {
-		actualCallCount := mapper.GetMapDeviceCallCount()
-		if actualCallCount >= expectedMapDeviceCallCount {
+		actualCallCount := mapper.GetMapPodDeviceCallCount()
+		if actualCallCount >= expectedMapPodDeviceCallCount {
 			return nil
 		}
 	}
 
 	return fmt.Errorf(
-		"No Mapper have expected MapdDeviceCallCount. Expected: <%v>.",
-		expectedMapDeviceCallCount)
+		"No Mapper have expected MapPodDeviceCallCount. Expected: <%v>.",
+		expectedMapPodDeviceCallCount)
 }
 
 // GetTestVolumePluginMgr creates, initializes, and returns a test volume plugin

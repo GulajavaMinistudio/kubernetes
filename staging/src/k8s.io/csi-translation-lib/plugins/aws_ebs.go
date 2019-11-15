@@ -31,6 +31,8 @@ import (
 const (
 	// AWSEBSDriverName is the name of the CSI driver for EBS
 	AWSEBSDriverName = "ebs.csi.aws.com"
+	// AWSEBSTopologyKey is the zonal topology key for AWS EBS CSI Driver
+	AWSEBSTopologyKey = "topology.ebs.csi.aws.com/zone"
 	// AWSEBSInTreePluginName is the name of the intree plugin for EBS
 	AWSEBSInTreePluginName = "kubernetes.io/aws-ebs"
 )
@@ -45,8 +47,21 @@ func NewAWSElasticBlockStoreCSITranslator() InTreePlugin {
 	return &awsElasticBlockStoreCSITranslator{}
 }
 
-// TranslateInTreeStorageClassParametersToCSI translates InTree EBS storage class parameters to CSI storage class
+// TranslateInTreeStorageClassToCSI translates InTree EBS storage class parameters to CSI storage class
 func (t *awsElasticBlockStoreCSITranslator) TranslateInTreeStorageClassToCSI(sc *storage.StorageClass) (*storage.StorageClass, error) {
+	params := map[string]string{}
+
+	for k, v := range sc.Parameters {
+		switch strings.ToLower(k) {
+		case "fstype":
+			params["csi.storage.k8s.io/fstype"] = v
+		default:
+			params[k] = v
+		}
+	}
+
+	sc.Parameters = params
+
 	return sc, nil
 }
 
@@ -63,8 +78,9 @@ func (t *awsElasticBlockStoreCSITranslator) TranslateInTreeInlineVolumeToCSI(vol
 	}
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			// A.K.A InnerVolumeSpecName required to match for Unmount
-			Name: volume.Name,
+			// Must be unique per disk as it is used as the unique part of the
+			// staging path
+			Name: fmt.Sprintf("%s-%s", AWSEBSDriverName, ebsSource.VolumeID),
 		},
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeSource: v1.PersistentVolumeSource{
@@ -106,6 +122,10 @@ func (t *awsElasticBlockStoreCSITranslator) TranslateInTreePVToCSI(pv *v1.Persis
 		VolumeAttributes: map[string]string{
 			"partition": strconv.FormatInt(int64(ebsSource.Partition), 10),
 		},
+	}
+
+	if err := translateTopology(pv, AWSEBSTopologyKey); err != nil {
+		return nil, fmt.Errorf("failed to translate topology: %v", err)
 	}
 
 	pv.Spec.AWSElasticBlockStore = nil

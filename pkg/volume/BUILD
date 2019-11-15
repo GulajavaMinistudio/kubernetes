@@ -40,6 +40,7 @@ go_library(
         "//staging/src/k8s.io/client-go/tools/record:go_default_library",
         "//staging/src/k8s.io/cloud-provider:go_default_library",
         "//vendor/k8s.io/klog:go_default_library",
+        "//vendor/k8s.io/utils/exec:go_default_library",
     ],
 )
 
@@ -87,6 +88,7 @@ filegroup(
         "//pkg/volume/cinder:all-srcs",
         "//pkg/volume/configmap:all-srcs",
         "//pkg/volume/csi:all-srcs",
+        "//pkg/volume/csimigration:all-srcs",
         "//pkg/volume/downwardapi:all-srcs",
         "//pkg/volume/emptydir:all-srcs",
         "//pkg/volume/fc:all-srcs",

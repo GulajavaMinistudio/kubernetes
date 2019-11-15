@@ -118,10 +118,6 @@ func (plugin *glusterfsPlugin) CanSupport(spec *volume.Spec) bool {
 		(spec.Volume != nil && spec.Volume.Glusterfs != nil)
 }
 
-func (plugin *glusterfsPlugin) IsMigratedToCSI() bool {
-	return false
-}
-
 func (plugin *glusterfsPlugin) RequiresRemount() bool {
 	return false
 }
@@ -264,7 +260,7 @@ func (b *glusterfsMounter) CanMount() error {
 	exe := b.plugin.host.GetExec(b.plugin.GetPluginName())
 	switch runtime.GOOS {
 	case "linux":
-		if _, err := exe.Run("test", "-x", gciLinuxGlusterMountBinaryPath); err != nil {
+		if _, err := exe.Command("test", "-x", gciLinuxGlusterMountBinaryPath).CombinedOutput(); err != nil {
 			return fmt.Errorf("required binary %s is missing", gciLinuxGlusterMountBinaryPath)
 		}
 	}

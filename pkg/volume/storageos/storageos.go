@@ -33,6 +33,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume"
 	"k8s.io/kubernetes/pkg/volume/util"
+	utilexec "k8s.io/utils/exec"
 	utilstrings "k8s.io/utils/strings"
 )
 
@@ -90,10 +91,6 @@ func (plugin *storageosPlugin) CanSupport(spec *volume.Spec) bool {
 		(spec.Volume != nil && spec.Volume.StorageOS != nil)
 }
 
-func (plugin *storageosPlugin) IsMigratedToCSI() bool {
-	return false
-}
-
 func (plugin *storageosPlugin) RequiresRemount() bool {
 	return false
 }
@@ -115,7 +112,7 @@ func (plugin *storageosPlugin) NewMounter(spec *volume.Spec, pod *v1.Pod, _ volu
 	return plugin.newMounterInternal(spec, pod, apiCfg, &storageosUtil{}, plugin.host.GetMounter(plugin.GetPluginName()), plugin.host.GetExec(plugin.GetPluginName()))
 }
 
-func (plugin *storageosPlugin) newMounterInternal(spec *volume.Spec, pod *v1.Pod, apiCfg *storageosAPIConfig, manager storageosManager, mounter mount.Interface, exec mount.Exec) (volume.Mounter, error) {
+func (plugin *storageosPlugin) newMounterInternal(spec *volume.Spec, pod *v1.Pod, apiCfg *storageosAPIConfig, manager storageosManager, mounter mount.Interface, exec utilexec.Interface) (volume.Mounter, error) {
 
 	volName, volNamespace, fsType, readOnly, err := getVolumeInfoFromSpec(spec)
 	if err != nil {
@@ -147,7 +144,7 @@ func (plugin *storageosPlugin) NewUnmounter(pvName string, podUID types.UID) (vo
 	return plugin.newUnmounterInternal(pvName, podUID, &storageosUtil{}, plugin.host.GetMounter(plugin.GetPluginName()), plugin.host.GetExec(plugin.GetPluginName()))
 }
 
-func (plugin *storageosPlugin) newUnmounterInternal(pvName string, podUID types.UID, manager storageosManager, mounter mount.Interface, exec mount.Exec) (volume.Unmounter, error) {
+func (plugin *storageosPlugin) newUnmounterInternal(pvName string, podUID types.UID, manager storageosManager, mounter mount.Interface, exec utilexec.Interface) (volume.Unmounter, error) {
 
 	// Parse volume namespace & name from mountpoint if mounted
 	volNamespace, volName, err := getVolumeInfo(pvName, podUID, plugin.host)
@@ -311,7 +308,7 @@ type storageos struct {
 	apiCfg       *storageosAPIConfig
 	manager      storageosManager
 	mounter      mount.Interface
-	exec         mount.Exec
+	exec         utilexec.Interface
 	plugin       *storageosPlugin
 	volume.MetricsProvider
 }

@@ -896,6 +896,12 @@ run_service_tests() {
   kubectl set selector services redis-master role=padawan --dry-run -o yaml "${kube_flags[@]}"
   ! kubectl set selector services redis-master role=padawan --local -o yaml "${kube_flags[@]}" || exit 1
   kube::test::get_object_assert 'services redis-master' "{{range$service_selector_field}}{{.}}:{{end}}" "redis:master:backend:"
+  # --resource-version=<current-resource-version> succeeds
+  rv=$(kubectl get services redis-master -o jsonpath='{.metadata.resourceVersion}' "${kube_flags[@]}")
+  kubectl set selector services redis-master rvtest1=true "--resource-version=${rv}" "${kube_flags[@]}"
+  # --resource-version=<non-current-resource-version> fails
+  output_message=$(! kubectl set selector services redis-master rvtest1=true --resource-version=1 2>&1 "${kube_flags[@]}")
+  kube::test::if_has_string "${output_message}" 'Conflict'
 
   ### Dump current redis-master service
   output_service=$(kubectl get service redis-master -o json "${kube_flags[@]}")
@@ -1011,13 +1017,13 @@ __EOF__
   kubectl run testmetadata --image=nginx --replicas=2 --port=80 --expose --service-overrides='{ "metadata": { "annotations": { "zone-context": "home" } } } '
   # Check result
   kube::test::get_object_assert deployment "{{range.items}}{{$id_field}}:{{end}}" 'testmetadata:'
-  kube::test::get_object_assert 'service testmetadata' "{{.metadata.annotations}}" "map\[zone-context:home\]"
+  kube::test::get_object_assert 'service testmetadata' "{{.metadata.annotations}}" "map\[endpointslice.kubernetes.io/managed-by-setup:true zone-context:home\]"
 
   ### Expose deployment as a new service
   # Command
   kubectl expose deployment testmetadata  --port=1000 --target-port=80 --type=NodePort --name=exposemetadata --overrides='{ "metadata": { "annotations": { "zone-context": "work" } } } '
   # Check result
-  kube::test::get_object_assert 'service exposemetadata' "{{.metadata.annotations}}" "map\[zone-context:work\]"
+  kube::test::get_object_assert 'service exposemetadata' "{{.metadata.annotations}}" "map\[endpointslice.kubernetes.io/managed-by-setup:true zone-context:work\]"
 
   # Clean-Up
   # Command

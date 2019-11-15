@@ -26,6 +26,7 @@ import (
 	mathrand "math/rand"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -49,7 +50,10 @@ func TestCachedTokenAuthenticator(t *testing.T) {
 	})
 	fakeClock := utilclock.NewFakeClock(time.Now())
 
-	a := newWithClock(fakeAuth, true, time.Minute, 0, fakeClock)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	a := newWithClock(ctx, fakeAuth, true, time.Minute, 0, fakeClock)
 
 	calledWithToken, resultUsers, resultOk, resultErr = []string{}, nil, false, nil
 	a.AuthenticateToken(context.Background(), "bad1")
@@ -123,7 +127,10 @@ func TestCachedTokenAuthenticatorWithAudiences(t *testing.T) {
 	})
 	fakeClock := utilclock.NewFakeClock(time.Now())
 
-	a := newWithClock(fakeAuth, true, time.Minute, 0, fakeClock)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	a := newWithClock(ctx, fakeAuth, true, time.Minute, 0, fakeClock)
 
 	resultUsers["audAusertoken1"] = &user.DefaultInfo{Name: "user1"}
 	resultUsers["audBusertoken1"] = &user.DefaultInfo{Name: "user1-different"}
@@ -194,6 +201,11 @@ func newSingleBenchmark(tokens, threads int) *singleBenchmark {
 // singleBenchmark collects all the state needed to run a benchmark. The
 // question this benchmark answers is, "what's the average latency added by the
 // cache for N concurrent tokens?"
+//
+// Given the size of the key range constructed by this test, the default go
+// benchtime of 1 second is often inadequate to test caching and expiration
+// behavior. A benchtime of 10 to 30 seconds is adequate to stress these
+// code paths.
 type singleBenchmark struct {
 	threadCount int
 	// These token.* variables are set by makeTokens()
@@ -204,11 +216,6 @@ type singleBenchmark struct {
 	tokenToAuds map[string]authenticator.Audiences
 	// a list makes it easy to select a random one
 	tokens []string
-
-	// Simulate slowness, qps limit, external service limitation, etc
-	chokepoint chan struct{}
-
-	b *testing.B
 }
 
 func (s *singleBenchmark) makeTokens() {
@@ -228,12 +235,12 @@ func (s *singleBenchmark) makeTokens() {
 		for i := 0; i < mathrand.Intn(4); i++ {
 			auds = append(auds, string(uuid.NewUUID()))
 		}
-		choice := mathrand.Intn(1000)
+		choice := mathrand.Float64()
 		switch {
-		case choice < 900:
+		case choice < 0.9:
 			r.ok = true
 			r.err = nil
-		case choice < 990:
+		case choice < 0.99:
 			r.ok = false
 			r.err = nil
 		default:
@@ -249,9 +256,6 @@ func (s *singleBenchmark) makeTokens() {
 }
 
 func (s *singleBenchmark) lookup(ctx context.Context, token string) (*authenticator.Response, bool, error) {
-	s.chokepoint <- struct{}{}
-	defer func() { <-s.chokepoint }()
-	time.Sleep(1 * time.Millisecond)
 	r, ok := s.tokenToResponse[token]
 	if !ok {
 		panic("test setup problem")
@@ -272,29 +276,44 @@ func (s *singleBenchmark) run(b *testing.B) {
 }
 
 func (s *singleBenchmark) bench(b *testing.B) {
-	s.b = b
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Simulate slowness, qps limit, external service limitation, etc
+	const maxInFlight = 40
+	chokepoint := make(chan struct{}, maxInFlight)
+	// lookup count
+	var lookups uint64
+
 	a := newWithClock(
-		authenticator.TokenFunc(s.lookup),
+		ctx,
+		authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
+			atomic.AddUint64(&lookups, 1)
+
+			chokepoint <- struct{}{}
+			defer func() { <-chokepoint }()
+
+			time.Sleep(1 * time.Millisecond)
+
+			return s.lookup(ctx, token)
+		}),
 		true,
 		4*time.Second,
 		500*time.Millisecond,
 		utilclock.RealClock{},
 	)
-	const maxInFlight = 40
-	s.chokepoint = make(chan struct{}, maxInFlight)
 
-	s.b.ResetTimer()
-
+	b.ResetTimer()
 	b.SetParallelism(s.threadCount)
 	b.RunParallel(func(pb *testing.PB) {
 		r := mathrand.New(mathrand.NewSource(mathrand.Int63()))
 		for pb.Next() {
-			// some problems appear with random
-			// access, some appear with many
-			// requests for a single entry, so we
-			// do both.
-			s.doAuthForTokenN(r.Intn(len(s.tokens)), a)
+			// some problems appear with random access, some appear with many
+			// requests for a single entry, so we do both.
+			s.doAuthForTokenN(r.Intn(s.tokenCount), a)
 			s.doAuthForTokenN(0, a)
 		}
 	})
+	b.StopTimer()
+
+	b.ReportMetric(float64(lookups)/float64(b.N), "lookups/op")
 }

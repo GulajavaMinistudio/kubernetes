@@ -112,7 +112,9 @@ const (
 	EphemeralContainers featuregate.Feature = "EphemeralContainers"
 
 	// owner: @verb
+	// alpha: v1.10
 	// beta: v1.12
+	// GA: v1.17
 	//
 	// Allows all containers in a pod to share a process namespace.
 	PodShareProcessNamespace featuregate.Feature = "PodShareProcessNamespace"
@@ -308,7 +310,7 @@ const (
 
 	// owner: @vikaschoudhary16
 	// beta: v1.12
-	//
+	// ga: v1.17
 	//
 	// Enable resource quota scope selectors
 	ResourceQuotaScopeSelectors featuregate.Feature = "ResourceQuotaScopeSelectors"
@@ -387,11 +389,25 @@ const (
 	// Enables the GCE PD in-tree driver to GCE CSI Driver migration feature.
 	CSIMigrationGCE featuregate.Feature = "CSIMigrationGCE"
 
+	// owner: @davidz627
+	// alpha: v1.17
+	//
+	// Disables the GCE PD in-tree driver.
+	// Expects GCE PD CSI Driver to be installed and configured on all nodes.
+	CSIMigrationGCEComplete featuregate.Feature = "CSIMigrationGCEComplete"
+
 	// owner: @leakingtapan
 	// alpha: v1.14
 	//
 	// Enables the AWS EBS in-tree driver to AWS EBS CSI Driver migration feature.
 	CSIMigrationAWS featuregate.Feature = "CSIMigrationAWS"
+
+	// owner: @leakingtapan
+	// alpha: v1.17
+	//
+	// Disables the AWS EBS in-tree driver.
+	// Expects AWS EBS CSI Driver to be installed and configured on all nodes.
+	CSIMigrationAWSComplete featuregate.Feature = "CSIMigrationAWSComplete"
 
 	// owner: @andyzhangx
 	// alpha: v1.15
@@ -400,10 +416,24 @@ const (
 	CSIMigrationAzureDisk featuregate.Feature = "CSIMigrationAzureDisk"
 
 	// owner: @andyzhangx
+	// alpha: v1.17
+	//
+	// Disables the Azure Disk in-tree driver.
+	// Expects Azure Disk CSI Driver to be installed and configured on all nodes.
+	CSIMigrationAzureDiskComplete featuregate.Feature = "CSIMigrationAzureDiskComplete"
+
+	// owner: @andyzhangx
 	// alpha: v1.15
 	//
 	// Enables the Azure File in-tree driver to Azure File Driver migration feature.
 	CSIMigrationAzureFile featuregate.Feature = "CSIMigrationAzureFile"
+
+	// owner: @andyzhangx
+	// alpha: v1.17
+	//
+	// Disables the Azure File in-tree driver.
+	// Expects Azure File CSI Driver to be installed and configured on all nodes.
+	CSIMigrationAzureFileComplete featuregate.Feature = "CSIMigrationAzureFileComplete"
 
 	// owner: @RobertKrawitz
 	// beta: v1.15
@@ -431,8 +461,17 @@ const (
 	// Enables the OpenStack Cinder in-tree driver to OpenStack Cinder CSI Driver migration feature.
 	CSIMigrationOpenStack featuregate.Feature = "CSIMigrationOpenStack"
 
+	// owner: @adisky
+	// alpha: v1.17
+	//
+	// Disables the OpenStack Cinder in-tree driver.
+	// Expects the OpenStack Cinder CSI Driver to be installed and configured on all nodes.
+	CSIMigrationOpenStackComplete featuregate.Feature = "CSIMigrationOpenStackComplete"
+
 	// owner: @MrHohn
-	// beta: v1.16
+	// alpha: v1.15
+	// beta:  v1.16
+	// GA: v1.17
 	//
 	// Enables Finalizer Protection for Service LoadBalancers.
 	ServiceLoadBalancerFinalizer featuregate.Feature = "ServiceLoadBalancerFinalizer"
@@ -499,6 +538,12 @@ const (
 	//
 	// Enable all logic related to the PodDisruptionBudget API object in policy
 	PodDisruptionBudget featuregate.Feature = "PodDisruptionBudget"
+
+	// owner: @m1093782566
+	// alpha: v1.17
+	//
+	// Enables topology aware service routing
+	ServiceTopology featuregate.Feature = "ServiceTopology"
 )
 
 func init() {
@@ -519,7 +564,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	LocalStorageCapacityIsolation:  {Default: true, PreRelease: featuregate.Beta},
 	Sysctls:                        {Default: true, PreRelease: featuregate.Beta},
 	EphemeralContainers:            {Default: false, PreRelease: featuregate.Alpha},
-	PodShareProcessNamespace:       {Default: true, PreRelease: featuregate.Beta},
+	PodShareProcessNamespace:       {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.19
 	PodPriority:                    {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.18
 	TaintNodesByCondition:          {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.18
 	QOSReserved:                    {Default: false, PreRelease: featuregate.Alpha},
@@ -548,15 +593,20 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	CRIContainerLogRotation:        {Default: true, PreRelease: featuregate.Beta},
 	CSIMigration:                   {Default: false, PreRelease: featuregate.Alpha},
 	CSIMigrationGCE:                {Default: false, PreRelease: featuregate.Alpha},
+	CSIMigrationGCEComplete:        {Default: false, PreRelease: featuregate.Alpha},
 	CSIMigrationAWS:                {Default: false, PreRelease: featuregate.Alpha},
+	CSIMigrationAWSComplete:        {Default: false, PreRelease: featuregate.Alpha},
 	CSIMigrationAzureDisk:          {Default: false, PreRelease: featuregate.Alpha},
+	CSIMigrationAzureDiskComplete:  {Default: false, PreRelease: featuregate.Alpha},
 	CSIMigrationAzureFile:          {Default: false, PreRelease: featuregate.Alpha},
+	CSIMigrationAzureFileComplete:  {Default: false, PreRelease: featuregate.Alpha},
 	RunAsGroup:                     {Default: true, PreRelease: featuregate.Beta},
 	CSIMigrationOpenStack:          {Default: false, PreRelease: featuregate.Alpha},
+	CSIMigrationOpenStackComplete:  {Default: false, PreRelease: featuregate.Alpha},
 	VolumeSubpath:                  {Default: true, PreRelease: featuregate.GA},
 	BalanceAttachedNodeVolumes:     {Default: false, PreRelease: featuregate.Alpha},
 	VolumeSubpathEnvExpansion:      {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.19,
-	ResourceQuotaScopeSelectors:    {Default: true, PreRelease: featuregate.Beta},
+	ResourceQuotaScopeSelectors:    {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.18
 	CSIBlockVolume:                 {Default: true, PreRelease: featuregate.Beta},
 	CSIInlineVolume:                {Default: true, PreRelease: featuregate.Beta},
 	RuntimeClass:                   {Default: true, PreRelease: featuregate.Beta},
@@ -568,17 +618,18 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	KubeletPodResources:            {Default: true, PreRelease: featuregate.Beta},
 	WindowsGMSA:                    {Default: true, PreRelease: featuregate.Beta},
 	WindowsRunAsUserName:           {Default: true, PreRelease: featuregate.Beta},
-	ServiceLoadBalancerFinalizer:   {Default: true, PreRelease: featuregate.Beta},
+	ServiceLoadBalancerFinalizer:   {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
 	LocalStorageCapacityIsolationFSQuotaMonitoring: {Default: false, PreRelease: featuregate.Alpha},
 	NonPreemptingPriority:                          {Default: false, PreRelease: featuregate.Alpha},
 	VolumePVCDataSource:                            {Default: true, PreRelease: featuregate.Beta},
 	PodOverhead:                                    {Default: false, PreRelease: featuregate.Alpha},
 	IPv6DualStack:                                  {Default: false, PreRelease: featuregate.Alpha},
-	EndpointSlice:                                  {Default: false, PreRelease: featuregate.Alpha},
+	EndpointSlice:                                  {Default: true, PreRelease: featuregate.Beta},
 	EvenPodsSpread:                                 {Default: false, PreRelease: featuregate.Alpha},
 	StartupProbe:                                   {Default: false, PreRelease: featuregate.Alpha},
 	AllowInsecureBackendProxy:                      {Default: true, PreRelease: featuregate.Beta},
 	PodDisruptionBudget:                            {Default: true, PreRelease: featuregate.Beta},
+	ServiceTopology:                                {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
@@ -590,7 +641,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	genericfeatures.APIListChunking:         {Default: true, PreRelease: featuregate.Beta},
 	genericfeatures.DryRun:                  {Default: true, PreRelease: featuregate.Beta},
 	genericfeatures.ServerSideApply:         {Default: true, PreRelease: featuregate.Beta},
-	genericfeatures.RequestManagement:       {Default: false, PreRelease: featuregate.Alpha},
+	genericfeatures.APIPriorityAndFairness:  {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from apiextensions-apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:

@@ -38,6 +38,7 @@ import (
 	"k8s.io/kubernetes/pkg/volume/util"
 	volutil "k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/kubernetes/pkg/volume/util/volumepathhandler"
+	utilexec "k8s.io/utils/exec"
 	utilstrings "k8s.io/utils/strings"
 )
 
@@ -105,10 +106,6 @@ func (plugin *rbdPlugin) GetVolumeName(spec *volume.Spec) (string, error) {
 
 func (plugin *rbdPlugin) CanSupport(spec *volume.Spec) bool {
 	return (spec.Volume != nil && spec.Volume.RBD != nil) || (spec.PersistentVolume != nil && spec.PersistentVolume.Spec.RBD != nil)
-}
-
-func (plugin *rbdPlugin) IsMigratedToCSI() bool {
-	return false
 }
 
 func (plugin *rbdPlugin) RequiresRemount() bool {
@@ -502,7 +499,7 @@ func (plugin *rbdPlugin) NewBlockVolumeMapper(spec *volume.Spec, pod *v1.Pod, _ 
 	return plugin.newBlockVolumeMapperInternal(spec, uid, &RBDUtil{}, secret, plugin.host.GetMounter(plugin.GetPluginName()), plugin.host.GetExec(plugin.GetPluginName()))
 }
 
-func (plugin *rbdPlugin) newBlockVolumeMapperInternal(spec *volume.Spec, podUID types.UID, manager diskManager, secret string, mounter mount.Interface, exec mount.Exec) (volume.BlockVolumeMapper, error) {
+func (plugin *rbdPlugin) newBlockVolumeMapperInternal(spec *volume.Spec, podUID types.UID, manager diskManager, secret string, mounter mount.Interface, exec utilexec.Interface) (volume.BlockVolumeMapper, error) {
 	mon, err := getVolumeSourceMonitors(spec)
 	if err != nil {
 		return nil, err
@@ -770,7 +767,7 @@ type rbd struct {
 	ReadOnly bool
 	plugin   *rbdPlugin
 	mounter  *mount.SafeFormatAndMount
-	exec     mount.Exec
+	exec     utilexec.Interface
 	// Utility interface that provides API calls to the provider to attach/detach disks.
 	manager                diskManager
 	volume.MetricsProvider `json:"-"`
@@ -897,6 +894,7 @@ type rbdDiskMapper struct {
 }
 
 var _ volume.BlockVolumeUnmapper = &rbdDiskUnmapper{}
+var _ volume.CustomBlockVolumeUnmapper = &rbdDiskUnmapper{}
 
 // GetGlobalMapPath returns global map path and error
 // path: plugins/kubernetes.io/{PluginName}/volumeDevices/{rbd pool}-image-{rbd image-name}/{podUid}
@@ -909,14 +907,6 @@ func (rbd *rbd) GetGlobalMapPath(spec *volume.Spec) (string, error) {
 // volumeName: pv0001
 func (rbd *rbd) GetPodDeviceMapPath() (string, string) {
 	return rbd.rbdPodDeviceMapPath()
-}
-
-func (rbd *rbdDiskMapper) SetUpDevice() (string, error) {
-	return "", nil
-}
-
-func (rbd *rbdDiskMapper) MapDevice(devicePath, globalMapPath, volumeMapPath, volumeMapName string, podUID types.UID) error {
-	return volutil.MapBlockVolume(devicePath, globalMapPath, volumeMapPath, volumeMapName, podUID)
 }
 
 func (rbd *rbd) rbdGlobalMapPath(spec *volume.Spec) (string, error) {
@@ -999,6 +989,10 @@ func (rbd *rbdDiskUnmapper) TearDownDevice(mapPath, _ string) error {
 	}
 	klog.V(4).Infof("rbd: successfully detached disk: %s", mapPath)
 
+	return nil
+}
+
+func (rbd *rbdDiskUnmapper) UnmapPodDevice() error {
 	return nil
 }
 

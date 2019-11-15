@@ -44,6 +44,13 @@ const (
 	NodeE2E Suite = "node e2e"
 )
 
+var (
+	// non-Administrator Windows user used in tests. This is the Windows equivalent of the Linux non-root UID usage.
+	nonAdminTestUserName = "ContainerUser"
+	// non-root UID used in tests.
+	nonRootTestUserID = int64(1000)
+)
+
 // CurrentSuite represents current test suite.
 var CurrentSuite Suite
 
@@ -66,18 +73,17 @@ var CommonImageWhiteList = sets.NewString(
 )
 
 type testImagesStruct struct {
-	AgnhostImage    string
-	BusyBoxImage    string
-	GBFrontendImage string
-	KittenImage     string
-	MounttestImage  string
-	NautilusImage   string
-	NginxImage      string
-	NginxNewImage   string
-	HttpdImage      string
-	HttpdNewImage   string
-	PauseImage      string
-	RedisImage      string
+	AgnhostImage   string
+	BusyBoxImage   string
+	KittenImage    string
+	MounttestImage string
+	NautilusImage  string
+	NginxImage     string
+	NginxNewImage  string
+	HttpdImage     string
+	HttpdNewImage  string
+	PauseImage     string
+	RedisImage     string
 }
 
 var testImages testImagesStruct
@@ -86,7 +92,6 @@ func init() {
 	testImages = testImagesStruct{
 		imageutils.GetE2EImage(imageutils.Agnhost),
 		imageutils.GetE2EImage(imageutils.BusyBox),
-		imageutils.GetE2EImage(imageutils.GBFrontend),
 		imageutils.GetE2EImage(imageutils.Kitten),
 		imageutils.GetE2EImage(imageutils.Mounttest),
 		imageutils.GetE2EImage(imageutils.Nautilus),
@@ -205,4 +210,14 @@ func rcByNamePort(name string, replicas int32, image string, containerArgs []str
 		Args:  containerArgs,
 		Ports: []v1.ContainerPort{{ContainerPort: int32(port), Protocol: protocol}},
 	}, gracePeriod)
+}
+
+// setPodNonRootUser configures the Pod to run as a non-root user.
+// For Windows, it sets the RunAsUserName field to ContainerUser, and for Linux, it sets the RunAsUser field to 1000.
+func setPodNonRootUser(pod *v1.Pod) {
+	if framework.NodeOSDistroIs("windows") {
+		pod.Spec.SecurityContext.WindowsOptions = &v1.WindowsSecurityContextOptions{RunAsUserName: &nonAdminTestUserName}
+	} else {
+		pod.Spec.SecurityContext.RunAsUser = &nonRootTestUserID
+	}
 }
