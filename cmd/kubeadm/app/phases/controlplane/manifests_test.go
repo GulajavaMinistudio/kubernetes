@@ -266,7 +266,7 @@ func TestGetAPIServerCommand(t *testing.T) {
 				"--requestheader-allowed-names=front-proxy-client",
 				"--authorization-mode=Node,RBAC",
 				"--advertise-address=2001:db8::1",
-				fmt.Sprintf("--etcd-servers=https://127.0.0.1:%d", kubeadmconstants.EtcdListenClientPort),
+				fmt.Sprintf("--etcd-servers=https://[::1]:%d", kubeadmconstants.EtcdListenClientPort),
 				"--etcd-cafile=" + testCertsDir + "/etcd/ca.crt",
 				"--etcd-certfile=" + testCertsDir + "/apiserver-etcd-client.crt",
 				"--etcd-keyfile=" + testCertsDir + "/apiserver-etcd-client.key",
@@ -278,7 +278,7 @@ func TestGetAPIServerCommand(t *testing.T) {
 				Networking: kubeadmapi.Networking{ServiceSubnet: "bar"},
 				Etcd: kubeadmapi.Etcd{
 					External: &kubeadmapi.ExternalEtcd{
-						Endpoints: []string{"https://8.6.4.1:2379", "https://8.6.4.2:2379"},
+						Endpoints: []string{"https://[2001:abcd:bcda::1]:2379", "https://[2001:abcd:bcda::2]:2379"},
 						CAFile:    "fuz",
 						CertFile:  "fiz",
 						KeyFile:   "faz",
@@ -311,7 +311,7 @@ func TestGetAPIServerCommand(t *testing.T) {
 				"--requestheader-allowed-names=front-proxy-client",
 				"--authorization-mode=Node,RBAC",
 				"--advertise-address=2001:db8::1",
-				"--etcd-servers=https://8.6.4.1:2379,https://8.6.4.2:2379",
+				"--etcd-servers=https://[2001:abcd:bcda::1]:2379,https://[2001:abcd:bcda::2]:2379",
 				"--etcd-cafile=fuz",
 				"--etcd-certfile=fiz",
 				"--etcd-keyfile=faz",
@@ -323,7 +323,7 @@ func TestGetAPIServerCommand(t *testing.T) {
 				Networking: kubeadmapi.Networking{ServiceSubnet: "bar"},
 				Etcd: kubeadmapi.Etcd{
 					External: &kubeadmapi.ExternalEtcd{
-						Endpoints: []string{"http://127.0.0.1:2379", "http://127.0.0.1:2380"},
+						Endpoints: []string{"http://[::1]:2379", "http://[::1]:2380"},
 					},
 				},
 				CertificatesDir: testCertsDir,
@@ -353,7 +353,7 @@ func TestGetAPIServerCommand(t *testing.T) {
 				"--requestheader-allowed-names=front-proxy-client",
 				"--authorization-mode=Node,RBAC",
 				"--advertise-address=2001:db8::1",
-				"--etcd-servers=http://127.0.0.1:2379,http://127.0.0.1:2380",
+				"--etcd-servers=http://[::1]:2379,http://[::1]:2380",
 			},
 		},
 		{
@@ -579,6 +579,31 @@ func TestGetControllerManagerCommand(t *testing.T) {
 		cfg      *kubeadmapi.ClusterConfiguration
 		expected []string
 	}{
+		{
+			name: "custom cluster name for " + cpVersion,
+			cfg: &kubeadmapi.ClusterConfiguration{
+				KubernetesVersion: cpVersion,
+				CertificatesDir:   testCertsDir,
+				ClusterName:       "some-other-cluster-name",
+			},
+			expected: []string{
+				"kube-controller-manager",
+				"--bind-address=127.0.0.1",
+				"--leader-elect=true",
+				"--kubeconfig=" + kubeadmconstants.KubernetesDir + "/controller-manager.conf",
+				"--root-ca-file=" + testCertsDir + "/ca.crt",
+				"--service-account-private-key-file=" + testCertsDir + "/sa.key",
+				"--cluster-signing-cert-file=" + testCertsDir + "/ca.crt",
+				"--cluster-signing-key-file=" + testCertsDir + "/ca.key",
+				"--use-service-account-credentials=true",
+				"--controllers=*,bootstrapsigner,tokencleaner",
+				"--authentication-kubeconfig=" + kubeadmconstants.KubernetesDir + "/controller-manager.conf",
+				"--authorization-kubeconfig=" + kubeadmconstants.KubernetesDir + "/controller-manager.conf",
+				"--client-ca-file=" + testCertsDir + "/ca.crt",
+				"--requestheader-client-ca-file=" + testCertsDir + "/front-proxy-ca.crt",
+				"--cluster-name=some-other-cluster-name",
+			},
+		},
 		{
 			name: "custom certs dir for " + cpVersion,
 			cfg: &kubeadmapi.ClusterConfiguration{
