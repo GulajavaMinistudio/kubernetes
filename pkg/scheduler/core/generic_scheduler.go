@@ -199,7 +199,7 @@ func (g *genericScheduler) Schedule(ctx context.Context, state *framework.CycleS
 	if err := g.Snapshot(); err != nil {
 		return result, err
 	}
-	trace.Step("Snapshoting scheduler cache and node infos done")
+	trace.Step("Snapshotting scheduler cache and node infos done")
 
 	if len(g.nodeInfoSnapshot.NodeInfoList) == 0 {
 		return result, ErrNoNodesAvailable
@@ -1061,7 +1061,7 @@ func filterPodsWithPDBViolation(pods []*v1.Pod, pdbs []*policy.PodDisruptionBudg
 					continue
 				}
 				// We have found a matching PDB.
-				if pdb.Status.PodDisruptionsAllowed <= 0 {
+				if pdb.Status.DisruptionsAllowed <= 0 {
 					pdbForPodIsViolated = true
 					break
 				}
