@@ -957,16 +957,6 @@ func (dsc *DaemonSetsController) syncNodes(ds *apps.DaemonSet, podsToDelete, nod
 						// this error since all subsequent creations will fail.
 						return
 					}
-					if errors.IsTimeout(err) {
-						// Pod is created but its initialization has timed out.
-						// If the initialization is successful eventually, the
-						// controller will observe the creation via the informer.
-						// If the initialization fails, or if the pod keeps
-						// uninitialized for a long time, the informer will not
-						// receive any update, and the controller will create a new
-						// pod when the expectation expires.
-						return
-					}
 				}
 				if err != nil {
 					klog.V(2).Infof("Failed creation, decrementing expectations for set %q/%q", ds.Namespace, ds.Name)
@@ -1318,9 +1308,9 @@ func NewPod(ds *apps.DaemonSet, nodeName string) *v1.Pod {
 //   - PodFitsHost: checks pod's NodeName against node
 //   - PodMatchNodeSelector: checks pod's NodeSelector and NodeAffinity against node
 //   - PodToleratesNodeTaints: exclude tainted node unless pod has specific toleration
-func checkNodeFitness(pod *v1.Pod, meta predicates.Metadata, nodeInfo *schedulernodeinfo.NodeInfo) (bool, []predicates.PredicateFailureReason, error) {
+func checkNodeFitness(pod *v1.Pod, nodeInfo *schedulernodeinfo.NodeInfo) (bool, []predicates.PredicateFailureReason, error) {
 	var predicateFails []predicates.PredicateFailureReason
-	fit, reasons, err := predicates.PodFitsHost(pod, meta, nodeInfo)
+	fit, reasons, err := predicates.PodFitsHost(pod, nil, nodeInfo)
 	if err != nil {
 		return false, predicateFails, err
 	}
@@ -1328,7 +1318,7 @@ func checkNodeFitness(pod *v1.Pod, meta predicates.Metadata, nodeInfo *scheduler
 		predicateFails = append(predicateFails, reasons...)
 	}
 
-	fit, reasons, err = predicates.PodMatchNodeSelector(pod, meta, nodeInfo)
+	fit, reasons, err = predicates.PodMatchNodeSelector(pod, nil, nodeInfo)
 	if err != nil {
 		return false, predicateFails, err
 	}
@@ -1351,7 +1341,7 @@ func checkNodeFitness(pod *v1.Pod, meta predicates.Metadata, nodeInfo *scheduler
 func Predicates(pod *v1.Pod, nodeInfo *schedulernodeinfo.NodeInfo) (bool, []predicates.PredicateFailureReason, error) {
 	var predicateFails []predicates.PredicateFailureReason
 
-	fit, reasons, err := checkNodeFitness(pod, nil, nodeInfo)
+	fit, reasons, err := checkNodeFitness(pod, nodeInfo)
 	if err != nil {
 		return false, predicateFails, err
 	}

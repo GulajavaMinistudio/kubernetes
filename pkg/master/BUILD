@@ -74,8 +74,6 @@ go_library(
         "//staging/src/k8s.io/api/admissionregistration/v1:go_default_library",
         "//staging/src/k8s.io/api/admissionregistration/v1beta1:go_default_library",
         "//staging/src/k8s.io/api/apps/v1:go_default_library",
-        "//staging/src/k8s.io/api/apps/v1beta1:go_default_library",
-        "//staging/src/k8s.io/api/apps/v1beta2:go_default_library",
         "//staging/src/k8s.io/api/auditregistration/v1alpha1:go_default_library",
         "//staging/src/k8s.io/api/authentication/v1:go_default_library",
         "//staging/src/k8s.io/api/authentication/v1beta1:go_default_library",
@@ -149,7 +147,6 @@ go_test(
     race = "off",
     deps = [
         "//pkg/api/legacyscheme:go_default_library",
-        "//pkg/api/testapi:go_default_library",
         "//pkg/apis/batch:go_default_library",
         "//pkg/apis/networking:go_default_library",
         "//pkg/apis/storage:go_default_library",
