@@ -193,6 +193,9 @@ func newProxyServer(
 				config.IPVS.MinSyncPeriod.Duration,
 				config.IPVS.ExcludeCIDRs,
 				config.IPVS.StrictARP,
+				config.IPVS.TCPTimeout.Duration,
+				config.IPVS.TCPFinTimeout.Duration,
+				config.IPVS.UDPTimeout.Duration,
 				config.IPTables.MasqueradeAll,
 				int(*config.IPTables.MasqueradeBit),
 				cidrTuple(config.ClusterCIDR),
@@ -214,6 +217,9 @@ func newProxyServer(
 				config.IPVS.MinSyncPeriod.Duration,
 				config.IPVS.ExcludeCIDRs,
 				config.IPVS.StrictARP,
+				config.IPVS.TCPTimeout.Duration,
+				config.IPVS.TCPFinTimeout.Duration,
+				config.IPVS.UDPTimeout.Duration,
 				config.IPTables.MasqueradeAll,
 				int(*config.IPTables.MasqueradeBit),
 				config.ClusterCIDR,
@@ -268,6 +274,7 @@ func newProxyServer(
 		OOMScoreAdj:            config.OOMScoreAdj,
 		ConfigSyncPeriod:       config.ConfigSyncPeriod.Duration,
 		HealthzServer:          healthzServer,
+		UseEndpointSlices:      utilfeature.DefaultFeatureGate.Enabled(features.EndpointSlice),
 	}, nil
 }
 

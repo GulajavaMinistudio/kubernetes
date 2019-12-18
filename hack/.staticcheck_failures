@@ -1,7 +1,5 @@
 cluster/images/etcd-version-monitor
 cluster/images/etcd/migrate
-cmd/kube-proxy/app
-cmd/linkcheck
 pkg/controller/daemon
 pkg/controller/deployment
 pkg/controller/disruption
@@ -145,7 +143,6 @@ vendor/k8s.io/client-go/restmapper
 vendor/k8s.io/client-go/tools/leaderelection
 vendor/k8s.io/client-go/transport
 vendor/k8s.io/component-base/metrics
-vendor/k8s.io/kubectl/pkg/cmd/annotate
 vendor/k8s.io/kubectl/pkg/cmd/certificates
 vendor/k8s.io/kubectl/pkg/cmd/config
 vendor/k8s.io/kubectl/pkg/cmd/edit

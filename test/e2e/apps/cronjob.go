@@ -25,7 +25,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	batchv1beta1 "k8s.io/api/batch/v1beta1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -214,7 +214,7 @@ var _ = SIGDescribe("CronJob", func() {
 		ginkgo.By("Ensuring job was deleted")
 		_, err = jobutil.GetJob(f.ClientSet, f.Namespace.Name, job.Name)
 		framework.ExpectError(err)
-		gomega.Expect(errors.IsNotFound(err)).To(gomega.BeTrue())
+		framework.ExpectEqual(errors.IsNotFound(err), true)
 
 		ginkgo.By("Ensuring the job is not in the cronjob active list")
 		err = waitForJobNotActive(f.ClientSet, f.Namespace.Name, cronJob.Name, job.Name)
@@ -230,7 +230,7 @@ var _ = SIGDescribe("CronJob", func() {
 	})
 
 	// cleanup of successful/failed finished jobs, with successfulJobsHistoryLimit and failedJobsHistoryLimit
-	ginkgo.It("should delete successful/failed finished jobs with limit of one job", func() {
+	ginkgo.It("should delete successful/failed finished jobs with limit of one job [Flaky]", func() {
 
 		testCases := []struct {
 			description  string
