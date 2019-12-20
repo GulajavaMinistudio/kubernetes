@@ -667,62 +667,69 @@ func (c *VolumeZoneChecker) predicate(pod *v1.Pod, meta Metadata, nodeInfo *sche
 	manifest := &(pod.Spec)
 	for i := range manifest.Volumes {
 		volume := &manifest.Volumes[i]
-		if volume.PersistentVolumeClaim != nil {
-			pvcName := volume.PersistentVolumeClaim.ClaimName
-			if pvcName == "" {
-				return false, nil, fmt.Errorf("PersistentVolumeClaim had no name")
+		if volume.PersistentVolumeClaim == nil {
+			continue
+		}
+		pvcName := volume.PersistentVolumeClaim.ClaimName
+		if pvcName == "" {
+			return false, nil, fmt.Errorf("PersistentVolumeClaim had no name")
+		}
+		pvc, err := c.pvcLister.PersistentVolumeClaims(namespace).Get(pvcName)
+		if err != nil {
+			return false, nil, err
+		}
+
+		if pvc == nil {
+			return false, nil, fmt.Errorf("PersistentVolumeClaim was not found: %q", pvcName)
+		}
+
+		pvName := pvc.Spec.VolumeName
+		if pvName == "" {
+			scName := v1helper.GetPersistentVolumeClaimClass(pvc)
+			if len(scName) == 0 {
+				return false, nil, fmt.Errorf("PersistentVolumeClaim had no pv name and storageClass name")
 			}
-			pvc, err := c.pvcLister.PersistentVolumeClaims(namespace).Get(pvcName)
+
+			class, _ := c.scLister.Get(scName)
+			if class == nil {
+				return false, nil, fmt.Errorf("StorageClass %q claimed by PersistentVolumeClaim %q not found",
+					scName, pvcName)
+
+			}
+			if class.VolumeBindingMode == nil {
+				return false, nil, fmt.Errorf("VolumeBindingMode not set for StorageClass %q", scName)
+			}
+			if *class.VolumeBindingMode == storage.VolumeBindingWaitForFirstConsumer {
+				// Skip unbound volumes
+				continue
+			}
+
+			return false, nil, fmt.Errorf("PersistentVolume had no name")
+		}
+
+		pv, err := c.pvLister.Get(pvName)
+		if err != nil {
+			return false, nil, err
+		}
+
+		if pv == nil {
+			return false, nil, fmt.Errorf("PersistentVolume was not found: %q", pvName)
+		}
+
+		for k, v := range pv.ObjectMeta.Labels {
+			if k != v1.LabelZoneFailureDomain && k != v1.LabelZoneRegion {
+				continue
+			}
+			nodeV, _ := nodeConstraints[k]
+			volumeVSet, err := volumehelpers.LabelZonesToSet(v)
 			if err != nil {
-				return false, nil, err
+				klog.Warningf("Failed to parse label for %q: %q. Ignoring the label. err=%v. ", k, v, err)
+				continue
 			}
 
-			if pvc == nil {
-				return false, nil, fmt.Errorf("PersistentVolumeClaim was not found: %q", pvcName)
-			}
-
-			pvName := pvc.Spec.VolumeName
-			if pvName == "" {
-				scName := v1helper.GetPersistentVolumeClaimClass(pvc)
-				if len(scName) > 0 {
-					class, _ := c.scLister.Get(scName)
-					if class != nil {
-						if class.VolumeBindingMode == nil {
-							return false, nil, fmt.Errorf("VolumeBindingMode not set for StorageClass %q", scName)
-						}
-						if *class.VolumeBindingMode == storage.VolumeBindingWaitForFirstConsumer {
-							// Skip unbound volumes
-							continue
-						}
-					}
-				}
-				return false, nil, fmt.Errorf("PersistentVolumeClaim was not found: %q", pvcName)
-			}
-
-			pv, err := c.pvLister.Get(pvName)
-			if err != nil {
-				return false, nil, err
-			}
-
-			if pv == nil {
-				return false, nil, fmt.Errorf("PersistentVolume was not found: %q", pvName)
-			}
-
-			for k, v := range pv.ObjectMeta.Labels {
-				if k != v1.LabelZoneFailureDomain && k != v1.LabelZoneRegion {
-					continue
-				}
-				nodeV, _ := nodeConstraints[k]
-				volumeVSet, err := volumehelpers.LabelZonesToSet(v)
-				if err != nil {
-					klog.Warningf("Failed to parse label for %q: %q. Ignoring the label. err=%v. ", k, v, err)
-					continue
-				}
-
-				if !volumeVSet.Has(nodeV) {
-					klog.V(10).Infof("Won't schedule pod %q onto node %q due to volume %q (mismatch on %q)", pod.Name, node.Name, pvName, k)
-					return false, []PredicateFailureReason{ErrVolumeZoneConflict}, nil
-				}
+			if !volumeVSet.Has(nodeV) {
+				klog.V(10).Infof("Won't schedule pod %q onto node %q due to volume %q (mismatch on %q)", pod.Name, node.Name, pvName, k)
+				return false, []PredicateFailureReason{ErrVolumeZoneConflict}, nil
 			}
 		}
 	}
@@ -930,59 +937,6 @@ func PodFitsHost(pod *v1.Pod, meta Metadata, nodeInfo *schedulernodeinfo.NodeInf
 		return true, nil, nil
 	}
 	return false, []PredicateFailureReason{ErrPodNotMatchHostName}, nil
-}
-
-// NodeLabelChecker contains information to check node labels for a predicate.
-type NodeLabelChecker struct {
-	// presentLabels should be present for the node to be considered a fit for hosting the pod
-	presentLabels []string
-	// absentLabels should be absent for the node to be considered a fit for hosting the pod
-	absentLabels []string
-}
-
-// NewNodeLabelPredicate creates a predicate which evaluates whether a pod can fit based on the
-// node labels which match a filter that it requests.
-func NewNodeLabelPredicate(presentLabels []string, absentLabels []string) FitPredicate {
-	labelChecker := &NodeLabelChecker{
-		presentLabels: presentLabels,
-		absentLabels:  absentLabels,
-	}
-	return labelChecker.CheckNodeLabelPresence
-}
-
-// CheckNodeLabelPresence checks whether all of the specified labels exists on a node or not, regardless of their value
-// If "presence" is false, then returns false if any of the requested labels matches any of the node's labels,
-// otherwise returns true.
-// If "presence" is true, then returns false if any of the requested labels does not match any of the node's labels,
-// otherwise returns true.
-//
-// Consider the cases where the nodes are placed in regions/zones/racks and these are identified by labels
-// In some cases, it is required that only nodes that are part of ANY of the defined regions/zones/racks be selected
-//
-// Alternately, eliminating nodes that have a certain label, regardless of value, is also useful
-// A node may have a label with "retiring" as key and the date as the value
-// and it may be desirable to avoid scheduling new pods on this node.
-func (n *NodeLabelChecker) CheckNodeLabelPresence(pod *v1.Pod, meta Metadata, nodeInfo *schedulernodeinfo.NodeInfo) (bool, []PredicateFailureReason, error) {
-	node := nodeInfo.Node()
-	if node == nil {
-		return false, nil, fmt.Errorf("node not found")
-	}
-
-	nodeLabels := labels.Set(node.Labels)
-	check := func(labels []string, presence bool) bool {
-		for _, label := range labels {
-			exists := nodeLabels.Has(label)
-			if (exists && !presence) || (!exists && presence) {
-				return false
-			}
-		}
-		return true
-	}
-	if check(n.presentLabels, true) && check(n.absentLabels, false) {
-		return true, nil, nil
-	}
-
-	return false, []PredicateFailureReason{ErrNodeLabelPresenceViolated}, nil
 }
 
 // PodFitsHostPorts is a wrapper around PodFitsHostPortsPredicate. This is needed until
