@@ -37,7 +37,6 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeunschedulable"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
-	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/requestedtocapacityratio"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/serviceaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
@@ -52,24 +51,25 @@ type RegistryArgs struct {
 	VolumeBinder *volumebinder.VolumeBinder
 }
 
-// NewDefaultRegistry builds the default registry with all the in-tree plugins.
-// This is the registry that Kubernetes default scheduler uses. A scheduler that runs out of tree
-// plugins can register additional plugins through the WithFrameworkOutOfTreeRegistry option.
-func NewDefaultRegistry(args *RegistryArgs) framework.Registry {
+// NewInTreeRegistry builds the registry with all the in-tree plugins.
+// A scheduler that runs out of tree plugins can register additional plugins
+// through the WithFrameworkOutOfTreeRegistry option.
+func NewInTreeRegistry(args *RegistryArgs) framework.Registry {
 	return framework.Registry{
-		defaultpodtopologyspread.Name:        defaultpodtopologyspread.New,
-		imagelocality.Name:                   imagelocality.New,
-		tainttoleration.Name:                 tainttoleration.New,
-		nodename.Name:                        nodename.New,
-		nodeports.Name:                       nodeports.New,
-		nodepreferavoidpods.Name:             nodepreferavoidpods.New,
-		nodeaffinity.Name:                    nodeaffinity.New,
-		podtopologyspread.Name:               podtopologyspread.New,
-		nodeunschedulable.Name:               nodeunschedulable.New,
-		noderesources.FitName:                noderesources.NewFit,
-		noderesources.BalancedAllocationName: noderesources.NewBalancedAllocation,
-		noderesources.MostAllocatedName:      noderesources.NewMostAllocated,
-		noderesources.LeastAllocatedName:     noderesources.NewLeastAllocated,
+		defaultpodtopologyspread.Name:              defaultpodtopologyspread.New,
+		imagelocality.Name:                         imagelocality.New,
+		tainttoleration.Name:                       tainttoleration.New,
+		nodename.Name:                              nodename.New,
+		nodeports.Name:                             nodeports.New,
+		nodepreferavoidpods.Name:                   nodepreferavoidpods.New,
+		nodeaffinity.Name:                          nodeaffinity.New,
+		podtopologyspread.Name:                     podtopologyspread.New,
+		nodeunschedulable.Name:                     nodeunschedulable.New,
+		noderesources.FitName:                      noderesources.NewFit,
+		noderesources.BalancedAllocationName:       noderesources.NewBalancedAllocation,
+		noderesources.MostAllocatedName:            noderesources.NewMostAllocated,
+		noderesources.LeastAllocatedName:           noderesources.NewLeastAllocated,
+		noderesources.RequestedToCapacityRatioName: noderesources.NewRequestedToCapacityRatio,
 		volumebinding.Name: func(_ *runtime.Unknown, _ framework.FrameworkHandle) (framework.Plugin, error) {
 			return volumebinding.NewFromVolumeBinder(args.VolumeBinder), nil
 		},
@@ -82,7 +82,6 @@ func NewDefaultRegistry(args *RegistryArgs) framework.Registry {
 		nodevolumelimits.CinderName:    nodevolumelimits.NewCinder,
 		interpodaffinity.Name:          interpodaffinity.New,
 		nodelabel.Name:                 nodelabel.New,
-		requestedtocapacityratio.Name:  requestedtocapacityratio.New,
 		serviceaffinity.Name:           serviceaffinity.New,
 	}
 }
@@ -96,7 +95,7 @@ type ConfigProducerArgs struct {
 	// NodeLabelArgs is the args for the NodeLabel plugin.
 	NodeLabelArgs *nodelabel.Args
 	// RequestedToCapacityRatioArgs is the args for the RequestedToCapacityRatio plugin.
-	RequestedToCapacityRatioArgs *requestedtocapacityratio.Args
+	RequestedToCapacityRatioArgs *noderesources.RequestedToCapacityRatioArgs
 	// ServiceAffinityArgs is the args for the ServiceAffinity plugin.
 	ServiceAffinityArgs *serviceaffinity.Args
 	// NodeResourcesFitArgs is the args for the NodeResources fit filter.
@@ -115,8 +114,8 @@ type ConfigProducerRegistry struct {
 	PriorityToConfigProducer  map[string]ConfigProducer
 }
 
-// NewDefaultConfigProducerRegistry creates a new producer registry.
-func NewDefaultConfigProducerRegistry() *ConfigProducerRegistry {
+// NewConfigProducerRegistry creates a new producer registry.
+func NewConfigProducerRegistry() *ConfigProducerRegistry {
 	registry := &ConfigProducerRegistry{
 		PredicateToConfigProducer: make(map[string]ConfigProducer),
 		PriorityToConfigProducer:  make(map[string]ConfigProducer),
@@ -241,6 +240,7 @@ func NewDefaultConfigProducerRegistry() *ConfigProducerRegistry {
 		})
 	registry.RegisterPriority(priorities.TaintTolerationPriority,
 		func(args ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
+			plugins.PostFilter = appendToPluginSet(plugins.PostFilter, tainttoleration.Name, nil)
 			plugins.Score = appendToPluginSet(plugins.Score, tainttoleration.Name, &args.Weight)
 			return
 		})
@@ -286,10 +286,10 @@ func NewDefaultConfigProducerRegistry() *ConfigProducerRegistry {
 			plugins.Score = appendToPluginSet(plugins.Score, podtopologyspread.Name, &args.Weight)
 			return
 		})
-	registry.RegisterPriority(requestedtocapacityratio.Name,
+	registry.RegisterPriority(noderesources.RequestedToCapacityRatioName,
 		func(args ConfigProducerArgs) (plugins config.Plugins, pluginConfig []config.PluginConfig) {
-			plugins.Score = appendToPluginSet(plugins.Score, requestedtocapacityratio.Name, &args.Weight)
-			pluginConfig = append(pluginConfig, makePluginConfig(requestedtocapacityratio.Name, args.RequestedToCapacityRatioArgs))
+			plugins.Score = appendToPluginSet(plugins.Score, noderesources.RequestedToCapacityRatioName, &args.Weight)
+			pluginConfig = append(pluginConfig, makePluginConfig(noderesources.RequestedToCapacityRatioName, args.RequestedToCapacityRatioArgs))
 			return
 		})
 

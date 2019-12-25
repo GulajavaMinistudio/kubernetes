@@ -57,12 +57,8 @@ func NewMetadataFactory(
 // priorityMetadata is a type that is passed as metadata for priority functions
 type priorityMetadata struct {
 	podLimits               *schedulernodeinfo.Resource
-	podTolerations          []v1.Toleration
-	affinity                *v1.Affinity
 	podSelector             labels.Selector
-	controllerRef           *metav1.OwnerReference
 	podFirstServiceSelector labels.Selector
-	totalNumNodes           int
 	podTopologySpreadMap    *podTopologySpreadMap
 }
 
@@ -76,11 +72,9 @@ func (pmf *MetadataFactory) PriorityMetadata(
 	if pod == nil {
 		return nil
 	}
-	totalNumNodes := 0
 	var allNodes []*schedulernodeinfo.NodeInfo
 	if sharedLister != nil {
 		if l, err := sharedLister.NodeInfos().List(); err == nil {
-			totalNumNodes = len(l)
 			allNodes = l
 		}
 	}
@@ -91,12 +85,8 @@ func (pmf *MetadataFactory) PriorityMetadata(
 	}
 	return &priorityMetadata{
 		podLimits:               getResourceLimits(pod),
-		podTolerations:          getAllTolerationPreferNoSchedule(pod.Spec.Tolerations),
-		affinity:                pod.Spec.Affinity,
 		podSelector:             getSelector(pod, pmf.serviceLister, pmf.controllerLister, pmf.replicaSetLister, pmf.statefulSetLister),
-		controllerRef:           metav1.GetControllerOf(pod),
 		podFirstServiceSelector: getFirstServiceSelector(pod, pmf.serviceLister),
-		totalNumNodes:           totalNumNodes,
 		podTopologySpreadMap:    tpSpreadMap,
 	}
 }
