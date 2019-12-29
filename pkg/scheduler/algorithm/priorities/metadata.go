@@ -22,9 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
-	"k8s.io/klog"
 	schedulerlisters "k8s.io/kubernetes/pkg/scheduler/listers"
-	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 )
 
 // MetadataFactory is a factory to produce PriorityMetadata.
@@ -56,9 +54,7 @@ func NewMetadataFactory(
 
 // priorityMetadata is a type that is passed as metadata for priority functions
 type priorityMetadata struct {
-	podSelector             labels.Selector
-	podFirstServiceSelector labels.Selector
-	podTopologySpreadMap    *podTopologySpreadMap
+	podSelector labels.Selector
 }
 
 // PriorityMetadata is a MetadataProducer.  Node info can be nil.
@@ -71,30 +67,9 @@ func (pmf *MetadataFactory) PriorityMetadata(
 	if pod == nil {
 		return nil
 	}
-	var allNodes []*schedulernodeinfo.NodeInfo
-	if sharedLister != nil {
-		if l, err := sharedLister.NodeInfos().List(); err == nil {
-			allNodes = l
-		}
-	}
-	tpSpreadMap, err := buildPodTopologySpreadMap(pod, filteredNodes, allNodes)
-	if err != nil {
-		klog.Errorf("Error building podTopologySpreadMap: %v", err)
-		return nil
-	}
 	return &priorityMetadata{
-		podSelector:             getSelector(pod, pmf.serviceLister, pmf.controllerLister, pmf.replicaSetLister, pmf.statefulSetLister),
-		podFirstServiceSelector: getFirstServiceSelector(pod, pmf.serviceLister),
-		podTopologySpreadMap:    tpSpreadMap,
+		podSelector: getSelector(pod, pmf.serviceLister, pmf.controllerLister, pmf.replicaSetLister, pmf.statefulSetLister),
 	}
-}
-
-// getFirstServiceSelector returns one selector of services the given pod.
-func getFirstServiceSelector(pod *v1.Pod, sl corelisters.ServiceLister) (firstServiceSelector labels.Selector) {
-	if services, err := schedulerlisters.GetPodServices(sl, pod); err == nil && len(services) > 0 {
-		return labels.SelectorFromSet(services[0].Spec.Selector)
-	}
-	return nil
 }
 
 // getSelector returns a selector for the services, RCs, RSs, and SSs matching the given pod.
