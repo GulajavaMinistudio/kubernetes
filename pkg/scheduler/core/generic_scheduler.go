@@ -38,7 +38,6 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
-	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/priorities"
 	extenderv1 "k8s.io/kubernetes/pkg/scheduler/apis/extender/v1"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/migration"
@@ -112,9 +111,6 @@ type ScheduleAlgorithm interface {
 	// It returns the node where preemption happened, a list of preempted pods, a
 	// list of pods whose nominated node name should be removed, and error if any.
 	Preempt(context.Context, *framework.CycleState, *v1.Pod, error) (selectedNode *v1.Node, preemptedPods []*v1.Pod, cleanupNominatedPods []*v1.Pod, err error)
-	// Predicates() returns a pointer to a map of predicate functions. This is
-	// exposed for testing.
-	Predicates() map[string]predicates.FitPredicate
 	// Prioritizers returns a slice of priority config. This is exposed for
 	// testing.
 	Extenders() []algorithm.SchedulerExtender
@@ -141,7 +137,6 @@ type ScheduleResult struct {
 type genericScheduler struct {
 	cache                    internalcache.Cache
 	schedulingQueue          internalqueue.SchedulingQueue
-	predicates               map[string]predicates.FitPredicate
 	priorityMetaProducer     priorities.MetadataProducer
 	prioritizers             []priorities.PriorityConfig
 	framework                framework.Framework
@@ -218,7 +213,7 @@ func (g *genericScheduler) Schedule(ctx context.Context, state *framework.CycleS
 		}
 	}
 	trace.Step("Running postfilter plugins done")
-	metrics.SchedulingAlgorithmPredicateEvaluationDuration.Observe(metrics.SinceInSeconds(startPredicateEvalTime))
+	metrics.DeprecatedSchedulingAlgorithmPredicateEvaluationSecondsDuration.Observe(metrics.SinceInSeconds(startPredicateEvalTime))
 	metrics.DeprecatedSchedulingAlgorithmPredicateEvaluationDuration.Observe(metrics.SinceInMicroseconds(startPredicateEvalTime))
 	metrics.DeprecatedSchedulingDuration.WithLabelValues(metrics.PredicateEvaluation).Observe(metrics.SinceInSeconds(startPredicateEvalTime))
 	metrics.DeprecatedSchedulingLatency.WithLabelValues(metrics.PredicateEvaluation).Observe(metrics.SinceInSeconds(startPredicateEvalTime))
@@ -226,7 +221,7 @@ func (g *genericScheduler) Schedule(ctx context.Context, state *framework.CycleS
 	startPriorityEvalTime := time.Now()
 	// When only one node after predicate, just use it.
 	if len(filteredNodes) == 1 {
-		metrics.SchedulingAlgorithmPriorityEvaluationDuration.Observe(metrics.SinceInSeconds(startPriorityEvalTime))
+		metrics.DeprecatedSchedulingAlgorithmPriorityEvaluationSecondsDuration.Observe(metrics.SinceInSeconds(startPriorityEvalTime))
 		metrics.DeprecatedSchedulingAlgorithmPriorityEvaluationDuration.Observe(metrics.SinceInMicroseconds(startPriorityEvalTime))
 		return ScheduleResult{
 			SuggestedHost:  filteredNodes[0].Name,
@@ -241,7 +236,7 @@ func (g *genericScheduler) Schedule(ctx context.Context, state *framework.CycleS
 		return result, err
 	}
 
-	metrics.SchedulingAlgorithmPriorityEvaluationDuration.Observe(metrics.SinceInSeconds(startPriorityEvalTime))
+	metrics.DeprecatedSchedulingAlgorithmPriorityEvaluationSecondsDuration.Observe(metrics.SinceInSeconds(startPriorityEvalTime))
 	metrics.DeprecatedSchedulingAlgorithmPriorityEvaluationDuration.Observe(metrics.SinceInMicroseconds(startPriorityEvalTime))
 	metrics.DeprecatedSchedulingDuration.WithLabelValues(metrics.PriorityEvaluation).Observe(metrics.SinceInSeconds(startPriorityEvalTime))
 	metrics.DeprecatedSchedulingLatency.WithLabelValues(metrics.PriorityEvaluation).Observe(metrics.SinceInSeconds(startPriorityEvalTime))
@@ -260,12 +255,6 @@ func (g *genericScheduler) Schedule(ctx context.Context, state *framework.CycleS
 // functions and their config. It is exposed for testing only.
 func (g *genericScheduler) Prioritizers() []priorities.PriorityConfig {
 	return g.prioritizers
-}
-
-// Predicates returns a map containing all the scheduler's predicate
-// functions. It is exposed for testing only.
-func (g *genericScheduler) Predicates() map[string]predicates.FitPredicate {
-	return g.predicates
 }
 
 func (g *genericScheduler) Extenders() []algorithm.SchedulerExtender {
@@ -1111,11 +1100,9 @@ func podPassesBasicChecks(pod *v1.Pod, pvcLister corelisters.PersistentVolumeCla
 }
 
 // NewGenericScheduler creates a genericScheduler object.
-// TODO(Huang-Wei): remove 'predicates'.
 func NewGenericScheduler(
 	cache internalcache.Cache,
 	podQueue internalqueue.SchedulingQueue,
-	predicates map[string]predicates.FitPredicate,
 	priorityMetaProducer priorities.MetadataProducer,
 	nodeInfoSnapshot *nodeinfosnapshot.Snapshot,
 	framework framework.Framework,
@@ -1129,7 +1116,6 @@ func NewGenericScheduler(
 	return &genericScheduler{
 		cache:                    cache,
 		schedulingQueue:          podQueue,
-		predicates:               predicates,
 		priorityMetaProducer:     priorityMetaProducer,
 		framework:                framework,
 		extenders:                extenders,

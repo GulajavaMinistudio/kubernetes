@@ -11,7 +11,6 @@ go_library(
     deps = [
         "//pkg/api/v1/pod:go_default_library",
         "//pkg/scheduler/algorithm:go_default_library",
-        "//pkg/scheduler/algorithm/predicates:go_default_library",
         "//pkg/scheduler/algorithm/priorities:go_default_library",
         "//pkg/scheduler/apis/config:go_default_library",
         "//pkg/scheduler/apis/extender/v1:go_default_library",
@@ -58,6 +57,7 @@ go_test(
         "//pkg/scheduler/framework/plugins/interpodaffinity:go_default_library",
         "//pkg/scheduler/framework/plugins/noderesources:go_default_library",
         "//pkg/scheduler/framework/plugins/podtopologyspread:go_default_library",
+        "//pkg/scheduler/framework/plugins/volumebinding:go_default_library",
         "//pkg/scheduler/framework/v1alpha1:go_default_library",
         "//pkg/scheduler/internal/cache:go_default_library",
         "//pkg/scheduler/internal/queue:go_default_library",
