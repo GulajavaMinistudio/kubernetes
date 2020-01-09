@@ -38,7 +38,6 @@ import (
 	"k8s.io/client-go/tools/events"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/scheduler"
-	_ "k8s.io/kubernetes/pkg/scheduler/algorithmprovider"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/test/integration/framework"
 )
@@ -122,6 +121,7 @@ func TestSchedulerCreationFromConfigMap(t *testing.T) {
 				},
 				"PostFilterPlugin": {
 					{Name: "InterPodAffinity"},
+					{Name: "DefaultPodTopologySpread"},
 					{Name: "TaintToleration"},
 				},
 				"ScorePlugin": {
@@ -201,6 +201,7 @@ kind: Policy
 				},
 				"PostFilterPlugin": {
 					{Name: "InterPodAffinity"},
+					{Name: "DefaultPodTopologySpread"},
 					{Name: "TaintToleration"},
 				},
 				"ScorePlugin": {

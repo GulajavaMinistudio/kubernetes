@@ -3,7 +3,6 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "go_default_library",
     srcs = [
-        "checks.go",
         "cleanup.go",
         "exec_util.go",
         "expect.go",
@@ -120,6 +119,7 @@ filegroup(
         "//test/e2e/framework/config:all-srcs",
         "//test/e2e/framework/deployment:all-srcs",
         "//test/e2e/framework/endpoints:all-srcs",
+        "//test/e2e/framework/events:all-srcs",
         "//test/e2e/framework/ginkgowrapper:all-srcs",
         "//test/e2e/framework/gpu:all-srcs",
         "//test/e2e/framework/ingress:all-srcs",

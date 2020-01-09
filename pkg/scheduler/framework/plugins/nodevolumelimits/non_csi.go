@@ -35,7 +35,6 @@ import (
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/features"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
-	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	"k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
@@ -58,6 +57,12 @@ const (
 	azureDiskVolumeFilterType = "AzureDisk"
 	// cinderVolumeFilterType defines the filter name for cinderVolumeFilter.
 	cinderVolumeFilterType = "Cinder"
+
+	// ErrReasonMaxVolumeCountExceeded is used for MaxVolumeCount predicate error.
+	ErrReasonMaxVolumeCountExceeded = "node(s) exceed max volume count"
+
+	// KubeMaxPDVols defines the maximum number of PD Volumes per kubelet.
+	KubeMaxPDVols = "KUBE_MAX_PD_VOLS"
 )
 
 // AzureDiskName is the name of the plugin used in the plugin registry and configurations.
@@ -254,7 +259,7 @@ func (pl *nonCSILimits) Filter(ctx context.Context, _ *framework.CycleState, pod
 
 	if numExistingVolumes+numNewVolumes > maxAttachLimit {
 		// violates MaxEBSVolumeCount or MaxGCEPDVolumeCount
-		return framework.NewStatus(framework.Unschedulable, predicates.ErrMaxVolumeCountExceeded.GetReason())
+		return framework.NewStatus(framework.Unschedulable, ErrReasonMaxVolumeCountExceeded)
 	}
 	if nodeInfo != nil && nodeInfo.TransientInfo != nil && utilfeature.DefaultFeatureGate.Enabled(features.BalanceAttachedNodeVolumes) {
 		nodeInfo.TransientInfo.TransientLock.Lock()
@@ -338,7 +343,7 @@ func (pl *nonCSILimits) matchProvisioner(pvc *v1.PersistentVolumeClaim) bool {
 
 // getMaxVolLimitFromEnv checks the max PD volumes environment variable, otherwise returning a default value.
 func getMaxVolLimitFromEnv() int {
-	if rawMaxVols := os.Getenv(predicates.KubeMaxPDVols); rawMaxVols != "" {
+	if rawMaxVols := os.Getenv(KubeMaxPDVols); rawMaxVols != "" {
 		if parsedMaxVols, err := strconv.Atoi(rawMaxVols); err != nil {
 			klog.Errorf("Unable to parse maximum PD volumes value, using default: %v", err)
 		} else if parsedMaxVols <= 0 {

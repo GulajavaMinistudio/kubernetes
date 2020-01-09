@@ -27,9 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumerestrictions"
-
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -46,9 +44,13 @@ import (
 	extenderv1 "k8s.io/kubernetes/pkg/scheduler/apis/extender/v1"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/defaultpodtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodelabel"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumerestrictions"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	internalcache "k8s.io/kubernetes/pkg/scheduler/internal/cache"
 	internalqueue "k8s.io/kubernetes/pkg/scheduler/internal/queue"
@@ -1115,14 +1117,16 @@ func TestZeroRequest(t *testing.T) {
 
 			registry := framework.Registry{}
 			plugins := &schedulerapi.Plugins{
-				Filter: &schedulerapi.PluginSet{},
-				Score:  &schedulerapi.PluginSet{},
+				Filter:     &schedulerapi.PluginSet{},
+				PostFilter: &schedulerapi.PluginSet{},
+				Score:      &schedulerapi.PluginSet{},
 			}
 			var pluginConfigs []schedulerapi.PluginConfig
 			pluginRegistrations := []st.RegisterPluginFunc{
 				st.RegisterScorePlugin(noderesources.LeastAllocatedName, noderesources.NewLeastAllocated, 1),
 				st.RegisterScorePlugin(noderesources.BalancedAllocationName, noderesources.NewBalancedAllocation, 1),
 				st.RegisterScorePlugin(defaultpodtopologyspread.Name, defaultpodtopologyspread.New, 1),
+				st.RegisterPostFilterPlugin(defaultpodtopologyspread.Name, defaultpodtopologyspread.New),
 			}
 			for _, f := range pluginRegistrations {
 				f(&registry, plugins, pluginConfigs)
@@ -1154,9 +1158,16 @@ func TestZeroRequest(t *testing.T) {
 				false).(*genericScheduler)
 			scheduler.nodeInfoSnapshot = snapshot
 
+			ctx := context.Background()
+			state := framework.NewCycleState()
+			_, filteredNodesStatuses, err := scheduler.findNodesThatFit(ctx, state, test.pod)
+			if err != nil {
+				t.Fatalf("error filtering nodes: %+v", err)
+			}
+			scheduler.framework.RunPostFilterPlugins(ctx, state, test.pod, test.nodes, filteredNodesStatuses)
 			list, err := scheduler.prioritizeNodes(
-				context.Background(),
-				framework.NewCycleState(),
+				ctx,
+				state,
 				test.pod,
 				metadata,
 				test.nodes,
@@ -1597,18 +1608,14 @@ func TestSelectNodesForPreemption(t *testing.T) {
 
 			assignDefaultStartTime(test.pods)
 
-			// newnode simulate a case that a new node is added to the cluster, but nodeNameToInfo
-			// doesn't have it yet.
-			newnode := makeNode("newnode", 1000*5, priorityutil.DefaultMemoryRequest*5)
-			newnode.ObjectMeta.Labels = map[string]string{"hostname": "newnode"}
-			nodes = append(nodes, newnode)
 			state := framework.NewCycleState()
 			// Some tests rely on PreFilter plugin to compute its CycleState.
 			preFilterStatus := fwk.RunPreFilterPlugins(context.Background(), state, test.pod)
 			if !preFilterStatus.IsSuccess() {
 				t.Errorf("Unexpected preFilterStatus: %v", preFilterStatus)
 			}
-			nodeToPods, err := g.selectNodesForPreemption(context.Background(), state, test.pod, nodes, nil)
+			nodeInfos := nodesToNodeInfos(nodes, snapshot)
+			nodeToPods, err := g.selectNodesForPreemption(context.Background(), state, test.pod, nodeInfos, nil)
 			if err != nil {
 				t.Error(err)
 			}
@@ -1837,8 +1844,9 @@ func TestPickOneNodeForPreemption(t *testing.T) {
 			}
 			assignDefaultStartTime(test.pods)
 
+			nodeInfos := nodesToNodeInfos(nodes, snapshot)
 			state := framework.NewCycleState()
-			candidateNodes, _ := g.selectNodesForPreemption(context.Background(), state, test.pod, nodes, nil)
+			candidateNodes, _ := g.selectNodesForPreemption(context.Background(), state, test.pod, nodeInfos, nil)
 			node := pickOneNodeForPreemption(candidateNodes)
 			found := false
 			for _, nodeName := range test.expected {
@@ -1871,15 +1879,15 @@ func TestNodesWherePreemptionMightHelp(t *testing.T) {
 			nodesStatuses: framework.NodeToStatusMap{
 				"machine1": framework.NewStatus(framework.UnschedulableAndUnresolvable, algorithmpredicates.ErrNodeSelectorNotMatch.GetReason()),
 				"machine2": framework.NewStatus(framework.UnschedulableAndUnresolvable, algorithmpredicates.ErrPodNotMatchHostName.GetReason()),
-				"machine3": framework.NewStatus(framework.UnschedulableAndUnresolvable, algorithmpredicates.ErrTaintsTolerationsNotMatch.GetReason()),
-				"machine4": framework.NewStatus(framework.UnschedulableAndUnresolvable, algorithmpredicates.ErrNodeLabelPresenceViolated.GetReason()),
+				"machine3": framework.NewStatus(framework.UnschedulableAndUnresolvable, tainttoleration.ErrReasonNotMatch),
+				"machine4": framework.NewStatus(framework.UnschedulableAndUnresolvable, nodelabel.ErrReasonPresenceViolated),
 			},
 			expected: map[string]bool{},
 		},
 		{
-			name: "ErrPodAffinityNotMatch should be tried as it indicates that the pod is unschedulable due to inter-pod affinity or anti-affinity",
+			name: "ErrReasonAffinityNotMatch should be tried as it indicates that the pod is unschedulable due to inter-pod affinity or anti-affinity",
 			nodesStatuses: framework.NodeToStatusMap{
-				"machine1": framework.NewStatus(framework.Unschedulable, algorithmpredicates.ErrPodAffinityNotMatch.GetReason()),
+				"machine1": framework.NewStatus(framework.Unschedulable, interpodaffinity.ErrReasonAffinityNotMatch),
 				"machine2": framework.NewStatus(framework.UnschedulableAndUnresolvable, algorithmpredicates.ErrPodNotMatchHostName.GetReason()),
 				"machine3": framework.NewStatus(framework.UnschedulableAndUnresolvable, algorithmpredicates.ErrNodeUnschedulable.GetReason()),
 			},
@@ -1888,16 +1896,16 @@ func TestNodesWherePreemptionMightHelp(t *testing.T) {
 		{
 			name: "pod with both pod affinity and anti-affinity should be tried",
 			nodesStatuses: framework.NodeToStatusMap{
-				"machine1": framework.NewStatus(framework.Unschedulable, algorithmpredicates.ErrPodAffinityNotMatch.GetReason()),
+				"machine1": framework.NewStatus(framework.Unschedulable, interpodaffinity.ErrReasonAffinityNotMatch),
 				"machine2": framework.NewStatus(framework.UnschedulableAndUnresolvable, algorithmpredicates.ErrPodNotMatchHostName.GetReason()),
 			},
 			expected: map[string]bool{"machine1": true, "machine3": true, "machine4": true},
 		},
 		{
-			name: "ErrPodAffinityRulesNotMatch should not be tried as it indicates that the pod is unschedulable due to inter-pod affinity, but ErrPodAffinityNotMatch should be tried as it indicates that the pod is unschedulable due to inter-pod affinity or anti-affinity",
+			name: "ErrReasonAffinityRulesNotMatch should not be tried as it indicates that the pod is unschedulable due to inter-pod affinity, but ErrReasonAffinityNotMatch should be tried as it indicates that the pod is unschedulable due to inter-pod affinity or anti-affinity",
 			nodesStatuses: framework.NodeToStatusMap{
-				"machine1": framework.NewStatus(framework.UnschedulableAndUnresolvable, algorithmpredicates.ErrPodAffinityRulesNotMatch.GetReason()),
-				"machine2": framework.NewStatus(framework.Unschedulable, algorithmpredicates.ErrPodAffinityNotMatch.GetReason()),
+				"machine1": framework.NewStatus(framework.UnschedulableAndUnresolvable, interpodaffinity.ErrReasonAffinityRulesNotMatch),
+				"machine2": framework.NewStatus(framework.Unschedulable, interpodaffinity.ErrReasonAffinityNotMatch),
 			},
 			expected: map[string]bool{"machine2": true, "machine3": true, "machine4": true},
 		},
@@ -1931,7 +1939,7 @@ func TestNodesWherePreemptionMightHelp(t *testing.T) {
 		{
 			name: "ErrVolume... errors should not be tried as it indicates that the pod is unschedulable due to no matching volumes for pod on node",
 			nodesStatuses: framework.NodeToStatusMap{
-				"machine1": framework.NewStatus(framework.UnschedulableAndUnresolvable, algorithmpredicates.ErrVolumeZoneConflict.GetReason()),
+				"machine1": framework.NewStatus(framework.UnschedulableAndUnresolvable, volumezone.ErrReasonConflict),
 				"machine2": framework.NewStatus(framework.UnschedulableAndUnresolvable, volumebinding.ErrReasonNodeConflict),
 				"machine3": framework.NewStatus(framework.UnschedulableAndUnresolvable, volumebinding.ErrReasonBindConflict),
 			},
@@ -1962,13 +1970,20 @@ func TestNodesWherePreemptionMightHelp(t *testing.T) {
 			fitErr := FitError{
 				FilteredNodesStatuses: test.nodesStatuses,
 			}
-			nodes := nodesWherePreemptionMightHelp(nodeinfosnapshot.CreateNodeInfoMap(nil, makeNodeList(nodeNames)), &fitErr)
+			var nodeInfos []*schedulernodeinfo.NodeInfo
+			for _, n := range makeNodeList(nodeNames) {
+				ni := schedulernodeinfo.NewNodeInfo()
+				ni.SetNode(n)
+				nodeInfos = append(nodeInfos, ni)
+			}
+			nodes := nodesWherePreemptionMightHelp(nodeInfos, &fitErr)
 			if len(test.expected) != len(nodes) {
 				t.Errorf("number of nodes is not the same as expected. exptectd: %d, got: %d. Nodes: %v", len(test.expected), len(nodes), nodes)
 			}
 			for _, node := range nodes {
-				if _, found := test.expected[node.Name]; !found {
-					t.Errorf("node %v is not expected.", node.Name)
+				name := node.Node().Name
+				if _, found := test.expected[name]; !found {
+					t.Errorf("node %v is not expected.", name)
 				}
 			}
 		})
@@ -2461,4 +2476,12 @@ func TestFairEvaluationForNodes(t *testing.T) {
 			t.Errorf("got %d lastProcessedNodeIndex, want %d", g.nextStartNodeIndex, (i+1)*nodesToFind%numAllNodes)
 		}
 	}
+}
+
+func nodesToNodeInfos(nodes []*v1.Node, snapshot *nodeinfosnapshot.Snapshot) []*schedulernodeinfo.NodeInfo {
+	var nodeInfos []*schedulernodeinfo.NodeInfo
+	for _, n := range nodes {
+		nodeInfos = append(nodeInfos, snapshot.NodeInfoMap[n.Name])
+	}
+	return nodeInfos
 }

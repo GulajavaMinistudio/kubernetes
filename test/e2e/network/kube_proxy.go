@@ -17,9 +17,11 @@ limitations under the License.
 package network
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -127,13 +129,13 @@ var _ = SIGDescribe("Network", func() {
 			},
 		}
 		fr.PodClient().CreateSync(hostExecPod)
+		defer fr.PodClient().DeleteSync(hostExecPod.Name, &metav1.DeleteOptions{}, framework.DefaultPodDeletionTimeout)
 
 		// Some distributions (Ubuntu 16.04 etc.) don't support the proc file.
 		_, err = framework.RunHostCmd(fr.Namespace.Name, "e2e-net-exec",
 			"ls /rootfs/proc/net/nf_conntrack")
 		if err != nil && strings.Contains(err.Error(), "No such file or directory") {
-			framework.Skipf("The node %s does not support /proc/net/nf_conntrack",
-				clientNodeInfo.name)
+			framework.Skipf("The node %s does not support /proc/net/nf_conntrack", clientNodeInfo.name)
 		}
 		framework.ExpectNoError(err)
 
@@ -211,8 +213,8 @@ var _ = SIGDescribe("Network", func() {
 		ginkgo.By("Make client connect")
 
 		options := nat.CloseWaitClientOptions{
-			RemoteAddr: fmt.Sprintf("%v:%v",
-				serverNodeInfo.nodeIP, testDaemonTCPPort),
+
+			RemoteAddr:            net.JoinHostPort(serverNodeInfo.nodeIP, strconv.Itoa(testDaemonTCPPort)),
 			TimeoutSeconds:        deadlineTimeoutSeconds,
 			PostFinTimeoutSeconds: postFinTimeoutSeconds,
 			LeakConnection:        true,
@@ -229,7 +231,9 @@ var _ = SIGDescribe("Network", func() {
 		// Run the closewait command in a subroutine so it keeps waiting during postFinTimeoutSeconds
 		// otherwise the pod is deleted and the connection is closed loosing the conntrack entry
 		go func() {
-			framework.RunHostCmdOrDie(fr.Namespace.Name, "e2e-net-client", cmd)
+			defer ginkgo.GinkgoRecover()
+			_, err = framework.RunHostCmd(fr.Namespace.Name, "e2e-net-client", cmd)
+			framework.ExpectNoError(err)
 		}()
 
 		<-time.After(time.Duration(1) * time.Second)
@@ -240,13 +244,14 @@ var _ = SIGDescribe("Network", func() {
 		// current defaults are hidden in the initialization code.
 		const epsilonSeconds = 60
 		const expectedTimeoutSeconds = 60 * 60
+		// the conntrack file uses the IPv6 expanded format
+		ip := fullIPv6(net.ParseIP(serverNodeInfo.nodeIP))
 		// Obtain the corresponding conntrack entry on the host checking
 		// the nf_conntrack file from the pod e2e-net-exec.
 		// It retries in a loop if the entry is not found.
 		cmd = fmt.Sprintf("cat /rootfs/proc/net/nf_conntrack "+
 			"| grep -m 1 'CLOSE_WAIT.*dst=%v.*dport=%v' ",
-			serverNodeInfo.nodeIP,
-			testDaemonTCPPort)
+			ip, testDaemonTCPPort)
 		if err := wait.PollImmediate(5*time.Second, 30*time.Second, func() (bool, error) {
 			result, err := framework.RunHostCmd(fr.Namespace.Name, "e2e-net-exec", cmd)
 			// retry if we can't obtain the conntrack entry
@@ -388,3 +393,22 @@ var _ = SIGDescribe("Network", func() {
 		}
 	})
 })
+
+// fullIPv6 returns a string with the IP representation
+// if IPv6 it returns the expanded address format
+// credit https://stackoverflow.com/a/52003106/4532704
+func fullIPv6(ip net.IP) string {
+	if ip.To4() == nil {
+		dst := make([]byte, hex.EncodedLen(len(ip)))
+		_ = hex.Encode(dst, ip)
+		return string(dst[0:4]) + ":" +
+			string(dst[4:8]) + ":" +
+			string(dst[8:12]) + ":" +
+			string(dst[12:16]) + ":" +
+			string(dst[16:20]) + ":" +
+			string(dst[20:24]) + ":" +
+			string(dst[24:28]) + ":" +
+			string(dst[28:])
+	}
+	return ip.String()
+}
