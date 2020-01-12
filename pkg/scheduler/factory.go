@@ -40,7 +40,6 @@ import (
 	kubefeatures "k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
-	"k8s.io/kubernetes/pkg/scheduler/algorithm/priorities"
 	"k8s.io/kubernetes/pkg/scheduler/algorithmprovider"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config/validation"
@@ -146,12 +145,6 @@ func (c *Configurator) create(extenders []algorithm.SchedulerExtender) (*Schedul
 	algo := core.NewGenericScheduler(
 		c.schedulerCache,
 		podQueue,
-		priorities.NewMetadataFactory(
-			c.informerFactory.Core().V1().Services().Lister(),
-			c.informerFactory.Core().V1().ReplicationControllers().Lister(),
-			c.informerFactory.Apps().V1().ReplicaSets().Lister(),
-			c.informerFactory.Apps().V1().StatefulSets().Lister(),
-		),
 		c.nodeInfoSnapshot,
 		framework,
 		extenders,
@@ -186,11 +179,11 @@ func (c *Configurator) createFromProvider(providerName string) (*Scheduler, erro
 	}
 
 	// Combine the provided plugins with the ones from component config.
-	// TODO(#86789): address disabled plugins.
-	var plugins schedulerapi.Plugins
-	plugins.Append(provider.FrameworkPlugins)
-	plugins.Append(c.plugins)
-	c.plugins = &plugins
+	var defaultPlugins schedulerapi.Plugins
+	defaultPlugins.Append(provider.FrameworkPlugins)
+	defaultPlugins.Apply(c.plugins)
+	c.plugins = &defaultPlugins
+
 	var pluginConfig []schedulerapi.PluginConfig
 	pluginConfig = append(pluginConfig, provider.FrameworkPluginConfig...)
 	pluginConfig = append(pluginConfig, c.pluginConfig...)
@@ -228,7 +221,7 @@ func (c *Configurator) createFromConfig(policy schedulerapi.Policy) (*Scheduler,
 		priorityKeys = lr.DefaultPriorities
 	} else {
 		for _, priority := range policy.Priorities {
-			if priority.Name == priorities.EqualPriority {
+			if priority.Name == plugins.EqualPriority {
 				klog.V(2).Infof("Skip registering priority: %s", priority.Name)
 				continue
 			}
@@ -297,11 +290,11 @@ func (c *Configurator) createFromConfig(policy schedulerapi.Policy) (*Scheduler,
 	}
 	// Combine all framework configurations. If this results in any duplication, framework
 	// instantiation should fail.
-	var plugins schedulerapi.Plugins
-	plugins.Append(pluginsForPredicates)
-	plugins.Append(pluginsForPriorities)
-	plugins.Append(c.plugins)
-	c.plugins = &plugins
+	var defaultPlugins schedulerapi.Plugins
+	defaultPlugins.Append(pluginsForPredicates)
+	defaultPlugins.Append(pluginsForPriorities)
+	defaultPlugins.Apply(c.plugins)
+	c.plugins = &defaultPlugins
 
 	var pluginConfig []schedulerapi.PluginConfig
 	pluginConfig = append(pluginConfig, pluginConfigForPredicates...)
