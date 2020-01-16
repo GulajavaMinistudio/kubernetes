@@ -150,7 +150,7 @@ github.com/chai2010/gettext-go/gettext
 github.com/chai2010/gettext-go/gettext/mo
 github.com/chai2010/gettext-go/gettext/plural
 github.com/chai2010/gettext-go/gettext/po
-# github.com/checkpoint-restore/go-criu v0.0.0-20190109184317-bdb7599cd87b => github.com/checkpoint-restore/go-criu v0.0.0-20190109184317-bdb7599cd87b
+# github.com/checkpoint-restore/go-criu v0.0.0-20181120144056-17b0214f6c48 => github.com/checkpoint-restore/go-criu v0.0.0-20181120144056-17b0214f6c48
 github.com/checkpoint-restore/go-criu/rpc
 # github.com/client9/misspell v0.3.4 => github.com/client9/misspell v0.3.4
 github.com/client9/misspell
@@ -248,7 +248,7 @@ github.com/docker/spdystream
 github.com/docker/spdystream/spdy
 # github.com/dustin/go-humanize v1.0.0 => github.com/dustin/go-humanize v1.0.0
 github.com/dustin/go-humanize
-# github.com/elazarl/goproxy v0.0.0-20170405201442-c4fc26588b6e => github.com/elazarl/goproxy v0.0.0-20170405201442-c4fc26588b6e
+# github.com/elazarl/goproxy v0.0.0-20180725130230-947c36da3153 => github.com/elazarl/goproxy v0.0.0-20180725130230-947c36da3153
 github.com/elazarl/goproxy
 # github.com/emicklei/go-restful v2.9.5+incompatible => github.com/emicklei/go-restful v2.9.5+incompatible
 github.com/emicklei/go-restful
@@ -957,14 +957,11 @@ gonum.org/v1/gonum/graph/formats/dot/internal/errors
 gonum.org/v1/gonum/graph/formats/dot/internal/lexer
 gonum.org/v1/gonum/graph/formats/dot/internal/parser
 gonum.org/v1/gonum/graph/formats/dot/internal/token
-gonum.org/v1/gonum/graph/internal/linear
 gonum.org/v1/gonum/graph/internal/ordered
 gonum.org/v1/gonum/graph/internal/set
 gonum.org/v1/gonum/graph/internal/uid
 gonum.org/v1/gonum/graph/iterator
 gonum.org/v1/gonum/graph/simple
-gonum.org/v1/gonum/graph/topo
-gonum.org/v1/gonum/graph/traverse
 gonum.org/v1/gonum/internal/asm/c128
 gonum.org/v1/gonum/internal/asm/c64
 gonum.org/v1/gonum/internal/asm/f32
@@ -1841,6 +1838,14 @@ k8s.io/legacy-cloud-providers/azure
 k8s.io/legacy-cloud-providers/azure/auth
 k8s.io/legacy-cloud-providers/azure/clients
 k8s.io/legacy-cloud-providers/azure/clients/armclient
+k8s.io/legacy-cloud-providers/azure/clients/interfaceclient
+k8s.io/legacy-cloud-providers/azure/clients/loadbalancerclient
+k8s.io/legacy-cloud-providers/azure/clients/publicipclient
+k8s.io/legacy-cloud-providers/azure/clients/routeclient
+k8s.io/legacy-cloud-providers/azure/clients/routetableclient
+k8s.io/legacy-cloud-providers/azure/clients/securitygroupclient
+k8s.io/legacy-cloud-providers/azure/clients/subnetclient
+k8s.io/legacy-cloud-providers/azure/clients/vmclient
 k8s.io/legacy-cloud-providers/azure/clients/vmssclient
 k8s.io/legacy-cloud-providers/azure/clients/vmssvmclient
 k8s.io/legacy-cloud-providers/azure/metrics
