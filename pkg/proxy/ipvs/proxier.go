@@ -436,7 +436,7 @@ func NewProxier(ipt utiliptables.Interface,
 
 	serviceHealthServer := healthcheck.NewServiceHealthServer(hostname, recorder)
 
-	endpointSlicesEnabled := utilfeature.DefaultFeatureGate.Enabled(features.EndpointSlice)
+	endpointSlicesEnabled := utilfeature.DefaultFeatureGate.Enabled(features.EndpointSliceProxying)
 
 	proxier := &Proxier{
 		portsMap:              make(map[utilproxy.LocalPort]utilproxy.Closeable),
@@ -598,11 +598,24 @@ func (handle *LinuxKernelHandler) GetModules() ([]string, error) {
 
 	var bmods []string
 
-	// Find out loaded kernel modules. If this is a full static kernel it will thrown an error
+	// Find out loaded kernel modules. If this is a full static kernel it will try to verify if the module is compiled using /boot/config-KERNELVERSION
 	modulesFile, err := os.Open("/proc/modules")
+	if err == os.ErrNotExist {
+		klog.Warningf("Failed to read file /proc/modules with error %v. Assuming this is a kernel without loadable modules support enabled", err)
+		kernelConfigFile := fmt.Sprintf("/boot/config-%s", kernelVersionStr)
+		kConfig, err := ioutil.ReadFile(kernelConfigFile)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to read Kernel Config file %s with error %v", kernelConfigFile, err)
+		}
+		for _, module := range ipvsModules {
+			if match, _ := regexp.Match("CONFIG_"+strings.ToUpper(module)+"=y", kConfig); match {
+				bmods = append(bmods, module)
+			}
+		}
+		return bmods, nil
+	}
 	if err != nil {
-		klog.Warningf("Failed to read file /proc/modules with error %v. Kube-proxy requires loadable modules support enabled in the kernel", err)
-		return nil, err
+		return nil, fmt.Errorf("Failed to read file /proc/modules with error %v", err)
 	}
 
 	mods, err := getFirstColumn(modulesFile)
@@ -842,7 +855,7 @@ func (proxier *Proxier) OnServiceDelete(service *v1.Service) {
 func (proxier *Proxier) OnServiceSynced() {
 	proxier.mu.Lock()
 	proxier.servicesSynced = true
-	if utilfeature.DefaultFeatureGate.Enabled(features.EndpointSlice) {
+	if utilfeature.DefaultFeatureGate.Enabled(features.EndpointSliceProxying) {
 		proxier.setInitialized(proxier.endpointSlicesSynced)
 	} else {
 		proxier.setInitialized(proxier.endpointsSynced)
@@ -1950,7 +1963,7 @@ func (proxier *Proxier) syncEndpoint(svcPortName proxy.ServicePortName, onlyNode
 	// 2. ServiceTopology is not enabled.
 	// 3. EndpointSlice is not enabled (service topology depends on endpoint slice
 	// to get topology information).
-	if !onlyNodeLocalEndpoints && utilfeature.DefaultFeatureGate.Enabled(features.ServiceTopology) && utilfeature.DefaultFeatureGate.Enabled(features.EndpointSlice) {
+	if !onlyNodeLocalEndpoints && utilfeature.DefaultFeatureGate.Enabled(features.ServiceTopology) && utilfeature.DefaultFeatureGate.Enabled(features.EndpointSliceProxying) {
 		endpoints = proxy.FilterTopologyEndpoint(proxier.nodeLabels, proxier.serviceMap[svcPortName].TopologyKeys(), endpoints)
 	}
 

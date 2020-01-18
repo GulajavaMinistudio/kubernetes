@@ -34,7 +34,6 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	policylisters "k8s.io/client-go/listers/policy/v1beta1"
-	storagelisters "k8s.io/client-go/listers/storage/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
@@ -46,11 +45,11 @@ import (
 	frameworkplugins "k8s.io/kubernetes/pkg/scheduler/framework/plugins"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/queuesort"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	internalcache "k8s.io/kubernetes/pkg/scheduler/internal/cache"
 	cachedebugger "k8s.io/kubernetes/pkg/scheduler/internal/cache/debugger"
 	internalqueue "k8s.io/kubernetes/pkg/scheduler/internal/queue"
-	nodeinfosnapshot "k8s.io/kubernetes/pkg/scheduler/nodeinfo/snapshot"
 	"k8s.io/kubernetes/pkg/scheduler/volumebinder"
 )
 
@@ -107,7 +106,7 @@ type Configurator struct {
 	registry         framework.Registry
 	plugins          *schedulerapi.Plugins
 	pluginConfig     []schedulerapi.PluginConfig
-	nodeInfoSnapshot *nodeinfosnapshot.Snapshot
+	nodeInfoSnapshot *internalcache.Snapshot
 }
 
 // create a scheduler from a set of registered plugins.
@@ -191,7 +190,7 @@ func (c *Configurator) createFromProvider(providerName string) (*Scheduler, erro
 	return c.create([]algorithm.SchedulerExtender{})
 }
 
-// CreateFromConfig creates a scheduler from the configuration file
+// createFromConfig creates a scheduler from the configuration file
 func (c *Configurator) createFromConfig(policy schedulerapi.Policy) (*Scheduler, error) {
 	lr := frameworkplugins.NewLegacyRegistry()
 	args := &frameworkplugins.ConfigProducerArgs{}
@@ -290,6 +289,12 @@ func (c *Configurator) createFromConfig(policy schedulerapi.Policy) (*Scheduler,
 	// Combine all framework configurations. If this results in any duplication, framework
 	// instantiation should fail.
 	var defaultPlugins schedulerapi.Plugins
+	// "PrioritySort" is neither a predicate nor priority before. We make it as the default QueueSort plugin.
+	defaultPlugins.Append(&schedulerapi.Plugins{
+		QueueSort: &schedulerapi.PluginSet{
+			Enabled: []schedulerapi.Plugin{{Name: queuesort.Name}},
+		},
+	})
 	defaultPlugins.Append(pluginsForPredicates)
 	defaultPlugins.Append(pluginsForPriorities)
 	defaultPlugins.Apply(c.plugins)
@@ -304,7 +309,6 @@ func (c *Configurator) createFromConfig(policy schedulerapi.Policy) (*Scheduler,
 	return c.create(extenders)
 }
 
-// getPriorityConfigs
 // getPriorityConfigs returns priorities configuration: ones that will run as priorities and ones that will run
 // as framework plugins. Specifically, a priority will run as a framework plugin if a plugin config producer was
 // registered for that priority.
@@ -482,6 +486,9 @@ type binder struct {
 	Client clientset.Interface
 }
 
+// Implement Binder interface
+var _ Binder = &binder{}
+
 // Bind just does a POST binding RPC.
 func (b *binder) Bind(binding *v1.Binding) error {
 	klog.V(3).Infof("Attempting to bind %v to %v", binding.Name, binding.Target.Name)
@@ -492,14 +499,6 @@ func (b *binder) Bind(binding *v1.Binding) error {
 func GetPodDisruptionBudgetLister(informerFactory informers.SharedInformerFactory) policylisters.PodDisruptionBudgetLister {
 	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.PodDisruptionBudget) {
 		return informerFactory.Policy().V1beta1().PodDisruptionBudgets().Lister()
-	}
-	return nil
-}
-
-// GetCSINodeLister returns CSINode lister from the given informer factory. Returns nil if CSINodeInfo feature is disabled.
-func GetCSINodeLister(informerFactory informers.SharedInformerFactory) storagelisters.CSINodeLister {
-	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.CSINodeInfo) {
-		return informerFactory.Storage().V1().CSINodes().Lister()
 	}
 	return nil
 }
