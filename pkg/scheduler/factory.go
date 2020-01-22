@@ -37,7 +37,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
-	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/pkg/scheduler/algorithmprovider"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config/validation"
@@ -110,7 +109,7 @@ type Configurator struct {
 }
 
 // create a scheduler from a set of registered plugins.
-func (c *Configurator) create(extenders []algorithm.SchedulerExtender) (*Scheduler, error) {
+func (c *Configurator) create(extenders []core.SchedulerExtender) (*Scheduler, error) {
 	framework, err := framework.NewFramework(
 		c.registry,
 		c.plugins,
@@ -157,7 +156,6 @@ func (c *Configurator) create(extenders []algorithm.SchedulerExtender) (*Schedul
 	return &Scheduler{
 		SchedulerCache:  c.schedulerCache,
 		Algorithm:       algo,
-		GetBinder:       getBinderFunc(c.client, extenders),
 		Framework:       framework,
 		NextPod:         internalqueue.MakeNextPodFunc(podQueue),
 		Error:           MakeDefaultErrorFunc(c.client, podQueue, c.schedulerCache),
@@ -187,7 +185,7 @@ func (c *Configurator) createFromProvider(providerName string) (*Scheduler, erro
 	pluginConfig = append(pluginConfig, c.pluginConfig...)
 	c.pluginConfig = pluginConfig
 
-	return c.create([]algorithm.SchedulerExtender{})
+	return c.create([]core.SchedulerExtender{})
 }
 
 // createFromConfig creates a scheduler from the configuration file
@@ -228,9 +226,9 @@ func (c *Configurator) createFromConfig(policy schedulerapi.Policy) (*Scheduler,
 		}
 	}
 
-	var extenders []algorithm.SchedulerExtender
+	var extenders []core.SchedulerExtender
 	if len(policy.Extenders) != 0 {
-		var ignorableExtenders []algorithm.SchedulerExtender
+		var ignorableExtenders []core.SchedulerExtender
 		var ignoredExtendedResources []string
 		for ii := range policy.Extenders {
 			klog.V(2).Infof("Creating extender with config %+v", policy.Extenders[ii])
@@ -378,19 +376,6 @@ func getPredicateConfigs(keys sets.String, lr *frameworkplugins.LegacyRegistry, 
 	return &plugins, pluginConfig, nil
 }
 
-// getBinderFunc returns a func which returns an extender that supports bind or a default binder based on the given pod.
-func getBinderFunc(client clientset.Interface, extenders []algorithm.SchedulerExtender) func(pod *v1.Pod) Binder {
-	defaultBinder := &binder{client}
-	return func(pod *v1.Pod) Binder {
-		for _, extender := range extenders {
-			if extender.IsBinder() && extender.IsInterested(pod) {
-				return extender
-			}
-		}
-		return defaultBinder
-	}
-}
-
 type podInformer struct {
 	informer cache.SharedIndexInformer
 }
@@ -480,19 +465,6 @@ func MakeDefaultErrorFunc(client clientset.Interface, podQueue internalqueue.Sch
 			}
 		}()
 	}
-}
-
-type binder struct {
-	Client clientset.Interface
-}
-
-// Implement Binder interface
-var _ Binder = &binder{}
-
-// Bind just does a POST binding RPC.
-func (b *binder) Bind(binding *v1.Binding) error {
-	klog.V(3).Infof("Attempting to bind %v to %v", binding.Name, binding.Target.Name)
-	return b.Client.CoreV1().Pods(binding.Namespace).Bind(binding)
 }
 
 // GetPodDisruptionBudgetLister returns pdb lister from the given informer factory. Returns nil if PodDisruptionBudget feature is disabled.

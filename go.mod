@@ -20,7 +20,7 @@ require (
 	github.com/Rican7/retry v0.1.0 // indirect
 	github.com/armon/circbuf v0.0.0-20150827004946-bbbad097214e
 	github.com/auth0/go-jwt-middleware v0.0.0-20170425171159-5493cabe49f7 // indirect
-	github.com/aws/aws-sdk-go v1.16.26
+	github.com/aws/aws-sdk-go v1.28.2
 	github.com/bazelbuild/bazel-gazelle v0.19.1-0.20191105222053-70208cbdc798
 	github.com/bazelbuild/buildtools v0.0.0-20190917191645-69366ca98f89
 	github.com/blang/semver v3.5.0+incompatible
@@ -62,7 +62,7 @@ require (
 	github.com/godbus/dbus v0.0.0-20181101234600-2ff6f7ffd60f // indirect
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang/groupcache v0.0.0-20160516000752-02826c3e7903
-	github.com/golang/mock v1.2.0
+	github.com/golang/mock v1.3.1
 	github.com/google/cadvisor v0.35.0
 	github.com/google/go-cmp v0.3.0
 	github.com/google/gofuzz v1.0.0
@@ -204,7 +204,7 @@ replace (
 	github.com/armon/consul-api => github.com/armon/consul-api v0.0.0-20180202201655-eb2c6b5be1b6
 	github.com/asaskevich/govalidator => github.com/asaskevich/govalidator v0.0.0-20190424111038-f61b66f89f4a
 	github.com/auth0/go-jwt-middleware => github.com/auth0/go-jwt-middleware v0.0.0-20170425171159-5493cabe49f7
-	github.com/aws/aws-sdk-go => github.com/aws/aws-sdk-go v1.16.26
+	github.com/aws/aws-sdk-go => github.com/aws/aws-sdk-go v1.28.2
 	github.com/bazelbuild/bazel-gazelle => github.com/bazelbuild/bazel-gazelle v0.19.1-0.20191105222053-70208cbdc798
 	github.com/bazelbuild/buildtools => github.com/bazelbuild/buildtools v0.0.0-20190917191645-69366ca98f89
 	github.com/bazelbuild/rules_go => github.com/bazelbuild/rules_go v0.0.0-20190719190356-6dae44dc5cab
@@ -300,7 +300,7 @@ replace (
 	github.com/golang/freetype => github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
 	github.com/golang/glog => github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/golang/groupcache => github.com/golang/groupcache v0.0.0-20160516000752-02826c3e7903
-	github.com/golang/mock => github.com/golang/mock v1.2.0
+	github.com/golang/mock => github.com/golang/mock v1.3.1
 	github.com/golang/protobuf => github.com/golang/protobuf v1.3.2
 	github.com/golangci/check => github.com/golangci/check v0.0.0-20180506172741-cfe4005ccda2
 	github.com/golangci/dupl => github.com/golangci/dupl v0.0.0-20180902072040-3e9179ac440a

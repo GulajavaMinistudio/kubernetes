@@ -2,9 +2,7 @@ cluster/images/etcd-version-monitor
 cluster/images/etcd/migrate
 pkg/controller/daemon
 pkg/controller/deployment
-pkg/controller/disruption
 pkg/controller/garbagecollector
-pkg/controller/namespace/deletion
 pkg/controller/nodeipam
 pkg/controller/podautoscaler
 pkg/controller/podgc
@@ -22,10 +20,8 @@ pkg/registry/core/service/storage
 pkg/util/coverage
 pkg/util/netsh
 pkg/volume
-pkg/volume/awsebs
 pkg/volume/azure_dd
 pkg/volume/azure_file
-pkg/volume/cinder
 pkg/volume/csi
 pkg/volume/fc
 pkg/volume/flexvolume
