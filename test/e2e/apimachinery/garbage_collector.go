@@ -24,7 +24,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	batchv1beta1 "k8s.io/api/batch/v1beta1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apiextensionstestserver "k8s.io/apiextensions-apiserver/test/integration/fixtures"
@@ -574,8 +574,18 @@ var _ = SIGDescribe("Garbage collector", func() {
 		if err := deployClient.Delete(deployment.ObjectMeta.Name, deleteOptions); err != nil {
 			framework.Failf("failed to delete the deployment: %v", err)
 		}
-		ginkgo.By("wait for 30 seconds to see if the garbage collector mistakenly deletes the rs")
-		time.Sleep(30 * time.Second)
+		ginkgo.By("wait for deployment deletion to see if the garbage collector mistakenly deletes the rs")
+		err = wait.PollImmediate(500*time.Millisecond, 1*time.Minute, func() (bool, error) {
+			dList, err := deployClient.List(metav1.ListOptions{})
+			if err != nil {
+				return false, fmt.Errorf("failed to list deployments: %v", err)
+			}
+			return len(dList.Items) == 0, nil
+		})
+		if err != nil {
+			framework.Failf("Failed to wait for the Deployment to be deleted: %v", err)
+		}
+		// Once the deployment object is gone, we'll know the GC has finished performing any relevant actions.
 		objects := map[string]int{"Deployments": 0, "ReplicaSets": 1, "Pods": 2}
 		ok, err := verifyRemainingObjects(f, objects)
 		if err != nil {
@@ -950,12 +960,15 @@ var _ = SIGDescribe("Garbage collector", func() {
 		}
 
 		// Ensure the dependent is deleted.
+		var lastDependent *unstructured.Unstructured
+		var err2 error
 		if err := wait.Poll(5*time.Second, 60*time.Second, func() (bool, error) {
-			_, err := resourceClient.Get(dependentName, metav1.GetOptions{})
-			return apierrors.IsNotFound(err), nil
+			lastDependent, err2 = resourceClient.Get(dependentName, metav1.GetOptions{})
+			return apierrors.IsNotFound(err2), nil
 		}); err != nil {
 			framework.Logf("owner: %#v", persistedOwner)
 			framework.Logf("dependent: %#v", persistedDependent)
+			framework.Logf("dependent last state: %#v", lastDependent)
 			framework.Failf("failed waiting for dependent resource %q to be deleted", dependentName)
 		}
 

@@ -218,6 +218,7 @@ aliases:
     - krmayankk
     - mattjmcnaughton
   sig-network-approvers:
+    - andrewsykim
     - bowei
     - caseydavenport
     - danwinship
@@ -228,19 +229,20 @@ aliases:
     - nicksardo
     - thockin
   sig-network-reviewers:
+    - andrewsykim
+    - aojea
     - bowei
     - caseydavenport
+    - cmluciano
     - danwinship
     - dcbw
     - freehan
     - johnbelamaric
+    - m1093782566
     - mrhohn
     - nicksardo
-    - thockin
     - rramkumar1
-    - cmluciano
-    - m1093782566
-    - andrewsykim
+    - thockin
   sig-apps-approvers:
     - kow3ns
     - janetkuo
@@ -267,6 +269,7 @@ aliases:
   sig-instrumentation-approvers:
     - piosz
     - brancz
+    - serathius
   sig-instrumentation-reviewers:
     - kawych
     - s-urbaniak

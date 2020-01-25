@@ -490,6 +490,15 @@ func (g *genericScheduler) findNodesThatPassFilters(ctx context.Context, state *
 		}
 	}
 
+	beginCheckNode := time.Now()
+	statusCode := framework.Success
+	defer func() {
+		// We record Filter extension point latency here instead of in framework.go because framework.RunFilterPlugins
+		// function is called for each node, whereas we want to have an overall latency for all nodes per scheduling cycle.
+		// Note that this latency also includes latency for `addNominatedPods`, which calls framework.RunPreFilterAddPod.
+		metrics.FrameworkExtensionPointDuration.WithLabelValues(framework.Filter, statusCode.String()).Observe(metrics.SinceInSeconds(beginCheckNode))
+	}()
+
 	// Stops searching for more nodes once the configured number of feasible nodes
 	// are found.
 	workqueue.ParallelizeUntil(ctx, 16, len(allNodes), checkNode)
@@ -498,6 +507,7 @@ func (g *genericScheduler) findNodesThatPassFilters(ctx context.Context, state *
 
 	filtered = filtered[:filteredLen]
 	if err := errCh.ReceiveError(); err != nil {
+		statusCode = framework.Error
 		return nil, err
 	}
 	return filtered, nil
@@ -884,12 +894,17 @@ func (g *genericScheduler) selectNodesForPreemption(
 // This function is stable and does not change the order of received pods. So, if it
 // receives a sorted list, grouping will preserve the order of the input list.
 func filterPodsWithPDBViolation(pods []*v1.Pod, pdbs []*policy.PodDisruptionBudget) (violatingPods, nonViolatingPods []*v1.Pod) {
+	pdbsAllowed := make([]int32, len(pdbs))
+	for i, pdb := range pdbs {
+		pdbsAllowed[i] = pdb.Status.DisruptionsAllowed
+	}
+
 	for _, obj := range pods {
 		pod := obj
 		pdbForPodIsViolated := false
 		// A pod with no labels will not match any PDB. So, no need to check.
 		if len(pod.Labels) != 0 {
-			for _, pdb := range pdbs {
+			for i, pdb := range pdbs {
 				if pdb.Namespace != pod.Namespace {
 					continue
 				}
@@ -902,9 +917,11 @@ func filterPodsWithPDBViolation(pods []*v1.Pod, pdbs []*policy.PodDisruptionBudg
 					continue
 				}
 				// We have found a matching PDB.
-				if pdb.Status.DisruptionsAllowed <= 0 {
+				if pdbsAllowed[i] <= 0 {
 					pdbForPodIsViolated = true
 					break
+				} else {
+					pdbsAllowed[i]--
 				}
 			}
 		}
