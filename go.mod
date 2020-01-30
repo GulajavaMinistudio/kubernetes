@@ -148,7 +148,7 @@ require (
 	k8s.io/component-base v0.0.0
 	k8s.io/cri-api v0.0.0
 	k8s.io/csi-translation-lib v0.0.0
-	k8s.io/gengo v0.0.0-20190822140433-26a664648505
+	k8s.io/gengo v0.0.0-20200114144118-36b2048a9120
 	k8s.io/heapster v1.2.0-beta.1
 	k8s.io/klog v1.0.0
 	k8s.io/kube-aggregator v0.0.0
@@ -482,7 +482,7 @@ replace (
 	github.com/xlab/handysort => github.com/xlab/handysort v0.0.0-20150421192137-fb3537ed64a1
 	github.com/xordataexchange/crypt => github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77
 	go.etcd.io/bbolt => go.etcd.io/bbolt v1.3.3
-	go.etcd.io/etcd => go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738
+	go.etcd.io/etcd => go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738 // 3cf2f69b5738 is the SHA for git tag v3.4.3
 	go.mongodb.org/mongo-driver => go.mongodb.org/mongo-driver v1.1.2
 	go.opencensus.io => go.opencensus.io v0.21.0
 	go.uber.org/atomic => go.uber.org/atomic v1.3.2
@@ -544,7 +544,7 @@ replace (
 	k8s.io/component-base => ./staging/src/k8s.io/component-base
 	k8s.io/cri-api => ./staging/src/k8s.io/cri-api
 	k8s.io/csi-translation-lib => ./staging/src/k8s.io/csi-translation-lib
-	k8s.io/gengo => k8s.io/gengo v0.0.0-20190822140433-26a664648505
+	k8s.io/gengo => k8s.io/gengo v0.0.0-20200114144118-36b2048a9120
 	k8s.io/heapster => k8s.io/heapster v1.2.0-beta.1
 	k8s.io/klog => k8s.io/klog v1.0.0
 	k8s.io/kube-aggregator => ./staging/src/k8s.io/kube-aggregator
