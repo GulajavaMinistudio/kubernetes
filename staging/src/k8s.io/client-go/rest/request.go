@@ -30,6 +30,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/net/http2"
@@ -51,6 +52,9 @@ var (
 	// throttled (via the provided rateLimiter) for more than longThrottleLatency will
 	// be logged.
 	longThrottleLatency = 50 * time.Millisecond
+
+	// extraLongThrottleLatency defines the threshold for logging requests at log level 2.
+	extraLongThrottleLatency = 1 * time.Second
 )
 
 // HTTPClient is an interface for testing a request object.
@@ -61,8 +65,8 @@ type HTTPClient interface {
 // ResponseWrapper is an interface for getting a response.
 // The response may be either accessed as a raw data (the whole output is put into memory) or as a stream.
 type ResponseWrapper interface {
-	DoRaw() ([]byte, error)
-	Stream() (io.ReadCloser, error)
+	DoRaw(context.Context) ([]byte, error)
+	Stream(context.Context) (io.ReadCloser, error)
 }
 
 // RequestConstructionError is returned when there's an error assembling a request.
@@ -104,9 +108,6 @@ type Request struct {
 	// output
 	err  error
 	body io.Reader
-
-	// This is only used for per-request timeouts, deadlines, and cancellations.
-	ctx context.Context
 }
 
 // NewRequest creates a new request helper object for accessing runtime.Objects on a server.
@@ -438,13 +439,6 @@ func (r *Request) Body(obj interface{}) *Request {
 	return r
 }
 
-// Context adds a context to the request. Contexts are only used for
-// timeouts, deadlines, and cancellations.
-func (r *Request) Context(ctx context.Context) *Request {
-	r.ctx = ctx
-	return r
-}
-
 // URL returns the current working URL.
 func (r *Request) URL() *url.URL {
 	p := r.pathPrefix
@@ -557,21 +551,47 @@ func (r *Request) tryThrottle(ctx context.Context) error {
 
 	err := r.rateLimiter.Wait(ctx)
 
-	if latency := time.Since(now); latency > longThrottleLatency {
+	latency := time.Since(now)
+	if latency > longThrottleLatency {
 		klog.V(3).Infof("Throttling request took %v, request: %s:%s", latency, r.verb, r.URL().String())
+	}
+	if latency > extraLongThrottleLatency {
+		globalThrottledLogger.Log(2, fmt.Sprintf("Throttling request took %v, request: %s:%s", latency, r.verb, r.URL().String()))
 	}
 
 	return err
 }
 
+type throttledLogger struct {
+	logTimeLock    sync.RWMutex
+	lastLogTime    time.Time
+	minLogInterval time.Duration
+}
+
+var globalThrottledLogger = &throttledLogger{
+	minLogInterval: 1 * time.Second,
+}
+
+func (b *throttledLogger) Log(level klog.Level, message string) {
+	if bool(klog.V(level)) {
+		if func() bool {
+			b.logTimeLock.RLock()
+			defer b.logTimeLock.RUnlock()
+			return time.Since(b.lastLogTime) > b.minLogInterval
+		}() {
+			b.logTimeLock.Lock()
+			defer b.logTimeLock.Unlock()
+			if time.Since(b.lastLogTime) > b.minLogInterval {
+				klog.V(level).Info(message)
+				b.lastLogTime = time.Now()
+			}
+		}
+	}
+}
+
 // Watch attempts to begin watching the requested location.
 // Returns a watch.Interface, or an error.
-func (r *Request) Watch() (watch.Interface, error) {
-	ctx := context.Background()
-	if r.ctx != nil {
-		ctx = r.ctx
-	}
-
+func (r *Request) Watch(ctx context.Context) (watch.Interface, error) {
 	// We specifically don't want to rate limit watches, so we
 	// don't use r.rateLimiter here.
 	if r.err != nil {
@@ -658,12 +678,7 @@ func updateURLMetrics(req *Request, resp *http.Response, err error) {
 // Returns io.ReadCloser which could be used for streaming of the response, or an error
 // Any non-2xx http status code causes an error.  If we get a non-2xx code, we try to convert the body into an APIStatus object.
 // If we can, we return that as an error.  Otherwise, we create an error that lists the http status and the content of the response.
-func (r *Request) Stream() (io.ReadCloser, error) {
-	ctx := context.Background()
-	if r.ctx != nil {
-		ctx = r.ctx
-	}
-
+func (r *Request) Stream(ctx context.Context) (io.ReadCloser, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -786,6 +801,7 @@ func (r *Request) request(ctx context.Context, fn func(*http.Request, *http.Resp
 	maxRetries := 10
 	retries := 0
 	for {
+
 		url := r.URL().String()
 		req, err := http.NewRequest(r.verb, url, r.body)
 		if err != nil {
@@ -874,12 +890,7 @@ func (r *Request) request(ctx context.Context, fn func(*http.Request, *http.Resp
 // Error type:
 //  * If the server responds with a status: *errors.StatusError or *errors.UnexpectedObjectError
 //  * http.Client.Do errors are returned directly.
-func (r *Request) Do() Result {
-	ctx := context.Background()
-	if r.ctx != nil {
-		ctx = r.ctx
-	}
-
+func (r *Request) Do(ctx context.Context) Result {
 	var result Result
 	err := r.request(ctx, func(req *http.Request, resp *http.Response) {
 		result = r.transformResponse(resp, req)
@@ -891,12 +902,7 @@ func (r *Request) Do() Result {
 }
 
 // DoRaw executes the request but does not process the response body.
-func (r *Request) DoRaw() ([]byte, error) {
-	ctx := context.Background()
-	if r.ctx != nil {
-		ctx = r.ctx
-	}
-
+func (r *Request) DoRaw(ctx context.Context) ([]byte, error) {
 	var result Result
 	err := r.request(ctx, func(req *http.Request, resp *http.Response) {
 		result.body, result.err = ioutil.ReadAll(resp.Body)
