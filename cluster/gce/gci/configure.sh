@@ -66,8 +66,13 @@ function download-kube-env {
     # Convert the yaml format file into a shell-style file.
     eval $(${PYTHON} -c '''
 import pipes,sys,yaml
-for k,v in yaml.load(sys.stdin).iteritems():
-  print("readonly {var}={value}".format(var = k, value = pipes.quote(str(v))))
+# check version of python and call methods appropriate for that version
+if sys.version_info[0] < 3:
+    items = yaml.load(sys.stdin).iteritems()
+else:
+    items = yaml.load(sys.stdin, Loader=yaml.BaseLoader).items()
+for k, v in items:
+    print("readonly {var}={value}".format(var=k, value=pipes.quote(str(v))))
 ''' < "${tmp_kube_env}" > "${KUBE_HOME}/kube-env")
     rm -f "${tmp_kube_env}"
   )
@@ -105,8 +110,13 @@ function download-kube-master-certs {
     # Convert the yaml format file into a shell-style file.
     eval $(${PYTHON} -c '''
 import pipes,sys,yaml
-for k,v in yaml.load(sys.stdin).iteritems():
-  print("readonly {var}={value}".format(var = k, value = pipes.quote(str(v))))
+# check version of python and call methods appropriate for that version
+if sys.version_info[0] < 3:
+    items = yaml.load(sys.stdin).iteritems()
+else:
+    items = yaml.load(sys.stdin, Loader=yaml.BaseLoader).items()
+for k, v in items:
+    print("readonly {var}={value}".format(var=k, value=pipes.quote(str(v))))
 ''' < "${tmp_kube_master_certs}" > "${KUBE_HOME}/kube-master-certs")
     rm -f "${tmp_kube_master_certs}"
   )
@@ -393,6 +403,59 @@ function load-docker-images {
   fi
 }
 
+# If we are on ubuntu we can try to install docker
+function install-docker {
+  # bailout if we are not on ubuntu
+  if ! command -v apt-get >/dev/null 2>&1; then
+    echo "Unable to install automatically install docker. Bailing out..."
+    return
+  fi
+  # Install Docker deps, some of these are already installed in the image but
+  # that's fine since they won't re-install and we can reuse the code below
+  # for another image someday.
+  apt-get update
+  apt-get install -y --no-install-recommends \
+    apt-transport-https \
+    ca-certificates \
+    socat \
+    curl \
+    gnupg2 \
+    software-properties-common \
+    lsb-release
+
+  # Add the Docker apt-repository
+  curl -fsSL https://download.docker.com/linux/$(. /etc/os-release; echo "$ID")/gpg \
+    | apt-key add -
+  add-apt-repository \
+    "deb [arch=amd64] https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") \
+    $(lsb_release -cs) stable"
+
+  # Install Docker
+  apt-get update && \
+    apt-get install -y --no-install-recommends ${GCI_DOCKER_VERSION:-"docker-ce=5:19.03.*"}
+  rm -rf /var/lib/apt/lists/*
+}
+
+function ensure-container-runtime {
+  container_runtime="${CONTAINER_RUNTIME:-docker}"
+  if [[ "${container_runtime}" == "docker" ]]; then
+    if ! command -v docker >/dev/null 2>&1; then
+      install-docker
+      if ! command -v docker >/dev/null 2>&1; then
+        echo "ERROR docker not found. Aborting."
+        exit 2
+      fi
+    fi
+    docker version
+  elif [[ "${container_runtime}" == "containerd" ]]; then
+    if ! command -v ctr >/dev/null 2>&1; then
+      echo "ERROR ctr not found. Aborting."
+      exit 2
+    fi
+    ctr version
+  fi
+}
+
 # Downloads kubernetes binaries and kube-system manifest tarball, unpacks them,
 # and places them into suitable directories. Files are placed in /home/kubernetes.
 function install-kube-binary-config {
@@ -477,9 +540,21 @@ KUBE_HOME="/home/kubernetes"
 KUBE_BIN="${KUBE_HOME}/bin"
 PYTHON="python"
 
-if [[ "$(python -V)" =~ "Python 3" ]]; then
+if [[ "$(python -V 2>&1)" =~ "Python 2" ]]; then
+  # found python2, just use that
+  PYTHON="python"
+elif [[ -f "/usr/bin/python2.7" ]]; then
+  # System python not defaulted to python 2 but using 2.7 during migration
   PYTHON="/usr/bin/python2.7"
+else
+  # No python2 either by default, let's see if we can find python3
+  PYTHON="python3"
+  if ! command -v ${PYTHON} >/dev/null 2>&1; then
+    echo "ERROR Python not found. Aborting."
+    exit 2
+  fi
 fi
+echo "Version : " $(${PYTHON} -V 2>&1)
 
 # download and source kube-env
 download-kube-env
@@ -491,6 +566,9 @@ download-kubelet-config "${KUBE_HOME}/kubelet-config.yaml"
 if [[ "${KUBERNETES_MASTER:-}" == "true" ]]; then
   download-kube-master-certs
 fi
+
+# ensure chosen container runtime is present
+ensure-container-runtime
 
 # binaries and kube-system manifests
 install-kube-binary-config

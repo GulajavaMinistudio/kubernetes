@@ -47,7 +47,7 @@ require (
 	github.com/docker/docker v0.7.3-0.20190327010347-be7ac8be2ae0
 	github.com/docker/go-connections v0.3.0
 	github.com/docker/go-units v0.4.0
-	github.com/docker/libnetwork v0.8.0-dev.2.0.20190624125649-f0e46a78ea34
+	github.com/docker/libnetwork v0.8.0-dev.2.0.20190925143933-c8a5fca4a652
 	github.com/elazarl/goproxy v0.0.0-20180725130230-947c36da3153
 	github.com/emicklei/go-restful v2.9.5+incompatible
 	github.com/euank/go-kmsg-parser v2.0.0+incompatible // indirect
@@ -166,7 +166,7 @@ require (
 	k8s.io/system-validators v1.0.4
 	k8s.io/utils v0.0.0-20191217005138-9e5e9d854fcc
 	sigs.k8s.io/kustomize v2.0.3+incompatible
-	sigs.k8s.io/yaml v1.1.0
+	sigs.k8s.io/yaml v1.2.0
 )
 
 replace (
@@ -250,7 +250,7 @@ replace (
 	github.com/docker/docker => github.com/docker/docker v0.7.3-0.20190327010347-be7ac8be2ae0
 	github.com/docker/go-connections => github.com/docker/go-connections v0.3.0
 	github.com/docker/go-units => github.com/docker/go-units v0.4.0
-	github.com/docker/libnetwork => github.com/docker/libnetwork v0.8.0-dev.2.0.20190624125649-f0e46a78ea34
+	github.com/docker/libnetwork => github.com/docker/libnetwork v0.8.0-dev.2.0.20190925143933-c8a5fca4a652
 	github.com/docker/spdystream => github.com/docker/spdystream v0.0.0-20160310174837-449fdfce4d96
 	github.com/dustin/go-humanize => github.com/dustin/go-humanize v1.0.0
 	github.com/elazarl/goproxy => github.com/elazarl/goproxy v0.0.0-20180725130230-947c36da3153 // 947c36da3153 is the SHA for git tag v1.11
@@ -558,7 +558,6 @@ replace (
 	k8s.io/kubelet => ./staging/src/k8s.io/kubelet
 	k8s.io/legacy-cloud-providers => ./staging/src/k8s.io/legacy-cloud-providers
 	k8s.io/metrics => ./staging/src/k8s.io/metrics
-	k8s.io/node-api => ./staging/src/k8s.io/node-api
 	k8s.io/repo-infra => k8s.io/repo-infra v0.0.1-alpha.1
 	k8s.io/sample-apiserver => ./staging/src/k8s.io/sample-apiserver
 	k8s.io/sample-cli-plugin => ./staging/src/k8s.io/sample-cli-plugin
@@ -576,7 +575,7 @@ replace (
 	rsc.io/pdf => rsc.io/pdf v0.1.1
 	sigs.k8s.io/kustomize => sigs.k8s.io/kustomize v2.0.3+incompatible
 	sigs.k8s.io/structured-merge-diff/v3 => sigs.k8s.io/structured-merge-diff/v3 v3.0.0-20200121225636-0fb62c1057dd
-	sigs.k8s.io/yaml => sigs.k8s.io/yaml v1.1.0
+	sigs.k8s.io/yaml => sigs.k8s.io/yaml v1.2.0
 	sourcegraph.com/sqs/pbtypes => sourcegraph.com/sqs/pbtypes v0.0.0-20180604144634-d3ebe8f20ae4
 	vbom.ml/util => vbom.ml/util v0.0.0-20160121211510-db5cfe13f5cc
 )

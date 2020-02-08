@@ -20,11 +20,9 @@ pkg/volume
 pkg/volume/azure_dd
 pkg/volume/azure_file
 pkg/volume/csi
-pkg/volume/fc
 pkg/volume/flexvolume
 pkg/volume/iscsi
 pkg/volume/local
-pkg/volume/portworx
 pkg/volume/quobyte
 pkg/volume/rbd
 pkg/volume/storageos
@@ -33,7 +31,6 @@ pkg/volume/util/fsquota
 pkg/volume/util/fsquota/common
 pkg/volume/util/operationexecutor
 pkg/volume/util/subpath
-pkg/volume/vsphere_volume
 test/e2e/apps
 test/e2e/autoscaling
 test/integration/deployment
@@ -43,7 +40,6 @@ test/integration/garbagecollector
 test/integration/scheduler_perf
 test/integration/ttlcontroller
 vendor/k8s.io/apimachinery/pkg/api/meta
-vendor/k8s.io/apimachinery/pkg/api/resource
 vendor/k8s.io/apimachinery/pkg/apis/meta/v1/unstructured
 vendor/k8s.io/apimachinery/pkg/apis/meta/v1/unstructured/unstructuredscheme
 vendor/k8s.io/apimachinery/pkg/apis/meta/v1/validation
@@ -113,5 +109,4 @@ vendor/k8s.io/kubectl/pkg/cmd/util/editor
 vendor/k8s.io/kubectl/pkg/cmd/wait
 vendor/k8s.io/kubectl/pkg/describe/versioned
 vendor/k8s.io/kubectl/pkg/scale
-vendor/k8s.io/legacy-cloud-providers/aws
 vendor/k8s.io/metrics/pkg/client/custom_metrics
