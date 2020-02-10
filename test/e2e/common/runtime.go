@@ -17,11 +17,13 @@ limitations under the License.
 package common
 
 import (
+	"context"
 	"fmt"
 	"path"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/kubernetes/pkg/kubelet/images"
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -299,9 +301,9 @@ while true; do sleep 1; done
 					}
 					secret.Name = "image-pull-secret-" + string(uuid.NewUUID())
 					ginkgo.By("create image pull secret")
-					_, err := f.ClientSet.CoreV1().Secrets(f.Namespace.Name).Create(secret)
+					_, err := f.ClientSet.CoreV1().Secrets(f.Namespace.Name).Create(context.TODO(), secret, metav1.CreateOptions{})
 					framework.ExpectNoError(err)
-					defer f.ClientSet.CoreV1().Secrets(f.Namespace.Name).Delete(secret.Name, nil)
+					defer f.ClientSet.CoreV1().Secrets(f.Namespace.Name).Delete(context.TODO(), secret.Name, nil)
 					container.ImagePullSecrets = []string{secret.Name}
 				}
 				// checkContainerStatus checks whether the container status matches expectation.
