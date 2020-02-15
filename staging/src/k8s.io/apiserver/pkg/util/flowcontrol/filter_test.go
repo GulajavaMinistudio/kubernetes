@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors.
+Copyright 2019 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,16 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package fake
+package flowcontrol
 
 import (
-	"context"
-
-	authenticationapi "k8s.io/api/authentication/v1beta1"
-	core "k8s.io/client-go/testing"
+	"testing"
 )
 
-func (c *FakeTokenReviews) CreateContext(ctx context.Context, tokenReview *authenticationapi.TokenReview) (result *authenticationapi.TokenReview, err error) {
-	obj, err := c.Fake.Invokes(core.NewRootCreateAction(authenticationapi.SchemeGroupVersion.WithResource("tokenreviews"), tokenReview), &authenticationapi.TokenReview{})
-	return obj.(*authenticationapi.TokenReview), err
+func BenchmarkHash(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		hashFlowID("supercalifragilistic expialidocious", "the sound of it is something quite atrocious")
+	}
 }

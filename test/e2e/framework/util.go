@@ -125,7 +125,6 @@ const (
 
 	// SingleCallTimeout is how long to try single API calls (like 'get' or 'list'). Used to prevent
 	// transient failures from failing tests.
-	// TODO: client should not apply this timeout to Watch calls. Increased from 30s until that is fixed.
 	SingleCallTimeout = 5 * time.Minute
 
 	// NodeReadyInitialTimeout is how long nodes have to be "ready" when a test begins. They should already
@@ -607,7 +606,7 @@ func AssertCleanup(ns string, selectors ...string) {
 // executed in a specific pod container.
 // TODO(alejandrox1): move to pod/ subpkg once kubectl methods are refactored.
 func LookForStringInPodExec(ns, podName string, command []string, expectedString string, timeout time.Duration) (result string, err error) {
-	return LookForString(expectedString, timeout, func() string {
+	return lookForString(expectedString, timeout, func() string {
 		// use the first container
 		args := []string{"exec", podName, fmt.Sprintf("--namespace=%v", ns), "--"}
 		args = append(args, command...)
@@ -615,11 +614,11 @@ func LookForStringInPodExec(ns, podName string, command []string, expectedString
 	})
 }
 
-// LookForString looks for the given string in the output of fn, repeatedly calling fn until
+// lookForString looks for the given string in the output of fn, repeatedly calling fn until
 // the timeout is reached or the string is found. Returns last log and possibly
 // error if the string was not found.
 // TODO(alejandrox1): move to pod/ subpkg once kubectl methods are refactored.
-func LookForString(expectedString string, timeout time.Duration, fn func() string) (result string, err error) {
+func lookForString(expectedString string, timeout time.Duration, fn func() string) (result string, err error) {
 	for t := time.Now(); time.Since(t) < timeout; time.Sleep(Poll) {
 		result = fn()
 		if strings.Contains(result, expectedString) {
@@ -1536,7 +1535,11 @@ func headersForConfig(c *restclient.Config, url *url.URL) (http.Header, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := rt.RoundTrip(&http.Request{URL: url}); err != nil {
+	request, err := http.NewRequest("GET", url.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := rt.RoundTrip(request); err != nil {
 		return nil, err
 	}
 	return extract.Header, nil
@@ -1570,7 +1573,7 @@ func OpenWebSocketForURL(url *url.URL, config *restclient.Config, protocols []st
 
 // LookForStringInLog looks for the given string in the log of a specific pod container
 func LookForStringInLog(ns, podName, container, expectedString string, timeout time.Duration) (result string, err error) {
-	return LookForString(expectedString, timeout, func() string {
+	return lookForString(expectedString, timeout, func() string {
 		return RunKubectlOrDie(ns, "logs", podName, container, fmt.Sprintf("--namespace=%v", ns))
 	})
 }
@@ -1878,7 +1881,6 @@ func DumpDebugInfo(c clientset.Interface, ns string) {
 
 // DsFromManifest reads a .json/yaml file and returns the daemonset in it.
 func DsFromManifest(url string) (*appsv1.DaemonSet, error) {
-	var ds appsv1.DaemonSet
 	Logf("Parsing ds from %v", url)
 
 	var response *http.Response
@@ -1904,7 +1906,12 @@ func DsFromManifest(url string) (*appsv1.DaemonSet, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Failed to read html response body: %v", err)
 	}
+	return DsFromData(data)
+}
 
+// DsFromData reads a byte slice and returns the daemonset in it.
+func DsFromData(data []byte) (*appsv1.DaemonSet, error) {
+	var ds appsv1.DaemonSet
 	dataJSON, err := utilyaml.ToJSON(data)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to parse data to json: %v", err)

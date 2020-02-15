@@ -123,7 +123,7 @@ func TestSchedulerCreationFromConfigMap(t *testing.T) {
 					{Name: "VolumeZone"},
 					{Name: "InterPodAffinity"},
 				},
-				"PostFilterPlugin": {
+				"PreScorePlugin": {
 					{Name: "InterPodAffinity"},
 					{Name: "DefaultPodTopologySpread"},
 					{Name: "TaintToleration"},
@@ -209,7 +209,7 @@ kind: Policy
 					{Name: "VolumeZone"},
 					{Name: "InterPodAffinity"},
 				},
-				"PostFilterPlugin": {
+				"PreScorePlugin": {
 					{Name: "InterPodAffinity"},
 					{Name: "DefaultPodTopologySpread"},
 					{Name: "TaintToleration"},
@@ -273,7 +273,6 @@ priorities: []
 					},
 				},
 			}),
-			scheduler.WithHardPodAffinitySymmetricWeight(v1.DefaultHardPodAffinitySymmetricWeight),
 			scheduler.WithBindTimeoutSeconds(defaultBindTimeout),
 		)
 		if err != nil {
@@ -321,7 +320,6 @@ func TestSchedulerCreationFromNonExistentConfigMap(t *testing.T) {
 				},
 			},
 		}),
-		scheduler.WithHardPodAffinitySymmetricWeight(v1.DefaultHardPodAffinitySymmetricWeight),
 		scheduler.WithBindTimeoutSeconds(defaultBindTimeout))
 
 	if err == nil {

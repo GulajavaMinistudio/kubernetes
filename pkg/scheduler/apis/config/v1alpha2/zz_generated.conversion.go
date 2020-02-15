@@ -148,9 +148,6 @@ func autoConvert_v1alpha2_KubeSchedulerConfiguration_To_config_KubeSchedulerConf
 	if err := Convert_v1alpha2_SchedulerAlgorithmSource_To_config_SchedulerAlgorithmSource(&in.AlgorithmSource, &out.AlgorithmSource, s); err != nil {
 		return err
 	}
-	if err := v1.Convert_Pointer_int32_To_int32(&in.HardPodAffinitySymmetricWeight, &out.HardPodAffinitySymmetricWeight, s); err != nil {
-		return err
-	}
 	if err := Convert_v1alpha2_KubeSchedulerLeaderElectionConfiguration_To_config_KubeSchedulerLeaderElectionConfiguration(&in.LeaderElection, &out.LeaderElection, s); err != nil {
 		return err
 	}
@@ -204,9 +201,6 @@ func autoConvert_config_KubeSchedulerConfiguration_To_v1alpha2_KubeSchedulerConf
 		return err
 	}
 	if err := Convert_config_SchedulerAlgorithmSource_To_v1alpha2_SchedulerAlgorithmSource(&in.AlgorithmSource, &out.AlgorithmSource, s); err != nil {
-		return err
-	}
-	if err := v1.Convert_int32_To_Pointer_int32(&in.HardPodAffinitySymmetricWeight, &out.HardPodAffinitySymmetricWeight, s); err != nil {
 		return err
 	}
 	if err := Convert_config_KubeSchedulerLeaderElectionConfiguration_To_v1alpha2_KubeSchedulerLeaderElectionConfiguration(&in.LeaderElection, &out.LeaderElection, s); err != nil {
@@ -419,14 +413,14 @@ func autoConvert_v1alpha2_Plugins_To_config_Plugins(in *v1alpha2.Plugins, out *c
 	} else {
 		out.Filter = nil
 	}
-	if in.PostFilter != nil {
-		in, out := &in.PostFilter, &out.PostFilter
+	if in.PreScore != nil {
+		in, out := &in.PreScore, &out.PreScore
 		*out = new(config.PluginSet)
 		if err := Convert_v1alpha2_PluginSet_To_config_PluginSet(*in, *out, s); err != nil {
 			return err
 		}
 	} else {
-		out.PostFilter = nil
+		out.PreScore = nil
 	}
 	if in.Score != nil {
 		in, out := &in.Score, &out.Score
@@ -527,14 +521,14 @@ func autoConvert_config_Plugins_To_v1alpha2_Plugins(in *config.Plugins, out *v1a
 	} else {
 		out.Filter = nil
 	}
-	if in.PostFilter != nil {
-		in, out := &in.PostFilter, &out.PostFilter
+	if in.PreScore != nil {
+		in, out := &in.PreScore, &out.PreScore
 		*out = new(v1alpha2.PluginSet)
 		if err := Convert_config_PluginSet_To_v1alpha2_PluginSet(*in, *out, s); err != nil {
 			return err
 		}
 	} else {
-		out.PostFilter = nil
+		out.PreScore = nil
 	}
 	if in.Score != nil {
 		in, out := &in.Score, &out.Score

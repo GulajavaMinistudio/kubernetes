@@ -44,10 +44,6 @@ type KubeSchedulerConfiguration struct {
 	SchedulerName *string `json:"schedulerName,omitempty"`
 	// AlgorithmSource specifies the scheduler algorithm source.
 	AlgorithmSource SchedulerAlgorithmSource `json:"algorithmSource"`
-	// RequiredDuringScheduling affinity is not symmetric, but there is an implicit PreferredDuringScheduling affinity rule
-	// corresponding to every RequiredDuringScheduling affinity rule.
-	// HardPodAffinitySymmetricWeight represents the weight of implicit PreferredDuringScheduling affinity rule, in the range 0-100.
-	HardPodAffinitySymmetricWeight *int32 `json:"hardPodAffinitySymmetricWeight,omitempty"`
 
 	// LeaderElection defines the configuration of leader election client.
 	LeaderElection KubeSchedulerLeaderElectionConfiguration `json:"leaderElection"`
@@ -163,8 +159,8 @@ type Plugins struct {
 	// Filter is a list of plugins that should be invoked when filtering out nodes that cannot run the Pod.
 	Filter *PluginSet `json:"filter,omitempty"`
 
-	// PostFilter is a list of plugins that are invoked after filtering out infeasible nodes.
-	PostFilter *PluginSet `json:"postFilter,omitempty"`
+	// PreScore is a list of plugins that are invoked before scoring.
+	PreScore *PluginSet `json:"preScore,omitempty"`
 
 	// Score is a list of plugins that should be invoked when ranking nodes that have passed the filtering phase.
 	Score *PluginSet `json:"score,omitempty"`

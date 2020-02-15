@@ -34,11 +34,6 @@ func (in *KubeSchedulerConfiguration) DeepCopyInto(out *KubeSchedulerConfigurati
 		**out = **in
 	}
 	in.AlgorithmSource.DeepCopyInto(&out.AlgorithmSource)
-	if in.HardPodAffinitySymmetricWeight != nil {
-		in, out := &in.HardPodAffinitySymmetricWeight, &out.HardPodAffinitySymmetricWeight
-		*out = new(int32)
-		**out = **in
-	}
 	in.LeaderElection.DeepCopyInto(&out.LeaderElection)
 	out.ClientConnection = in.ClientConnection
 	if in.HealthzBindAddress != nil {
@@ -213,8 +208,8 @@ func (in *Plugins) DeepCopyInto(out *Plugins) {
 		*out = new(PluginSet)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.PostFilter != nil {
-		in, out := &in.PostFilter, &out.PostFilter
+	if in.PreScore != nil {
+		in, out := &in.PreScore, &out.PreScore
 		*out = new(PluginSet)
 		(*in).DeepCopyInto(*out)
 	}
