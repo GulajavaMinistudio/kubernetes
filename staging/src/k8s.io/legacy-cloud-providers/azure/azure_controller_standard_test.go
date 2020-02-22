@@ -27,6 +27,11 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"k8s.io/apimachinery/pkg/types"
+	azcache "k8s.io/legacy-cloud-providers/azure/cache"
+)
+
+var (
+	fakeCacheTTL = 2 * time.Second
 )
 
 func TestStandardAttachDisk(t *testing.T) {
@@ -48,7 +53,7 @@ func TestStandardAttachDisk(t *testing.T) {
 	}
 
 	for i, test := range testCases {
-		testCloud := getTestCloud()
+		testCloud := GetTestCloud()
 		vmSet := testCloud.vmSet
 		setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
 
@@ -85,7 +90,7 @@ func TestStandardDetachDisk(t *testing.T) {
 	}
 
 	for i, test := range testCases {
-		testCloud := getTestCloud()
+		testCloud := GetTestCloud()
 		vmSet := testCloud.vmSet
 		setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
 
@@ -100,14 +105,14 @@ func TestGetDataDisks(t *testing.T) {
 		nodeName          types.NodeName
 		expectedDataDisks []compute.DataDisk
 		expectedError     bool
-		crt               cacheReadType
+		crt               azcache.AzureCacheReadType
 	}{
 		{
 			desc:              "an error shall be returned if there's no corresponding vm",
 			nodeName:          "vm2",
 			expectedDataDisks: nil,
 			expectedError:     true,
-			crt:               cacheReadTypeDefault,
+			crt:               azcache.CacheReadTypeDefault,
 		},
 		{
 			desc:     "correct list of data disks shall be returned if everything is good",
@@ -119,7 +124,7 @@ func TestGetDataDisks(t *testing.T) {
 				},
 			},
 			expectedError: false,
-			crt:           cacheReadTypeDefault,
+			crt:           azcache.CacheReadTypeDefault,
 		},
 		{
 			desc:     "correct list of data disks shall be returned if everything is good",
@@ -131,11 +136,11 @@ func TestGetDataDisks(t *testing.T) {
 				},
 			},
 			expectedError: false,
-			crt:           cacheReadTypeUnsafe,
+			crt:           azcache.CacheReadTypeUnsafe,
 		},
 	}
 	for i, test := range testCases {
-		testCloud := getTestCloud()
+		testCloud := GetTestCloud()
 		vmSet := testCloud.vmSet
 		setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
 
@@ -143,7 +148,7 @@ func TestGetDataDisks(t *testing.T) {
 		assert.Equal(t, test.expectedDataDisks, dataDisks, "TestCase[%d]: %s", i, test.desc)
 		assert.Equal(t, test.expectedError, err != nil, "TestCase[%d]: %s", i, test.desc)
 
-		if test.crt == cacheReadTypeUnsafe {
+		if test.crt == azcache.CacheReadTypeUnsafe {
 			time.Sleep(fakeCacheTTL)
 			dataDisks, err := vmSet.GetDataDisks(test.nodeName, test.crt)
 			assert.Equal(t, test.expectedDataDisks, dataDisks, "TestCase[%d]: %s", i, test.desc)
