@@ -25,21 +25,21 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/scheduler"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
+	"k8s.io/kubernetes/pkg/scheduler/profile"
 	"k8s.io/kubernetes/test/integration/framework"
 )
 
@@ -270,9 +270,8 @@ priorities: []
 		sched, err := scheduler.New(clientSet,
 			informerFactory,
 			scheduler.NewPodInformer(clientSet, 0),
-			eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.DefaultSchedulerName),
+			profile.NewRecorderFactory(eventBroadcaster),
 			nil,
-			scheduler.WithName(v1.DefaultSchedulerName),
 			scheduler.WithAlgorithmSource(kubeschedulerconfig.SchedulerAlgorithmSource{
 				Policy: &kubeschedulerconfig.SchedulerPolicySource{
 					ConfigMap: &kubeschedulerconfig.SchedulerPolicyConfigMapSource{
@@ -287,7 +286,7 @@ priorities: []
 			t.Fatalf("couldn't make scheduler config for test %d: %v", i, err)
 		}
 
-		schedPlugins := sched.Framework.ListPlugins()
+		schedPlugins := sched.Profiles[v1.DefaultSchedulerName].ListPlugins()
 		if diff := cmp.Diff(test.expectedPlugins, schedPlugins); diff != "" {
 			t.Errorf("unexpected plugins diff (-want, +got): %s", diff)
 		}
@@ -317,9 +316,8 @@ func TestSchedulerCreationFromNonExistentConfigMap(t *testing.T) {
 	_, err := scheduler.New(clientSet,
 		informerFactory,
 		scheduler.NewPodInformer(clientSet, 0),
-		eventBroadcaster.NewRecorder(legacyscheme.Scheme, v1.DefaultSchedulerName),
+		profile.NewRecorderFactory(eventBroadcaster),
 		nil,
-		scheduler.WithName(v1.DefaultSchedulerName),
 		scheduler.WithAlgorithmSource(kubeschedulerconfig.SchedulerAlgorithmSource{
 			Policy: &kubeschedulerconfig.SchedulerPolicySource{
 				ConfigMap: &kubeschedulerconfig.SchedulerPolicyConfigMapSource{
@@ -461,7 +459,7 @@ func TestUnschedulableNodes(t *testing.T) {
 	}
 }
 
-func TestMultiScheduler(t *testing.T) {
+func TestMultipleSchedulers(t *testing.T) {
 	// This integration tests the multi-scheduler feature in the following way:
 	// 1. create a default scheduler
 	// 2. create a node
@@ -538,7 +536,8 @@ func TestMultiScheduler(t *testing.T) {
 	}
 
 	// 5. create and start a scheduler with name "foo-scheduler"
-	testCtx = initTestSchedulerWithOptions(t, testCtx, true, nil, time.Second, scheduler.WithName(fooScheduler))
+	fooProf := kubeschedulerconfig.KubeSchedulerProfile{SchedulerName: fooScheduler}
+	testCtx = initTestSchedulerWithOptions(t, testCtx, true, nil, time.Second, scheduler.WithProfiles(fooProf))
 
 	//	6. **check point-2**:
 	//		- testPodWithAnnotationFitsFoo should be scheduled
@@ -594,6 +593,76 @@ func TestMultiScheduler(t *testing.T) {
 			t.Logf("Test MultiScheduler: %s Pod scheduled", testPodWithAnnotationFitsDefault2.Name)
 		}
 	*/
+}
+
+func TestMultipleSchedulingProfiles(t *testing.T) {
+	testCtx := initTest(t, "multi-scheduler", scheduler.WithProfiles(
+		kubeschedulerconfig.KubeSchedulerProfile{
+			SchedulerName: "default-scheduler",
+		},
+		kubeschedulerconfig.KubeSchedulerProfile{
+			SchedulerName: "custom-scheduler",
+		},
+	))
+	defer cleanupTest(t, testCtx)
+
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "node-multi-scheduler-test-node"},
+		Spec:       v1.NodeSpec{Unschedulable: false},
+		Status: v1.NodeStatus{
+			Capacity: v1.ResourceList{
+				v1.ResourcePods: *resource.NewQuantity(32, resource.DecimalSI),
+			},
+		},
+	}
+	if _, err := testCtx.clientSet.CoreV1().Nodes().Create(context.TODO(), node, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	evs, err := testCtx.clientSet.CoreV1().Events(testCtx.ns.Name).Watch(testCtx.ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer evs.Stop()
+
+	for _, pc := range []*pausePodConfig{
+		{Name: "foo", Namespace: testCtx.ns.Name},
+		{Name: "bar", Namespace: testCtx.ns.Name, SchedulerName: "unknown-scheduler"},
+		{Name: "baz", Namespace: testCtx.ns.Name, SchedulerName: "default-scheduler"},
+		{Name: "zet", Namespace: testCtx.ns.Name, SchedulerName: "custom-scheduler"},
+	} {
+		if _, err := createPausePod(testCtx.clientSet, initPausePod(testCtx.clientSet, pc)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	wantProfiles := map[string]string{
+		"foo": "default-scheduler",
+		"baz": "default-scheduler",
+		"zet": "custom-scheduler",
+	}
+
+	gotProfiles := make(map[string]string)
+	if err := wait.Poll(100*time.Millisecond, 30*time.Second, func() (bool, error) {
+		var ev watch.Event
+		select {
+		case ev = <-evs.ResultChan():
+		case <-time.After(30 * time.Second):
+			return false, nil
+		}
+		e, ok := ev.Object.(*v1.Event)
+		if !ok || e.Reason != "Scheduled" {
+			return false, nil
+		}
+		gotProfiles[e.InvolvedObject.Name] = e.ReportingController
+		return len(gotProfiles) >= len(wantProfiles), nil
+	}); err != nil {
+		t.Errorf("waiting for scheduling events: %v", err)
+	}
+
+	if diff := cmp.Diff(wantProfiles, gotProfiles); diff != "" {
+		t.Errorf("pods scheduled by the wrong profile (-want, +got):\n%s", diff)
+	}
 }
 
 // This test will verify scheduler can work well regardless of whether kubelet is allocatable aware or not.
