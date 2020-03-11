@@ -19,12 +19,14 @@ package skipper
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
-	"github.com/onsi/ginkgo"
 	"regexp"
 	"runtime"
 	"runtime/debug"
 	"strings"
+
+	"github.com/onsi/ginkgo"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,7 +46,7 @@ var TestContext framework.TestContextType
 
 func skipInternalf(caller int, format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	framework.Logf("INFO", msg)
+	framework.Logf(msg)
 	skip(msg, caller+1)
 }
 
@@ -136,7 +138,7 @@ func SkipUnlessLocalEphemeralStorageEnabled() {
 // SkipIfMissingResource skips if the gvr resource is missing.
 func SkipIfMissingResource(dynamicClient dynamic.Interface, gvr schema.GroupVersionResource, namespace string) {
 	resourceClient := dynamicClient.Resource(gvr).Namespace(namespace)
-	_, err := resourceClient.List(metav1.ListOptions{})
+	_, err := resourceClient.List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		// not all resources support list, so we ignore those
 		if apierrors.IsMethodNotSupported(err) || apierrors.IsNotFound(err) || apierrors.IsForbidden(err) {
