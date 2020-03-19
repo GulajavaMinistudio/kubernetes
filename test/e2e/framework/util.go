@@ -39,8 +39,6 @@ import (
 
 	"golang.org/x/net/websocket"
 
-	"k8s.io/klog"
-
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
 	gomegatypes "github.com/onsi/gomega/types"
@@ -1022,43 +1020,6 @@ func WaitForAllNodesSchedulable(c clientset.Interface, timeout time.Duration) er
 	)
 }
 
-// GetPodSecretUpdateTimeout reuturns the timeout duration for updating pod secret.
-func GetPodSecretUpdateTimeout(c clientset.Interface) time.Duration {
-	// With SecretManager(ConfigMapManager), we may have to wait up to full sync period +
-	// TTL of secret(configmap) to elapse before the Kubelet projects the update into the
-	// volume and the container picks it up.
-	// So this timeout is based on default Kubelet sync period (1 minute) + maximum TTL for
-	// secret(configmap) that's based on cluster size + additional time as a fudge factor.
-	secretTTL, err := getNodeTTLAnnotationValue(c)
-	if err != nil {
-		Logf("Couldn't get node TTL annotation (using default value of 0): %v", err)
-	}
-	podLogTimeout := 240*time.Second + secretTTL
-	return podLogTimeout
-}
-
-func getNodeTTLAnnotationValue(c clientset.Interface) (time.Duration, error) {
-	nodes, err := c.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	if err != nil || len(nodes.Items) == 0 {
-		return time.Duration(0), fmt.Errorf("Couldn't list any nodes to get TTL annotation: %v", err)
-	}
-	// Since TTL the kubelet is using is stored in node object, for the timeout
-	// purpose we take it from the first node (all of them should be the same).
-	node := &nodes.Items[0]
-	if node.Annotations == nil {
-		return time.Duration(0), fmt.Errorf("No annotations found on the node")
-	}
-	value, ok := node.Annotations[v1.ObjectTTLAnnotationKey]
-	if !ok {
-		return time.Duration(0), fmt.Errorf("No TTL annotation found on the node")
-	}
-	intValue, err := strconv.Atoi(value)
-	if err != nil {
-		return time.Duration(0), fmt.Errorf("Cannot convert TTL annotation from %#v to int", *node)
-	}
-	return time.Duration(intValue) * time.Second, nil
-}
-
 // AddOrUpdateLabelOnNode adds the given label key and value to the given node or updates value.
 func AddOrUpdateLabelOnNode(c clientset.Interface, nodeName string, labelKey, labelValue string) {
 	ExpectNoError(testutils.AddLabelsToNode(c, nodeName, map[string]string{labelKey: labelValue}))
@@ -1547,65 +1508,6 @@ func RunCmdEnv(env []string, command string, args ...string) (string, string, er
 	return stdout, stderr, nil
 }
 
-// E2ETestNodePreparer implements testutils.TestNodePreparer interface, which is used
-// to create/modify Nodes before running a test.
-type E2ETestNodePreparer struct {
-	client clientset.Interface
-	// Specifies how many nodes should be modified using the given strategy.
-	// Only one strategy can be applied to a single Node, so there needs to
-	// be at least <sum_of_keys> Nodes in the cluster.
-	countToStrategy       []testutils.CountToStrategy
-	nodeToAppliedStrategy map[string]testutils.PrepareNodeStrategy
-}
-
-// PrepareNodes prepares nodes in the cluster.
-func (p *E2ETestNodePreparer) PrepareNodes() error {
-	nodes, err := e2enode.GetReadySchedulableNodes(p.client)
-	if err != nil {
-		return err
-	}
-	numTemplates := 0
-	for _, v := range p.countToStrategy {
-		numTemplates += v.Count
-	}
-	if numTemplates > len(nodes.Items) {
-		return fmt.Errorf("Can't prepare Nodes. Got more templates than existing Nodes")
-	}
-	index := 0
-	sum := 0
-	for _, v := range p.countToStrategy {
-		sum += v.Count
-		for ; index < sum; index++ {
-			if err := testutils.DoPrepareNode(p.client, &nodes.Items[index], v.Strategy); err != nil {
-				klog.Errorf("Aborting node preparation: %v", err)
-				return err
-			}
-			p.nodeToAppliedStrategy[nodes.Items[index].Name] = v.Strategy
-		}
-	}
-	return nil
-}
-
-// CleanupNodes cleanups nodes in the cluster.
-func (p *E2ETestNodePreparer) CleanupNodes() error {
-	var encounteredError error
-	nodes, err := e2enode.GetReadySchedulableNodes(p.client)
-	if err != nil {
-		return err
-	}
-	for i := range nodes.Items {
-		name := nodes.Items[i].Name
-		strategy, found := p.nodeToAppliedStrategy[name]
-		if found {
-			if err = testutils.DoCleanupNode(p.client, name, strategy); err != nil {
-				klog.Errorf("Skipping cleanup of Node: failed update of %v: %v", name, err)
-				encounteredError = err
-			}
-		}
-	}
-	return encounteredError
-}
-
 // getMasterAddresses returns the externalIP, internalIP and hostname fields of the master.
 // If any of these is unavailable, it is set to "".
 func getMasterAddresses(c clientset.Interface) (string, string, string) {
@@ -1769,27 +1671,6 @@ func DsFromData(data []byte) (*appsv1.DaemonSet, error) {
 		return nil, fmt.Errorf("Failed to decode DaemonSet spec: %v", err)
 	}
 	return &ds, nil
-}
-
-// GetClusterZones returns the values of zone label collected from all nodes.
-func GetClusterZones(c clientset.Interface) (sets.String, error) {
-	nodes, err := c.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("Error getting nodes while attempting to list cluster zones: %v", err)
-	}
-
-	// collect values of zone label from all nodes
-	zones := sets.NewString()
-	for _, node := range nodes.Items {
-		if zone, found := node.Labels[v1.LabelZoneFailureDomain]; found {
-			zones.Insert(zone)
-		}
-
-		if zone, found := node.Labels[v1.LabelZoneFailureDomainStable]; found {
-			zones.Insert(zone)
-		}
-	}
-	return zones, nil
 }
 
 // GetFileModeRegex returns a file mode related regex which should be matched by the mounttest pods' output.
