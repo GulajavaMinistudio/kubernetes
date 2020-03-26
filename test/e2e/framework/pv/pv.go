@@ -29,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
-	storageutil "k8s.io/kubernetes/pkg/apis/storage/v1/util"
 	"k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2eskipper "k8s.io/kubernetes/test/e2e/framework/skipper"
@@ -53,6 +52,14 @@ const (
 
 	// VolumeSelectorKey is the key for volume selector.
 	VolumeSelectorKey = "e2e-pv-pool"
+
+	// isDefaultStorageClassAnnotation represents a StorageClass annotation that
+	// marks a class as the default StorageClass
+	isDefaultStorageClassAnnotation = "storageclass.kubernetes.io/is-default-class"
+
+	// betaIsDefaultStorageClassAnnotation is the beta version of IsDefaultStorageClassAnnotation.
+	// TODO: remove Beta when no longer used
+	betaIsDefaultStorageClassAnnotation = "storageclass.beta.kubernetes.io/is-default-class"
 )
 
 var (
@@ -779,7 +786,7 @@ func GetDefaultStorageClassName(c clientset.Interface) (string, error) {
 	}
 	var scName string
 	for _, sc := range list.Items {
-		if storageutil.IsDefaultAnnotation(sc.ObjectMeta) {
+		if isDefaultAnnotation(sc.ObjectMeta) {
 			if len(scName) != 0 {
 				return "", fmt.Errorf("Multiple default storage classes found: %q and %q", scName, sc.Name)
 			}
@@ -793,10 +800,42 @@ func GetDefaultStorageClassName(c clientset.Interface) (string, error) {
 	return scName, nil
 }
 
+// isDefaultAnnotation returns a boolean if the default storage class
+// annotation is set
+// TODO: remove Beta when no longer needed
+func isDefaultAnnotation(obj metav1.ObjectMeta) bool {
+	if obj.Annotations[isDefaultStorageClassAnnotation] == "true" {
+		return true
+	}
+	if obj.Annotations[betaIsDefaultStorageClassAnnotation] == "true" {
+		return true
+	}
+
+	return false
+}
+
 // SkipIfNoDefaultStorageClass skips tests if no default SC can be found.
 func SkipIfNoDefaultStorageClass(c clientset.Interface) {
 	_, err := GetDefaultStorageClassName(c)
 	if err != nil {
 		e2eskipper.Skipf("error finding default storageClass : %v", err)
 	}
+}
+
+// WaitForPersistentVolumeDeleted waits for a PersistentVolume to get deleted or until timeout occurs, whichever comes first.
+func WaitForPersistentVolumeDeleted(c clientset.Interface, pvName string, Poll, timeout time.Duration) error {
+	framework.Logf("Waiting up to %v for PersistentVolume %s to get deleted", timeout, pvName)
+	for start := time.Now(); time.Since(start) < timeout; time.Sleep(Poll) {
+		pv, err := c.CoreV1().PersistentVolumes().Get(context.TODO(), pvName, metav1.GetOptions{})
+		if err == nil {
+			framework.Logf("PersistentVolume %s found and phase=%s (%v)", pvName, pv.Status.Phase, time.Since(start))
+			continue
+		}
+		if apierrors.IsNotFound(err) {
+			framework.Logf("PersistentVolume %s was removed", pvName)
+			return nil
+		}
+		framework.Logf("Get persistent volume %s in failed, ignoring for %v: %v", pvName, Poll, err)
+	}
+	return fmt.Errorf("PersistentVolume %s still exists within %v", pvName, timeout)
 }

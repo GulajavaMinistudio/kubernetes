@@ -902,11 +902,11 @@ var _ = SIGDescribe("Services", func() {
 
 		ginkgo.By("Creating a webserver pod to be part of the TCP service which echoes back source ip")
 		serverPodName := "echo-sourceip"
-		pod := f.NewAgnhostPod(serverPodName, "netexec", "--http-port", strconv.Itoa(servicePort))
+		pod := newAgnhostPod(serverPodName, "netexec", "--http-port", strconv.Itoa(servicePort))
 		pod.Labels = jig.Labels
 		_, err = cs.CoreV1().Pods(ns).Create(context.TODO(), pod, metav1.CreateOptions{})
 		framework.ExpectNoError(err)
-		framework.ExpectNoError(f.WaitForPodReady(pod.Name))
+		framework.ExpectNoError(e2epod.WaitTimeoutForPodReadyInNamespace(f.ClientSet, pod.Name, f.Namespace.Name, framework.PodStartTimeout))
 		defer func() {
 			framework.Logf("Cleaning up the echo server pod")
 			err := cs.CoreV1().Pods(ns).Delete(context.TODO(), serverPodName, metav1.DeleteOptions{})
@@ -960,11 +960,11 @@ var _ = SIGDescribe("Services", func() {
 
 		ginkgo.By("creating a client/server pod")
 		serverPodName := "hairpin"
-		podTemplate := f.NewAgnhostPod(serverPodName, "netexec", "--http-port", strconv.Itoa(servicePort))
+		podTemplate := newAgnhostPod(serverPodName, "netexec", "--http-port", strconv.Itoa(servicePort))
 		podTemplate.Labels = jig.Labels
 		pod, err := cs.CoreV1().Pods(ns).Create(context.TODO(), podTemplate, metav1.CreateOptions{})
 		framework.ExpectNoError(err)
-		framework.ExpectNoError(f.WaitForPodReady(pod.Name))
+		framework.ExpectNoError(e2epod.WaitTimeoutForPodReadyInNamespace(f.ClientSet, pod.Name, f.Namespace.Name, framework.PodStartTimeout))
 
 		ginkgo.By("waiting for the service to expose an endpoint")
 		err = validateEndpointsPorts(cs, ns, serviceName, portsByPodName{serverPodName: {servicePort}})
@@ -3334,7 +3334,7 @@ func proxyMode(f *framework.Framework) (string, error) {
 			Containers: []v1.Container{
 				{
 					Name:  "detector",
-					Image: framework.AgnHostImage,
+					Image: agnHostImage,
 					Args:  []string{"pause"},
 				},
 			},

@@ -37,8 +37,6 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/net/websocket"
-
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
 	gomegatypes "github.com/onsi/gomega/types"
@@ -50,10 +48,12 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/apimachinery/pkg/watch"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -62,9 +62,7 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	watchtools "k8s.io/client-go/tools/watch"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
-	"k8s.io/kubernetes/pkg/client/conditions"
 	"k8s.io/kubernetes/pkg/controller"
-	"k8s.io/kubernetes/pkg/master/ports"
 	taintutils "k8s.io/kubernetes/pkg/util/taints"
 	testutils "k8s.io/kubernetes/test/utils"
 	imageutils "k8s.io/kubernetes/test/utils/image"
@@ -154,9 +152,6 @@ const (
 var (
 	// BusyBoxImage is the image URI of BusyBox.
 	BusyBoxImage = imageutils.GetE2EImage(imageutils.BusyBox)
-
-	// AgnHostImage is the image URI of AgnHost
-	AgnHostImage = imageutils.GetE2EImage(imageutils.Agnhost)
 
 	// ProvidersWithSSH are those providers where each node is accessible with SSH
 	ProvidersWithSSH = []string{"gce", "gke", "aws", "local"}
@@ -282,8 +277,22 @@ func waitForServiceAccountInNamespace(c clientset.Interface, ns, serviceAccountN
 	}
 	ctx, cancel := watchtools.ContextWithOptionalTimeout(context.Background(), timeout)
 	defer cancel()
-	_, err = watchtools.UntilWithoutRetry(ctx, w, conditions.ServiceAccountHasSecrets)
+	_, err = watchtools.UntilWithoutRetry(ctx, w, serviceAccountHasSecrets)
 	return err
+}
+
+// serviceAccountHasSecrets returns true if the service account has at least one secret,
+// false if it does not, or an error.
+func serviceAccountHasSecrets(event watch.Event) (bool, error) {
+	switch event.Type {
+	case watch.Deleted:
+		return false, apierrors.NewNotFound(schema.GroupResource{Resource: "serviceaccounts"}, "")
+	}
+	switch t := event.Object.(type) {
+	case *v1.ServiceAccount:
+		return len(t.Secrets) > 0, nil
+	}
+	return false, nil
 }
 
 // WaitForDefaultServiceAccountInNamespace waits for the default service account to be provisioned
@@ -291,24 +300,6 @@ func waitForServiceAccountInNamespace(c clientset.Interface, ns, serviceAccountN
 // as a result, pods are not able to be provisioned in a namespace until the service account is provisioned
 func WaitForDefaultServiceAccountInNamespace(c clientset.Interface, namespace string) error {
 	return waitForServiceAccountInNamespace(c, namespace, "default", ServiceAccountProvisionTimeout)
-}
-
-// WaitForPersistentVolumeDeleted waits for a PersistentVolume to get deleted or until timeout occurs, whichever comes first.
-func WaitForPersistentVolumeDeleted(c clientset.Interface, pvName string, Poll, timeout time.Duration) error {
-	Logf("Waiting up to %v for PersistentVolume %s to get deleted", timeout, pvName)
-	for start := time.Now(); time.Since(start) < timeout; time.Sleep(Poll) {
-		pv, err := c.CoreV1().PersistentVolumes().Get(context.TODO(), pvName, metav1.GetOptions{})
-		if err == nil {
-			Logf("PersistentVolume %s found and phase=%s (%v)", pvName, pv.Status.Phase, time.Since(start))
-			continue
-		}
-		if apierrors.IsNotFound(err) {
-			Logf("PersistentVolume %s was removed", pvName)
-			return nil
-		}
-		Logf("Get persistent volume %s in failed, ignoring for %v: %v", pvName, Poll, err)
-	}
-	return fmt.Errorf("PersistentVolume %s still exists within %v", pvName, timeout)
 }
 
 // findAvailableNamespaceName random namespace name starting with baseName.
@@ -537,47 +528,6 @@ func LoadClientset() (*clientset.Clientset, error) {
 // RandomSuffix provides a random sequence to append to pods,services,rcs.
 func RandomSuffix() string {
 	return strconv.Itoa(rand.Intn(10000))
-}
-
-// Cleanup stops everything from filePath from namespace ns and checks if everything matching selectors from the given namespace is correctly stopped.
-func Cleanup(filePath, ns string, selectors ...string) {
-	ginkgo.By("using delete to clean up resources")
-	var nsArg string
-	if ns != "" {
-		nsArg = fmt.Sprintf("--namespace=%s", ns)
-	}
-	RunKubectlOrDie(ns, "delete", "--grace-period=0", "-f", filePath, nsArg)
-	AssertCleanup(ns, selectors...)
-}
-
-// AssertCleanup asserts that cleanup of a namespace wrt selectors occurred.
-func AssertCleanup(ns string, selectors ...string) {
-	var nsArg string
-	if ns != "" {
-		nsArg = fmt.Sprintf("--namespace=%s", ns)
-	}
-
-	var e error
-	verifyCleanupFunc := func() (bool, error) {
-		e = nil
-		for _, selector := range selectors {
-			resources := RunKubectlOrDie(ns, "get", "rc,svc", "-l", selector, "--no-headers", nsArg)
-			if resources != "" {
-				e = fmt.Errorf("Resources left running after stop:\n%s", resources)
-				return false, nil
-			}
-			pods := RunKubectlOrDie(ns, "get", "pods", "-l", selector, nsArg, "-o", "go-template={{ range .items }}{{ if not .metadata.deletionTimestamp }}{{ .metadata.name }}{{ \"\\n\" }}{{ end }}{{ end }}")
-			if pods != "" {
-				e = fmt.Errorf("Pods left unterminated after stop:\n%s", pods)
-				return false, nil
-			}
-		}
-		return true, nil
-	}
-	err := wait.PollImmediate(500*time.Millisecond, 1*time.Minute, verifyCleanupFunc)
-	if err != nil {
-		Failf(e.Error())
-	}
 }
 
 // LookForStringInPodExec looks for the given string in the output of a command
@@ -971,7 +921,7 @@ func getKubeletPods(c clientset.Interface, node string) (*v1.PodList, error) {
 		client = c.CoreV1().RESTClient().Get().
 			Resource("nodes").
 			SubResource("proxy").
-			Name(fmt.Sprintf("%v:%v", node, ports.KubeletPort)).
+			Name(fmt.Sprintf("%v:%v", node, KubeletPort)).
 			Suffix("pods").
 			Do(context.TODO())
 
@@ -1165,53 +1115,6 @@ func AllNodesReady(c clientset.Interface, timeout time.Duration) error {
 	return nil
 }
 
-// RestartKubelet restarts kubelet on the given host.
-func RestartKubelet(host string) error {
-	// TODO: Make it work for all providers and distros.
-	supportedProviders := []string{"gce", "aws", "vsphere"}
-	if !ProviderIs(supportedProviders...) {
-		return fmt.Errorf("unsupported provider for RestartKubelet: %s, supported providers are: %v", TestContext.Provider, supportedProviders)
-	}
-	if ProviderIs("gce") && !NodeOSDistroIs("debian", "gci") {
-		return fmt.Errorf("unsupported node OS distro: %s", TestContext.NodeOSDistro)
-	}
-	var cmd string
-
-	if ProviderIs("gce") && NodeOSDistroIs("debian") {
-		cmd = "sudo /etc/init.d/kubelet restart"
-	} else if ProviderIs("vsphere") {
-		var sudoPresent bool
-		sshResult, err := e2essh.SSH("sudo --version", host, TestContext.Provider)
-		if err != nil {
-			return fmt.Errorf("Unable to ssh to host %s with error %v", host, err)
-		}
-		if !strings.Contains(sshResult.Stderr, "command not found") {
-			sudoPresent = true
-		}
-		sshResult, err = e2essh.SSH("systemctl --version", host, TestContext.Provider)
-		if err != nil {
-			return fmt.Errorf("Failed to execute command 'systemctl' on host %s with error %v", host, err)
-		}
-		if !strings.Contains(sshResult.Stderr, "command not found") {
-			cmd = "systemctl restart kubelet"
-		} else {
-			cmd = "service kubelet restart"
-		}
-		if sudoPresent {
-			cmd = fmt.Sprintf("sudo %s", cmd)
-		}
-	} else {
-		cmd = "sudo systemctl restart kubelet"
-	}
-	Logf("Restarting kubelet via ssh on host %s with command %s", host, cmd)
-	result, err := e2essh.SSH(cmd, host, TestContext.Provider)
-	if err != nil || result.Code != 0 {
-		e2essh.LogResult(result)
-		return fmt.Errorf("couldn't restart kubelet: %v", err)
-	}
-	return nil
-}
-
 // RestartApiserver restarts the kube-apiserver.
 func RestartApiserver(namespace string, cs clientset.Interface) error {
 	// TODO: Make it work for all providers.
@@ -1313,7 +1216,7 @@ func RestartControllerManager() error {
 
 // WaitForControllerManagerUp waits for the kube-controller-manager to be up.
 func WaitForControllerManagerUp() error {
-	cmd := "curl http://localhost:" + strconv.Itoa(ports.InsecureKubeControllerManagerPort) + "/healthz"
+	cmd := "curl http://localhost:" + strconv.Itoa(InsecureKubeControllerManagerPort) + "/healthz"
 	for start := time.Now(); time.Since(start) < time.Minute; time.Sleep(5 * time.Second) {
 		result, err := e2essh.SSH(cmd, net.JoinHostPort(GetMasterHost(), sshPort), TestContext.Provider)
 		if err != nil || result.Code != 0 {
@@ -1324,59 +1227,6 @@ func WaitForControllerManagerUp() error {
 		}
 	}
 	return fmt.Errorf("waiting for controller-manager timed out")
-}
-
-type extractRT struct {
-	http.Header
-}
-
-func (rt *extractRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	rt.Header = req.Header
-	return &http.Response{}, nil
-}
-
-// headersForConfig extracts any http client logic necessary for the provided
-// config.
-func headersForConfig(c *restclient.Config, url *url.URL) (http.Header, error) {
-	extract := &extractRT{}
-	rt, err := restclient.HTTPWrappersForConfig(c, extract)
-	if err != nil {
-		return nil, err
-	}
-	request, err := http.NewRequest("GET", url.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := rt.RoundTrip(request); err != nil {
-		return nil, err
-	}
-	return extract.Header, nil
-}
-
-// OpenWebSocketForURL constructs a websocket connection to the provided URL, using the client
-// config, with the specified protocols.
-func OpenWebSocketForURL(url *url.URL, config *restclient.Config, protocols []string) (*websocket.Conn, error) {
-	tlsConfig, err := restclient.TLSConfigFor(config)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to create tls config: %v", err)
-	}
-	if url.Scheme == "https" {
-		url.Scheme = "wss"
-	} else {
-		url.Scheme = "ws"
-	}
-	headers, err := headersForConfig(config, url)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to load http headers: %v", err)
-	}
-	cfg, err := websocket.NewConfig(url.String(), "http://localhost")
-	if err != nil {
-		return nil, fmt.Errorf("Failed to create websocket config: %v", err)
-	}
-	cfg.Header = headers
-	cfg.TlsConfig = tlsConfig
-	cfg.Protocol = protocols
-	return websocket.DialConfig(cfg)
 }
 
 // LookForStringInLog looks for the given string in the log of a specific pod container
@@ -1390,62 +1240,6 @@ func LookForStringInLog(ns, podName, container, expectedString string, timeout t
 // are actually cleaned up.  Currently only implemented for GCE/GKE.
 func EnsureLoadBalancerResourcesDeleted(ip, portRange string) error {
 	return TestContext.CloudConfig.Provider.EnsureLoadBalancerResourcesDeleted(ip, portRange)
-}
-
-// BlockNetwork blocks network between the given from value and the given to value.
-// The following helper functions can block/unblock network from source
-// host to destination host by manipulating iptable rules.
-// This function assumes it can ssh to the source host.
-//
-// Caution:
-// Recommend to input IP instead of hostnames. Using hostnames will cause iptables to
-// do a DNS lookup to resolve the name to an IP address, which will
-// slow down the test and cause it to fail if DNS is absent or broken.
-//
-// Suggested usage pattern:
-// func foo() {
-//	...
-//	defer UnblockNetwork(from, to)
-//	BlockNetwork(from, to)
-//	...
-// }
-//
-func BlockNetwork(from string, to string) {
-	Logf("block network traffic from %s to %s", from, to)
-	iptablesRule := fmt.Sprintf("OUTPUT --destination %s --jump REJECT", to)
-	dropCmd := fmt.Sprintf("sudo iptables --insert %s", iptablesRule)
-	if result, err := e2essh.SSH(dropCmd, from, TestContext.Provider); result.Code != 0 || err != nil {
-		e2essh.LogResult(result)
-		Failf("Unexpected error: %v", err)
-	}
-}
-
-// UnblockNetwork unblocks network between the given from value and the given to value.
-func UnblockNetwork(from string, to string) {
-	Logf("Unblock network traffic from %s to %s", from, to)
-	iptablesRule := fmt.Sprintf("OUTPUT --destination %s --jump REJECT", to)
-	undropCmd := fmt.Sprintf("sudo iptables --delete %s", iptablesRule)
-	// Undrop command may fail if the rule has never been created.
-	// In such case we just lose 30 seconds, but the cluster is healthy.
-	// But if the rule had been created and removing it failed, the node is broken and
-	// not coming back. Subsequent tests will run or fewer nodes (some of the tests
-	// may fail). Manual intervention is required in such case (recreating the
-	// cluster solves the problem too).
-	err := wait.Poll(time.Millisecond*100, time.Second*30, func() (bool, error) {
-		result, err := e2essh.SSH(undropCmd, from, TestContext.Provider)
-		if result.Code == 0 && err == nil {
-			return true, nil
-		}
-		e2essh.LogResult(result)
-		if err != nil {
-			Logf("Unexpected error: %v", err)
-		}
-		return false, nil
-	})
-	if err != nil {
-		Failf("Failed to remove the iptable REJECT rule. Manual intervention is "+
-			"required on host %s: remove rule %s, if exists", from, iptablesRule)
-	}
 }
 
 // CoreDump SSHs to the master and all nodes and dumps their logs into dir.
@@ -1569,46 +1363,6 @@ func DescribeIng(ns string) {
 	Logf(desc)
 }
 
-// NewTestPod returns a pod that has the specified requests and limits
-func (f *Framework) NewTestPod(name string, requests v1.ResourceList, limits v1.ResourceList) *v1.Pod {
-	return &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
-		Spec: v1.PodSpec{
-			Containers: []v1.Container{
-				{
-					Name:  "pause",
-					Image: imageutils.GetPauseImageName(),
-					Resources: v1.ResourceRequirements{
-						Requests: requests,
-						Limits:   limits,
-					},
-				},
-			},
-		},
-	}
-}
-
-// NewAgnhostPod returns a pod that uses the agnhost image. The image's binary supports various subcommands
-// that behave the same, no matter the underlying OS.
-func (f *Framework) NewAgnhostPod(name string, args ...string) *v1.Pod {
-	return &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
-		Spec: v1.PodSpec{
-			Containers: []v1.Container{
-				{
-					Name:  "agnhost",
-					Image: AgnHostImage,
-					Args:  args,
-				},
-			},
-		},
-	}
-}
-
 // CreateEmptyFileOnPod creates empty file at given path on the pod.
 // TODO(alejandrox1): move to subpkg pod once kubectl methods have been refactored.
 func CreateEmptyFileOnPod(namespace string, podName string, filePath string) error {
@@ -1671,27 +1425,6 @@ func DsFromData(data []byte) (*appsv1.DaemonSet, error) {
 		return nil, fmt.Errorf("Failed to decode DaemonSet spec: %v", err)
 	}
 	return &ds, nil
-}
-
-// GetFileModeRegex returns a file mode related regex which should be matched by the mounttest pods' output.
-// If the given mask is nil, then the regex will contain the default OS file modes, which are 0644 for Linux and 0775 for Windows.
-func GetFileModeRegex(filePath string, mask *int32) string {
-	var (
-		linuxMask   int32
-		windowsMask int32
-	)
-	if mask == nil {
-		linuxMask = int32(0644)
-		windowsMask = int32(0775)
-	} else {
-		linuxMask = *mask
-		windowsMask = *mask
-	}
-
-	linuxOutput := fmt.Sprintf("mode of file \"%s\": %v", filePath, os.FileMode(linuxMask))
-	windowsOutput := fmt.Sprintf("mode of Windows file \"%v\": %s", filePath, os.FileMode(windowsMask))
-
-	return fmt.Sprintf("(%s|%s)", linuxOutput, windowsOutput)
 }
 
 // PrettyPrintJSON converts metrics to JSON format.

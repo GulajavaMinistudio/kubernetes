@@ -700,7 +700,7 @@ func doConfigMapE2EWithoutMappings(f *framework.Framework, asUser bool, fsGroup 
 		pod.Spec.Volumes[0].VolumeSource.ConfigMap.DefaultMode = defaultMode
 	}
 
-	fileModeRegexp := framework.GetFileModeRegex("/etc/configmap-volume/data-1", defaultMode)
+	fileModeRegexp := getFileModeRegex("/etc/configmap-volume/data-1", defaultMode)
 	output := []string{
 		"content of file \"/etc/configmap-volume/data-1\": value-1",
 		fileModeRegexp,
@@ -788,7 +788,7 @@ func doConfigMapE2EWithMappings(f *framework.Framework, asUser bool, fsGroup int
 		"content of file \"/etc/configmap-volume/path/to/data-2\": value-2",
 	}
 	if fsGroup == 0 {
-		fileModeRegexp := framework.GetFileModeRegex("/etc/configmap-volume/path/to/data-2", itemMode)
+		fileModeRegexp := getFileModeRegex("/etc/configmap-volume/path/to/data-2", itemMode)
 		output = append(output, fileModeRegexp)
 	}
 	f.TestContainerOutputRegexp("consume configMaps", pod, 0, output)
@@ -841,7 +841,7 @@ func createNonOptionalConfigMapPod(f *framework.Framework, volumeMountPath, podN
 	}
 	ginkgo.By("Creating the pod")
 	pod = f.PodClient().Create(pod)
-	return f.WaitForPodRunning(pod.Name)
+	return e2epod.WaitForPodNameRunningInNamespace(f.ClientSet, pod.Name, f.Namespace.Name)
 }
 
 func createNonOptionalConfigMapPodWithConfig(f *framework.Framework, volumeMountPath, podName string) error {
@@ -903,5 +903,5 @@ func createNonOptionalConfigMapPodWithConfig(f *framework.Framework, volumeMount
 	}
 	ginkgo.By("Creating the pod")
 	pod = f.PodClient().Create(pod)
-	return f.WaitForPodRunning(pod.Name)
+	return e2epod.WaitForPodNameRunningInNamespace(f.ClientSet, pod.Name, f.Namespace.Name)
 }

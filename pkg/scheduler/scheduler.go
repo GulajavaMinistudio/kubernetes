@@ -134,6 +134,7 @@ type schedulerOptions struct {
 	frameworkOutOfTreeRegistry framework.Registry
 	profiles                   []schedulerapi.KubeSchedulerProfile
 	extenders                  []schedulerapi.Extender
+	frameworkCapturer          FrameworkCapturer
 }
 
 // Option configures a Scheduler
@@ -201,6 +202,16 @@ func WithPodMaxBackoffSeconds(podMaxBackoffSeconds int64) Option {
 func WithExtenders(e ...schedulerapi.Extender) Option {
 	return func(o *schedulerOptions) {
 		o.extenders = e
+	}
+}
+
+// FrameworkCapturer is used for registering a notify function in building framework.
+type FrameworkCapturer func(schedulerapi.KubeSchedulerProfile)
+
+// WithBuildFrameworkCapturer sets a notify function for getting buildFramework details.
+func WithBuildFrameworkCapturer(fc FrameworkCapturer) Option {
+	return func(o *schedulerOptions) {
+		o.frameworkCapturer = fc
 	}
 }
 
@@ -273,6 +284,7 @@ func New(client clientset.Interface,
 		registry:                 registry,
 		nodeInfoSnapshot:         snapshot,
 		extenders:                options.extenders,
+		frameworkCapturer:        options.frameworkCapturer,
 	}
 
 	metrics.Register()
@@ -412,7 +424,7 @@ func (sched *Scheduler) preempt(ctx context.Context, prof *profile.Profile, stat
 		// Make a call to update nominated node name of the pod on the API server.
 		err = sched.podPreemptor.setNominatedNodeName(preemptor, nodeName)
 		if err != nil {
-			klog.Errorf("Error in preemption process. Cannot set 'NominatedPod' on pod %v/%v: %v", preemptor.Namespace, preemptor.Name, err)
+			klog.Errorf("Error in preemption process. Cannot set 'NominatedNodeName' on pod %v/%v: %v", preemptor.Namespace, preemptor.Name, err)
 			sched.SchedulingQueue.DeleteNominatedPodIfExists(preemptor)
 			return "", err
 		}
@@ -435,11 +447,11 @@ func (sched *Scheduler) preempt(ctx context.Context, prof *profile.Profile, stat
 	// be nil when a pod with nominated node name is eligible to preempt again,
 	// but preemption logic does not find any node for it. In that case Preempt()
 	// function of generic_scheduler.go returns the pod itself for removal of
-	// the 'NominatedPod' field.
+	// the 'NominatedNodeName' field.
 	for _, p := range nominatedPodsToClear {
 		rErr := sched.podPreemptor.removeNominatedNodeName(p)
 		if rErr != nil {
-			klog.Errorf("Cannot remove 'NominatedPod' field of pod: %v", rErr)
+			klog.Errorf("Cannot remove 'NominatedNodeName' field of pod: %v", rErr)
 			// We do not return as this error is not critical.
 		}
 	}
