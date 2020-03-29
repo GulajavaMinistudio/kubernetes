@@ -63,7 +63,6 @@ import (
 	watchtools "k8s.io/client-go/tools/watch"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/controller"
-	taintutils "k8s.io/kubernetes/pkg/util/taints"
 	testutils "k8s.io/kubernetes/test/utils"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 	uexec "k8s.io/utils/exec"
@@ -769,7 +768,7 @@ func (f *Framework) MatchContainerOutput(
 
 	if podErr != nil {
 		// Pod failed. Dump all logs from all containers to see what's wrong
-		_ = podutil.VisitContainers(&podStatus.Spec, func(c *v1.Container) bool {
+		_ = podutil.VisitContainers(&podStatus.Spec, podutil.AllFeatureEnabledContainers(), func(c *v1.Container, containerType podutil.ContainerType) bool {
 			logs, err := e2epod.GetPodLogs(f.ClientSet, ns, podStatus.Name, c.Name)
 			if err != nil {
 				Logf("Failed to get logs from node %q pod %q container %q: %v",
@@ -1008,7 +1007,7 @@ func verifyThatTaintIsGone(c clientset.Interface, nodeName string, taint *v1.Tai
 	ginkgo.By("verifying the node doesn't have the taint " + taint.ToString())
 	nodeUpdated, err := c.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
 	ExpectNoError(err)
-	if taintutils.TaintExists(nodeUpdated.Spec.Taints, taint) {
+	if taintExists(nodeUpdated.Spec.Taints, taint) {
 		Failf("Failed removing taint " + taint.ToString() + " of the node " + nodeName)
 	}
 }
@@ -1031,7 +1030,7 @@ func NodeHasTaint(c clientset.Interface, nodeName string, taint *v1.Taint) (bool
 
 	nodeTaints := node.Spec.Taints
 
-	if len(nodeTaints) == 0 || !taintutils.TaintExists(nodeTaints, taint) {
+	if len(nodeTaints) == 0 || !taintExists(nodeTaints, taint) {
 		return false, nil
 	}
 	return true, nil
@@ -1113,86 +1112,6 @@ func AllNodesReady(c clientset.Interface, timeout time.Duration) error {
 		return fmt.Errorf("Not ready nodes: %#v", msg)
 	}
 	return nil
-}
-
-// RestartApiserver restarts the kube-apiserver.
-func RestartApiserver(namespace string, cs clientset.Interface) error {
-	// TODO: Make it work for all providers.
-	if !ProviderIs("gce", "gke", "aws") {
-		return fmt.Errorf("unsupported provider for RestartApiserver: %s", TestContext.Provider)
-	}
-	if ProviderIs("gce", "aws") {
-		initialRestartCount, err := getApiserverRestartCount(cs)
-		if err != nil {
-			return fmt.Errorf("failed to get apiserver's restart count: %v", err)
-		}
-		if err := sshRestartMaster(); err != nil {
-			return fmt.Errorf("failed to restart apiserver: %v", err)
-		}
-		return waitForApiserverRestarted(cs, initialRestartCount)
-	}
-	// GKE doesn't allow ssh access, so use a same-version master
-	// upgrade to teardown/recreate master.
-	v, err := cs.Discovery().ServerVersion()
-	if err != nil {
-		return err
-	}
-	return masterUpgradeGKE(namespace, v.GitVersion[1:]) // strip leading 'v'
-}
-
-func sshRestartMaster() error {
-	if !ProviderIs("gce", "aws") {
-		return fmt.Errorf("unsupported provider for sshRestartMaster: %s", TestContext.Provider)
-	}
-	var command string
-	if ProviderIs("gce") {
-		command = "pidof kube-apiserver | xargs sudo kill"
-	} else {
-		command = "sudo /etc/init.d/kube-apiserver restart"
-	}
-	Logf("Restarting master via ssh, running: %v", command)
-	result, err := e2essh.SSH(command, net.JoinHostPort(GetMasterHost(), sshPort), TestContext.Provider)
-	if err != nil || result.Code != 0 {
-		e2essh.LogResult(result)
-		return fmt.Errorf("couldn't restart apiserver: %v", err)
-	}
-	return nil
-}
-
-// waitForApiserverRestarted waits until apiserver's restart count increased.
-func waitForApiserverRestarted(c clientset.Interface, initialRestartCount int32) error {
-	for start := time.Now(); time.Since(start) < time.Minute; time.Sleep(5 * time.Second) {
-		restartCount, err := getApiserverRestartCount(c)
-		if err != nil {
-			Logf("Failed to get apiserver's restart count: %v", err)
-			continue
-		}
-		if restartCount > initialRestartCount {
-			Logf("Apiserver has restarted.")
-			return nil
-		}
-		Logf("Waiting for apiserver restart count to increase")
-	}
-	return fmt.Errorf("timed out waiting for apiserver to be restarted")
-}
-
-func getApiserverRestartCount(c clientset.Interface) (int32, error) {
-	label := labels.SelectorFromSet(labels.Set(map[string]string{"component": "kube-apiserver"}))
-	listOpts := metav1.ListOptions{LabelSelector: label.String()}
-	pods, err := c.CoreV1().Pods(metav1.NamespaceSystem).List(context.TODO(), listOpts)
-	if err != nil {
-		return -1, err
-	}
-	if len(pods.Items) != 1 {
-		return -1, fmt.Errorf("unexpected number of apiserver pod: %d", len(pods.Items))
-	}
-	for _, s := range pods.Items[0].Status.ContainerStatuses {
-		if s.Name != "kube-apiserver" {
-			continue
-		}
-		return s.RestartCount, nil
-	}
-	return -1, fmt.Errorf("Failed to find kube-apiserver container in pod")
 }
 
 // RestartControllerManager restarts the kube-controller-manager.
@@ -1440,4 +1359,14 @@ func PrettyPrintJSON(metrics interface{}) string {
 		return ""
 	}
 	return string(formatted.Bytes())
+}
+
+// taintExists checks if the given taint exists in list of taints. Returns true if exists false otherwise.
+func taintExists(taints []v1.Taint, taintToFind *v1.Taint) bool {
+	for _, taint := range taints {
+		if taint.MatchTaint(taintToFind) {
+			return true
+		}
+	}
+	return false
 }
