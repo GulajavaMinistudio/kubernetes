@@ -125,8 +125,13 @@ function kube::release::package_src_tarball() {
 # Package up all of the cross compiled clients. Over time this should grow into
 # a full SDK
 function kube::release::package_client_tarballs() {
-   # Find all of the built client binaries
-  for platform_long in "${LOCAL_OUTPUT_BINPATH}"/*/*; do
+  # Find all of the built client binaries
+  local long_platforms=("${LOCAL_OUTPUT_BINPATH}"/*/*)
+  if [[ -n ${KUBE_BUILD_PLATFORMS-} ]]; then
+    read -ra long_platforms <<< "${KUBE_BUILD_PLATFORMS}"
+  fi
+
+  for platform_long in "${long_platforms[@]}"; do
     local platform
     local platform_tag
     platform=${platform_long##${LOCAL_OUTPUT_BINPATH}/} # Strip LOCAL_OUTPUT_BINPATH
@@ -439,7 +444,7 @@ function kube::release::package_kube_manifests_tarball() {
   cp "${KUBE_ROOT}/cluster/gce/gci/health-monitor.sh" "${dst_dir}/health-monitor.sh"
   # Merge GCE-specific addons with general purpose addons.
   for d in cluster/addons cluster/gce/addons; do
-    find "${KUBE_ROOT}/${d}" \( \( -name \*.yaml -o -name \*.yaml.in -o -name \*.json \) -a ! \( -name \*demo\* \) \) -print0 | tar c --transform "s|${KUBE_ROOT#/*}/${d}||" --null -T - | "${TAR}" x -C "${dst_dir}"
+    find "${KUBE_ROOT}/${d}" \( \( -name \*.yaml -o -name \*.yaml.in -o -name \*.json \) -a ! \( -name \*demo\* \) \) -print0 | "${TAR}" c --transform "s|${KUBE_ROOT#/*}/${d}||" --null -T - | "${TAR}" x -C "${dst_dir}"
   done
 
   kube::release::clean_cruft
@@ -505,7 +510,7 @@ function kube::release::package_test_tarballs() {
   # the portable test tarball.
   mkdir -p "${release_stage}/test/images"
   cp -fR "${KUBE_ROOT}/test/images" "${release_stage}/test/"
-  tar c "${KUBE_TEST_PORTABLE[@]}" | tar x -C "${release_stage}"
+  "${TAR}" c "${KUBE_TEST_PORTABLE[@]}" | "${TAR}" x -C "${release_stage}"
 
   kube::release::clean_cruft
 
