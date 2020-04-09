@@ -1,5 +1,7 @@
+// +build !linux
+
 /*
-Copyright 2014 The Kubernetes Authors.
+Copyright 2020 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +16,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// +k8s:deepcopy-gen=package
+package system
 
-package testing // import "k8s.io/apimachinery/pkg/runtime/serializer/testing"
+// NOOP for non-Linux OSes.
+
+var _ Validator = &CgroupsValidator{}
+
+// CgroupsValidator validates cgroup configuration.
+type CgroupsValidator struct {
+	Reporter Reporter
+}
+
+// Validate is part of the system.Validator interface.
+func (c *CgroupsValidator) Validate(spec SysSpec) (warns, errs []error) {
+	return
+}
+
+// Name is part of the system.Validator interface.
+func (c *CgroupsValidator) Name() string {
+	return "cgroups"
+}

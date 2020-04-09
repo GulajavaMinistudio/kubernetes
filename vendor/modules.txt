@@ -217,7 +217,7 @@ github.com/dgrijalva/jwt-go
 github.com/docker/distribution/digestset
 github.com/docker/distribution/reference
 github.com/docker/distribution/registry/api/errcode
-# github.com/docker/docker v0.7.3-0.20190327010347-be7ac8be2ae0 => github.com/docker/docker v0.7.3-0.20190327010347-be7ac8be2ae0
+# github.com/docker/docker v1.4.2-0.20200309214505-aa6a9891b09c => github.com/docker/docker v1.4.2-0.20200309214505-aa6a9891b09c
 github.com/docker/docker/api
 github.com/docker/docker/api/types
 github.com/docker/docker/api/types/blkiodev
@@ -266,7 +266,7 @@ github.com/exponent-io/jsonpath
 github.com/fatih/camelcase
 # github.com/fatih/color v1.7.0 => github.com/fatih/color v1.7.0
 github.com/fatih/color
-# github.com/fsnotify/fsnotify v1.4.7 => github.com/fsnotify/fsnotify v1.4.7
+# github.com/fsnotify/fsnotify v1.4.9 => github.com/fsnotify/fsnotify v1.4.9
 github.com/fsnotify/fsnotify
 # github.com/ghodss/yaml v1.0.0 => github.com/ghodss/yaml v1.0.0
 github.com/ghodss/yaml
@@ -735,7 +735,7 @@ github.com/vmware/govmomi/vim25/xml
 github.com/xiang90/probing
 # go.etcd.io/bbolt v1.3.3 => go.etcd.io/bbolt v1.3.3
 go.etcd.io/bbolt
-# go.etcd.io/etcd v0.5.0-alpha.5.0.20200224211402-c65a9e2dd1fd => go.etcd.io/etcd v0.5.0-alpha.5.0.20200224211402-c65a9e2dd1fd
+# go.etcd.io/etcd v0.5.0-alpha.5.0.20200401174654-e694b7bb0875 => go.etcd.io/etcd v0.5.0-alpha.5.0.20200401174654-e694b7bb0875
 go.etcd.io/etcd/auth
 go.etcd.io/etcd/auth/authpb
 go.etcd.io/etcd/client
@@ -1945,7 +1945,7 @@ k8s.io/sample-apiserver/pkg/generated/openapi
 k8s.io/sample-apiserver/pkg/registry
 k8s.io/sample-apiserver/pkg/registry/wardle/fischer
 k8s.io/sample-apiserver/pkg/registry/wardle/flunder
-# k8s.io/system-validators v1.0.4 => k8s.io/system-validators v1.0.4
+# k8s.io/system-validators v1.1.2 => k8s.io/system-validators v1.1.2
 k8s.io/system-validators/validators
 # k8s.io/utils v0.0.0-20200324210504-a9aa75ae1b89 => k8s.io/utils v0.0.0-20200324210504-a9aa75ae1b89
 k8s.io/utils/buffer
