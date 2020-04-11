@@ -970,10 +970,10 @@ func (g *genericScheduler) selectVictimsOnNode(
 	// As the first step, remove all the lower priority pods from the node and
 	// check if the given pod can be scheduled.
 	podPriority := podutil.GetPodPriority(pod)
-	for _, p := range nodeInfo.Pods() {
-		if podutil.GetPodPriority(p) < podPriority {
-			potentialVictims = append(potentialVictims, p)
-			if err := removePod(p); err != nil {
+	for _, p := range nodeInfo.Pods {
+		if podutil.GetPodPriority(p.Pod) < podPriority {
+			potentialVictims = append(potentialVictims, p.Pod)
+			if err := removePod(p.Pod); err != nil {
 				return nil, 0, false
 			}
 		}
@@ -1062,8 +1062,8 @@ func podEligibleToPreemptOthers(pod *v1.Pod, nodeInfos framework.NodeInfoLister,
 	if len(nomNodeName) > 0 {
 		if nodeInfo, _ := nodeInfos.Get(nomNodeName); nodeInfo != nil {
 			podPriority := podutil.GetPodPriority(pod)
-			for _, p := range nodeInfo.Pods() {
-				if p.DeletionTimestamp != nil && podutil.GetPodPriority(p) < podPriority {
+			for _, p := range nodeInfo.Pods {
+				if p.Pod.DeletionTimestamp != nil && podutil.GetPodPriority(p.Pod) < podPriority {
 					// There is a terminating pod on the nominated node.
 					return false
 				}

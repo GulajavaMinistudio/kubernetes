@@ -20,10 +20,11 @@ import (
 	"context"
 	"fmt"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	schedulerv1alpha2 "k8s.io/kube-scheduler/config/v1alpha2"
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	"k8s.io/kubernetes/pkg/features"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
@@ -46,13 +47,6 @@ type Fit struct {
 	ignoredResources sets.String
 }
 
-// FitArgs holds the args that are used to configure the plugin.
-type FitArgs struct {
-	// IgnoredResources is the list of resources that NodeResources fit filter
-	// should ignore.
-	IgnoredResources []string `json:"ignoredResources,omitempty"`
-}
-
 // preFilterState computed at PreFilter and used at Filter.
 type preFilterState struct {
 	framework.Resource
@@ -66,6 +60,18 @@ func (s *preFilterState) Clone() framework.StateData {
 // Name returns name of the plugin. It is used in logs, etc.
 func (f *Fit) Name() string {
 	return FitName
+}
+
+// NewFit initializes a new plugin and returns it.
+func NewFit(plArgs *runtime.Unknown, _ framework.FrameworkHandle) (framework.Plugin, error) {
+	args := &schedulerv1alpha2.NodeResourcesFitArgs{}
+	if err := framework.DecodeInto(plArgs, args); err != nil {
+		return nil, err
+	}
+
+	fit := &Fit{}
+	fit.ignoredResources = sets.NewString(args.IgnoredResources...)
+	return fit, nil
 }
 
 // computePodResourceRequest returns a framework.Resource that covers the largest
@@ -180,13 +186,13 @@ func Fits(pod *v1.Pod, nodeInfo *framework.NodeInfo, ignoredExtendedResources se
 func fitsRequest(podRequest *preFilterState, nodeInfo *framework.NodeInfo, ignoredExtendedResources sets.String) []InsufficientResource {
 	insufficientResources := make([]InsufficientResource, 0, 4)
 
-	allowedPodNumber := nodeInfo.AllowedPodNumber()
-	if len(nodeInfo.Pods())+1 > allowedPodNumber {
+	allowedPodNumber := nodeInfo.Allocatable.AllowedPodNumber
+	if len(nodeInfo.Pods)+1 > allowedPodNumber {
 		insufficientResources = append(insufficientResources, InsufficientResource{
 			v1.ResourcePods,
 			"Too many pods",
 			1,
-			int64(len(nodeInfo.Pods())),
+			int64(len(nodeInfo.Pods)),
 			int64(allowedPodNumber),
 		})
 	}
@@ -202,32 +208,31 @@ func fitsRequest(podRequest *preFilterState, nodeInfo *framework.NodeInfo, ignor
 		return insufficientResources
 	}
 
-	allocatable := nodeInfo.AllocatableResource()
-	if allocatable.MilliCPU < podRequest.MilliCPU+nodeInfo.RequestedResource().MilliCPU {
+	if nodeInfo.Allocatable.MilliCPU < podRequest.MilliCPU+nodeInfo.Requested.MilliCPU {
 		insufficientResources = append(insufficientResources, InsufficientResource{
 			v1.ResourceCPU,
 			"Insufficient cpu",
 			podRequest.MilliCPU,
-			nodeInfo.RequestedResource().MilliCPU,
-			allocatable.MilliCPU,
+			nodeInfo.Requested.MilliCPU,
+			nodeInfo.Allocatable.MilliCPU,
 		})
 	}
-	if allocatable.Memory < podRequest.Memory+nodeInfo.RequestedResource().Memory {
+	if nodeInfo.Allocatable.Memory < podRequest.Memory+nodeInfo.Requested.Memory {
 		insufficientResources = append(insufficientResources, InsufficientResource{
 			v1.ResourceMemory,
 			"Insufficient memory",
 			podRequest.Memory,
-			nodeInfo.RequestedResource().Memory,
-			allocatable.Memory,
+			nodeInfo.Requested.Memory,
+			nodeInfo.Allocatable.Memory,
 		})
 	}
-	if allocatable.EphemeralStorage < podRequest.EphemeralStorage+nodeInfo.RequestedResource().EphemeralStorage {
+	if nodeInfo.Allocatable.EphemeralStorage < podRequest.EphemeralStorage+nodeInfo.Requested.EphemeralStorage {
 		insufficientResources = append(insufficientResources, InsufficientResource{
 			v1.ResourceEphemeralStorage,
 			"Insufficient ephemeral-storage",
 			podRequest.EphemeralStorage,
-			nodeInfo.RequestedResource().EphemeralStorage,
-			allocatable.EphemeralStorage,
+			nodeInfo.Requested.EphemeralStorage,
+			nodeInfo.Allocatable.EphemeralStorage,
 		})
 	}
 
@@ -239,28 +244,16 @@ func fitsRequest(podRequest *preFilterState, nodeInfo *framework.NodeInfo, ignor
 				continue
 			}
 		}
-		if allocatable.ScalarResources[rName] < rQuant+nodeInfo.RequestedResource().ScalarResources[rName] {
+		if nodeInfo.Allocatable.ScalarResources[rName] < rQuant+nodeInfo.Requested.ScalarResources[rName] {
 			insufficientResources = append(insufficientResources, InsufficientResource{
 				rName,
 				fmt.Sprintf("Insufficient %v", rName),
 				podRequest.ScalarResources[rName],
-				nodeInfo.RequestedResource().ScalarResources[rName],
-				allocatable.ScalarResources[rName],
+				nodeInfo.Requested.ScalarResources[rName],
+				nodeInfo.Allocatable.ScalarResources[rName],
 			})
 		}
 	}
 
 	return insufficientResources
-}
-
-// NewFit initializes a new plugin and returns it.
-func NewFit(plArgs *runtime.Unknown, _ framework.FrameworkHandle) (framework.Plugin, error) {
-	args := &FitArgs{}
-	if err := framework.DecodeInto(plArgs, args); err != nil {
-		return nil, err
-	}
-
-	fit := &Fit{}
-	fit.ignoredResources = sets.NewString(args.IgnoredResources...)
-	return fit, nil
 }

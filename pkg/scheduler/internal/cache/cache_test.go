@@ -41,10 +41,10 @@ func deepEqualWithoutGeneration(actual *nodeInfoListItem, expected *framework.No
 	}
 	// Ignore generation field.
 	if actual != nil {
-		actual.info.SetGeneration(0)
+		actual.info.Generation = 0
 	}
 	if expected != nil {
-		expected.SetGeneration(0)
+		expected.Generation = 0
 	}
 	if actual != nil && !reflect.DeepEqual(actual.info, expected) {
 		return fmt.Errorf("got node info %s, want %s", actual.info, expected)
@@ -85,11 +85,10 @@ func newNodeInfo(requestedResource *framework.Resource,
 	imageStates map[string]*framework.ImageStateSummary,
 ) *framework.NodeInfo {
 	nodeInfo := framework.NewNodeInfo(pods...)
-	nodeInfo.SetRequestedResource(requestedResource)
-	nodeInfo.SetNonZeroRequest(nonzeroRequest)
-	nodeInfo.SetUsedPorts(usedPorts)
-	nodeInfo.SetImageStates(imageStates)
-
+	nodeInfo.Requested = requestedResource
+	nodeInfo.NonZeroRequested = nonzeroRequest
+	nodeInfo.UsedPorts = usedPorts
+	nodeInfo.ImageStates = imageStates
 	return nodeInfo
 }
 
@@ -927,44 +926,15 @@ func TestForgetPod(t *testing.T) {
 	}
 }
 
-// getResourceRequest returns the resource request of all containers in Pods;
-// excluding initContainers.
-func getResourceRequest(pod *v1.Pod) v1.ResourceList {
-	result := &framework.Resource{}
-	for _, container := range pod.Spec.Containers {
-		result.Add(container.Resources.Requests)
-	}
-
-	return result.ResourceList()
-}
-
 // buildNodeInfo creates a NodeInfo by simulating node operations in cache.
 func buildNodeInfo(node *v1.Node, pods []*v1.Pod) *framework.NodeInfo {
 	expected := framework.NewNodeInfo()
-
-	// Simulate SetNode.
 	expected.SetNode(node)
-
-	expected.SetAllocatableResource(framework.NewResource(node.Status.Allocatable))
-	expected.SetTaints(node.Spec.Taints)
-	expected.SetGeneration(expected.GetGeneration() + 1)
-
+	expected.Allocatable = framework.NewResource(node.Status.Allocatable)
+	expected.Generation++
 	for _, pod := range pods {
-		// Simulate AddPod
-		pods := append(expected.Pods(), pod)
-		expected.SetPods(pods)
-		requestedResource := expected.RequestedResource()
-		newRequestedResource := &requestedResource
-		newRequestedResource.Add(getResourceRequest(pod))
-		expected.SetRequestedResource(newRequestedResource)
-		nonZeroRequest := expected.NonZeroRequest()
-		newNonZeroRequest := &nonZeroRequest
-		newNonZeroRequest.Add(getResourceRequest(pod))
-		expected.SetNonZeroRequest(newNonZeroRequest)
-		expected.UpdateUsedPorts(pod, true)
-		expected.SetGeneration(expected.GetGeneration() + 1)
+		expected.AddPod(pod)
 	}
-
 	return expected
 }
 
@@ -1125,7 +1095,7 @@ func TestNodeOperators(t *testing.T) {
 			}
 
 			// Generations are globally unique. We check in our unit tests that they are incremented correctly.
-			expected.SetGeneration(got.info.GetGeneration())
+			expected.Generation = got.info.Generation
 			if !reflect.DeepEqual(got.info, expected) {
 				t.Errorf("Failed to add node into schedulercache:\n got: %+v \nexpected: %+v", got, expected)
 			}
@@ -1139,17 +1109,14 @@ func TestNodeOperators(t *testing.T) {
 			if !found || len(cachedNodes.nodeInfoMap) != 1 {
 				t.Errorf("failed to dump cached nodes:\n got: %v \nexpected: %v", cachedNodes, cache.nodes)
 			}
-			expected.SetGeneration(newNode.GetGeneration())
+			expected.Generation = newNode.Generation
 			if !reflect.DeepEqual(newNode, expected) {
 				t.Errorf("Failed to clone node:\n got: %+v, \n expected: %+v", newNode, expected)
 			}
 
 			// Step 3: update node attribute successfully.
 			node.Status.Allocatable[v1.ResourceMemory] = mem50m
-			allocatableResource := expected.AllocatableResource()
-			newAllocatableResource := &allocatableResource
-			newAllocatableResource.Memory = mem50m.Value()
-			expected.SetAllocatableResource(newAllocatableResource)
+			expected.Allocatable.Memory = mem50m.Value()
 
 			if err := cache.UpdateNode(nil, node); err != nil {
 				t.Error(err)
@@ -1158,10 +1125,10 @@ func TestNodeOperators(t *testing.T) {
 			if !found {
 				t.Errorf("Failed to find node %v in schedulertypes after UpdateNode.", node.Name)
 			}
-			if got.info.GetGeneration() <= expected.GetGeneration() {
-				t.Errorf("Generation is not incremented. got: %v, expected: %v", got.info.GetGeneration(), expected.GetGeneration())
+			if got.info.Generation <= expected.Generation {
+				t.Errorf("Generation is not incremented. got: %v, expected: %v", got.info.Generation, expected.Generation)
 			}
-			expected.SetGeneration(got.info.GetGeneration())
+			expected.Generation = got.info.Generation
 
 			if !reflect.DeepEqual(got.info, expected) {
 				t.Errorf("Failed to update node in schedulertypes:\n got: %+v \nexpected: %+v", got, expected)
@@ -1547,7 +1514,7 @@ func compareCacheWithNodeInfoSnapshot(cache *schedulerCache, snapshot *Snapshot)
 		nodeName := cache.nodeTree.next()
 		if n := snapshot.nodeInfoMap[nodeName]; n != nil {
 			expectedNodeInfoList = append(expectedNodeInfoList, n)
-			if len(n.PodsWithAffinity()) > 0 {
+			if len(n.PodsWithAffinity) > 0 {
 				expectedHavePodsWithAffinityNodeInfoList = append(expectedHavePodsWithAffinityNodeInfoList, n)
 			}
 		} else {
