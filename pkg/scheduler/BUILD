@@ -60,7 +60,6 @@ go_test(
     ],
     embed = [":go_default_library"],
     deps = [
-        "//pkg/api/testing:go_default_library",
         "//pkg/apis/core:go_default_library",
         "//pkg/controller/volume/scheduling:go_default_library",
         "//pkg/features:go_default_library",
@@ -126,7 +125,6 @@ filegroup(
         "//pkg/scheduler/internal/parallelize:all-srcs",
         "//pkg/scheduler/internal/queue:all-srcs",
         "//pkg/scheduler/metrics:all-srcs",
-        "//pkg/scheduler/nodeinfo:all-srcs",
         "//pkg/scheduler/profile:all-srcs",
         "//pkg/scheduler/testing:all-srcs",
         "//pkg/scheduler/util:all-srcs",
