@@ -1034,7 +1034,7 @@ func TestServeExecInContainerIdleTimeout(t *testing.T) {
 
 	url := fw.testHTTPServer.URL + "/exec/" + podNamespace + "/" + podName + "/" + expectedContainerName + "?c=ls&c=-a&" + api.ExecStdinParam + "=1"
 
-	upgradeRoundTripper := spdy.NewSpdyRoundTripper(nil, true, true)
+	upgradeRoundTripper := spdy.NewRoundTripper(nil, true, true)
 	c := &http.Client{Transport: upgradeRoundTripper}
 
 	resp, err := c.Do(makeReq(t, "POST", url, "v4.channel.k8s.io"))
@@ -1576,6 +1576,20 @@ func TestDebuggingDisabledHandlers(t *testing.T) {
 	resp, err = http.Get(fw.testHTTPServer.URL + "/spec")
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+}
+
+func TestFailedParseParamsSummaryHandler(t *testing.T) {
+	fw := newServerTest()
+	defer fw.testHTTPServer.Close()
+
+	resp, err := http.Post(fw.testHTTPServer.URL+"/stats/summary", "invalid/content/type", nil)
+	assert.NoError(t, err)
+	defer resp.Body.Close()
+	v, err := ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	assert.Contains(t, string(v), "parse form failed")
 
 }
 
