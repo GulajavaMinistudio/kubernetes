@@ -37,8 +37,9 @@ import (
 	cadvisorapi "github.com/google/cadvisor/info/v1"
 	"github.com/google/cadvisor/metrics"
 	"google.golang.org/grpc"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/kubelet/metrics/collectors"
+	"k8s.io/utils/clock"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -342,7 +343,7 @@ func (s *Server) InstallDefaultHandlers(enableCAdvisorJSONEndpoints bool) {
 		cadvisormetrics.AppMetrics:              struct{}{},
 		cadvisormetrics.ProcessMetrics:          struct{}{},
 	}
-	r.RawMustRegister(metrics.NewPrometheusCollector(prometheusHostAdapter{s.host}, containerPrometheusLabelsFunc(s.host), includedMetrics))
+	r.RawMustRegister(metrics.NewPrometheusCollector(prometheusHostAdapter{s.host}, containerPrometheusLabelsFunc(s.host), includedMetrics, clock.RealClock{}))
 	s.restfulCont.Handle(cadvisorMetricsPath,
 		compbasemetrics.HandlerFor(r, compbasemetrics.HandlerOpts{ErrorHandling: compbasemetrics.ContinueOnError}),
 	)
@@ -350,7 +351,7 @@ func (s *Server) InstallDefaultHandlers(enableCAdvisorJSONEndpoints bool) {
 	// deprecated endpoint which will be removed in release 1.20.0+.
 	s.addMetricsBucketMatcher("metrics/resource/v1alpha1")
 	v1alpha1ResourceRegistry := compbasemetrics.NewKubeRegistry()
-	v1alpha1ResourceRegistry.CustomMustRegister(stats.NewPrometheusResourceMetricCollector(s.resourceAnalyzer, v1alpha1.Config()))
+	v1alpha1ResourceRegistry.CustomMustRegister(stats.NewPrometheusResourceMetricCollector(s.resourceAnalyzer, stats.Config()))
 	s.restfulCont.Handle(path.Join(resourceMetricsPath, v1alpha1.Version),
 		compbasemetrics.HandlerFor(v1alpha1ResourceRegistry, compbasemetrics.HandlerOpts{ErrorHandling: compbasemetrics.ContinueOnError}),
 	)
