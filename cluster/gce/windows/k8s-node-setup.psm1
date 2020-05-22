@@ -57,8 +57,8 @@ $GCE_METADATA_SERVER = "169.254.169.254"
 # exist until an initial HNS network has been created on the Windows node - see
 # Add_InitialHnsNetwork().
 $MGMT_ADAPTER_NAME = "vEthernet (Ethernet*"
-$CRICTL_VERSION = 'v1.18.0'
-$CRICTL_SHA256 = '5045bcc6d8b0e6004be123ab99ea06e5b1b2ae1e586c968fcdf85fccd4d67ae1'
+$CRICTL_VERSION = 'v1.17.0'
+$CRICTL_SHA256 = '781fd3bd15146a924c6fc2428b11d8a0f20fa04a0c8e00a9a5808f2cc37e0569'
 
 Import-Module -Force C:\common.psm1
 
@@ -892,6 +892,16 @@ function Configure-GcePdTools {
 '$modulePath = "K8S_DIR\GetGcePdName.dll"
 Unblock-File $modulePath
 Import-Module -Name $modulePath'.replace('K8S_DIR', ${env:K8S_DIR})
+
+  if (Test-IsTestCluster $kube_env) {
+    if (ShouldWrite-File ${env:K8S_DIR}\diskutil.exe) {
+      # The source code of this executable file is https://github.com/kubernetes-sigs/sig-windows-tools/blob/master/cmd/diskutil/diskutil.c
+      MustDownload-File -OutFile ${env:K8S_DIR}\diskutil.exe `
+        -URLs "https://ddebroywin1.s3-us-west-2.amazonaws.com/diskutil.exe"
+    }
+    Copy-Item ${env:K8S_DIR}\diskutil.exe -Destination "C:\Windows\system32"
+  }
+
 }
 
 # Setup cni network. This function supports both Docker and containerd.
@@ -1211,14 +1221,13 @@ function DownloadAndInstall-Crictl {
   if (-not (ShouldWrite-File ${env:NODE_DIR}\crictl.exe)) {
     return
   }
-  $url = ('https://github.com/kubernetes-sigs/cri-tools/releases/download/' +
-          $CRICTL_VERSION + '/crictl-' + $CRICTL_VERSION + '-windows-amd64.tar.gz')
+  $url = ('https://storage.googleapis.com/kubernetes-release/crictl/' +
+      'crictl-' + $CRICTL_VERSION + '-windows-amd64.exe')
   MustDownload-File `
       -URLs $url `
-      -OutFile ${env:NODE_DIR}\crictl.tar.gz `
+      -OutFile ${env:NODE_DIR}\crictl.exe `
       -Hash $CRICTL_SHA256 `
       -Algorithm SHA256
-  tar xzvf ${env:NODE_DIR}\crictl.tar.gz -C ${env:NODE_DIR}
 }
 
 # Sets crictl configuration values.

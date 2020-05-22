@@ -29,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/kubernetes/pkg/controller/volume/scheduling"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 )
 
@@ -491,9 +490,6 @@ type FrameworkHandle interface {
 	ClientSet() clientset.Interface
 
 	SharedInformerFactory() informers.SharedInformerFactory
-
-	// VolumeBinder returns the volume binder used by scheduler.
-	VolumeBinder() scheduling.SchedulerVolumeBinder
 }
 
 // PreemptHandle incorporates all needed logic to run preemption logic.
@@ -510,4 +506,6 @@ type PodNominator interface {
 	DeleteNominatedPodIfExists(pod *v1.Pod)
 	// UpdateNominatedPod updates the <oldPod> with <newPod>.
 	UpdateNominatedPod(oldPod, newPod *v1.Pod)
+	// NominatedPodsForNode returns nominatedPods on the given node.
+	NominatedPodsForNode(nodeName string) []*v1.Pod
 }

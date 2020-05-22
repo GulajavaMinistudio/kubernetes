@@ -1,5 +1,7 @@
+// +build windows
+
 /*
-Copyright 2016 The Kubernetes Authors.
+Copyright 2020 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,5 +16,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package remotecommand contains functions related to executing commands in and attaching to pods.
-package remotecommand // import "k8s.io/kubernetes/pkg/kubelet/server/remotecommand"
+package main
+
+import "fmt"
+
+func copyDirectory(source string, dest string) error {
+	return fmt.Errorf("no support for windows")
+}

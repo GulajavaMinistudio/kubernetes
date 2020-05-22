@@ -1325,6 +1325,15 @@
     Container.
   release: v1.9
   file: test/e2e/auth/service_accounts.go
+- testname: ServiceAccount lifecycle test
+  codename: '[sig-auth] ServiceAccounts should run through the lifecycle of a ServiceAccount
+    [Conformance]'
+  description: Creates a ServiceAccount with a static Label MUST be added as shown
+    in watch event. Patching the ServiceAccount MUST return it's new property. Listing
+    the ServiceAccounts MUST return the test ServiceAccount with it's patched values.
+    ServiceAccount will be deleted and MUST find a deleted watch event.
+  release: v1.19
+  file: test/e2e/auth/service_accounts.go
 - testname: Kubectl, guestbook application
   codename: '[sig-cli] Kubectl client Guestbook application should create and stop
     a working application  [Conformance]'
@@ -1358,6 +1367,14 @@
     expected. Kubectl describe on rc, service, node and namespace SHOULD also return
     proper information.
   release: v1.9
+  file: test/e2e/kubectl/kubectl.go
+- testname: Kubectl, diff Deployment
+  codename: '[sig-cli] Kubectl client Kubectl diff should check if kubectl diff finds
+    a difference for Deployments [Conformance]'
+  description: Create a Deployment with httpd image. Declare the same Deployment with
+    a different image, busybox. Diff of live Deployment with declared Deployment MUST
+    include the difference between live and declared image.
+  release: v1.19
   file: test/e2e/kubectl/kubectl.go
 - testname: Kubectl, create service, replication controller
   codename: '[sig-cli] Kubectl client Kubectl expose should create services for rc  [Conformance]'
@@ -1415,6 +1432,15 @@
     in the run command. After the run command there SHOULD be a pod that should exist
     with one container running the specified image.
   release: v1.9
+  file: test/e2e/kubectl/kubectl.go
+- testname: Kubectl, server-side dry-run Pod
+  codename: '[sig-cli] Kubectl client Kubectl server-side dry-run should check if
+    kubectl can dry-run update Pods [Conformance]'
+  description: The command 'kubectl run' must create a pod with the specified image
+    name. After, the command 'kubectl replace --dry-run=server' should update the
+    Pod with the new image name and server-side dry-run enabled. The image name must
+    not change.
+  release: v1.19
   file: test/e2e/kubectl/kubectl.go
 - testname: Kubectl, version
   codename: '[sig-cli] Kubectl client Kubectl version should check is all data is
