@@ -145,7 +145,8 @@ func (es mockScheduler) Schedule(ctx context.Context, profile *profile.Profile, 
 func (es mockScheduler) Extenders() []framework.Extender {
 	return nil
 }
-func (es mockScheduler) Preempt(ctx context.Context, i *profile.Profile, state *framework.CycleState, pod *v1.Pod, scheduleErr error) (string, []*v1.Pod, []*v1.Pod, error) {
+
+func (es mockScheduler) Preempt(ctx context.Context, profile *profile.Profile, state *framework.CycleState, pod *v1.Pod, scheduleErr error) (string, []*v1.Pod, []*v1.Pod, error) {
 	return "", nil, nil, nil
 }
 
@@ -543,11 +544,10 @@ func TestSchedulerNoPhantomPodAfterExpire(t *testing.T) {
 		st.RegisterBindPlugin(defaultbinder.Name, defaultbinder.New),
 		st.RegisterPluginAsExtensions(nodeports.Name, nodeports.New, "Filter", "PreFilter"),
 	}
-	scheduler, bindingChan, _ := setupTestSchedulerWithOnePodOnNode(t, queuedPodStore, scache, informerFactory, stop, pod, &node, fns...)
+	scheduler, bindingChan, errChan := setupTestSchedulerWithOnePodOnNode(t, queuedPodStore, scache, informerFactory, stop, pod, &node, fns...)
 
 	waitPodExpireChan := make(chan struct{})
 	timeout := make(chan struct{})
-	errChan := make(chan error)
 	go func() {
 		for {
 			select {
