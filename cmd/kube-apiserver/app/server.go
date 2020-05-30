@@ -117,6 +117,14 @@ cluster's shared state through which all other components interact.`,
 
 			return Run(completedOptions, genericapiserver.SetupSignalHandler())
 		},
+		Args: func(cmd *cobra.Command, args []string) error {
+			for _, arg := range args {
+				if len(arg) > 0 {
+					return fmt.Errorf("%q does not take any arguments, got %q", cmd.CommandPath(), args)
+				}
+			}
+			return nil
+		},
 	}
 
 	fs := cmd.Flags()
@@ -505,29 +513,17 @@ func buildGenericConfig(
 		genericConfig.DisabledPostStartHooks.Insert(rbacrest.PostStartHookName)
 	}
 
+	lastErr = s.Audit.ApplyTo(genericConfig)
+	if lastErr != nil {
+		return
+	}
+
 	admissionConfig := &kubeapiserveradmission.Config{
 		ExternalInformers:    versionedInformers,
 		LoopbackClientConfig: genericConfig.LoopbackClientConfig,
 		CloudConfigFile:      s.CloudProvider.CloudConfigFile,
 	}
 	serviceResolver = buildServiceResolver(s.EnableAggregatorRouting, genericConfig.LoopbackClientConfig.Host, versionedInformers)
-
-	authInfoResolverWrapper := webhook.NewDefaultAuthenticationInfoResolverWrapper(proxyTransport, genericConfig.EgressSelector, genericConfig.LoopbackClientConfig)
-
-	lastErr = s.Audit.ApplyTo(
-		genericConfig,
-		genericConfig.LoopbackClientConfig,
-		versionedInformers,
-		serveroptions.NewProcessInfo("kube-apiserver", "kube-system"),
-		&serveroptions.WebhookOptions{
-			AuthInfoResolverWrapper: authInfoResolverWrapper,
-			ServiceResolver:         serviceResolver,
-		},
-	)
-	if lastErr != nil {
-		return
-	}
-
 	pluginInitializers, admissionPostStartHook, err = admissionConfig.New(proxyTransport, genericConfig.EgressSelector, serviceResolver)
 	if err != nil {
 		lastErr = fmt.Errorf("failed to create admission plugin initializer: %v", err)
