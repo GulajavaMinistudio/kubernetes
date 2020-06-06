@@ -41,7 +41,6 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/apis/config/scheme"
 	"k8s.io/kubernetes/pkg/scheduler/core"
 	frameworkplugins "k8s.io/kubernetes/pkg/scheduler/framework/plugins"
-	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	internalcache "k8s.io/kubernetes/pkg/scheduler/internal/cache"
 	internalqueue "k8s.io/kubernetes/pkg/scheduler/internal/queue"
@@ -113,7 +112,6 @@ type schedulerOptions struct {
 	schedulerAlgorithmSource schedulerapi.SchedulerAlgorithmSource
 	disablePreemption        bool
 	percentageOfNodesToScore int32
-	bindTimeoutSeconds       int64
 	podInitialBackoffSeconds int64
 	podMaxBackoffSeconds     int64
 	// Contains out-of-tree plugins to be merged with the in-tree registry.
@@ -152,13 +150,6 @@ func WithPreemptionDisabled(disablePreemption bool) Option {
 func WithPercentageOfNodesToScore(percentageOfNodesToScore int32) Option {
 	return func(o *schedulerOptions) {
 		o.percentageOfNodesToScore = percentageOfNodesToScore
-	}
-}
-
-// WithBindTimeoutSeconds sets bindTimeoutSeconds for Scheduler, the default value is 100
-func WithBindTimeoutSeconds(bindTimeoutSeconds int64) Option {
-	return func(o *schedulerOptions) {
-		o.bindTimeoutSeconds = bindTimeoutSeconds
 	}
 }
 
@@ -211,7 +202,6 @@ var defaultSchedulerOptions = schedulerOptions{
 	},
 	disablePreemption:        false,
 	percentageOfNodesToScore: schedulerapi.DefaultPercentageOfNodesToScore,
-	bindTimeoutSeconds:       volumebinding.DefaultBindTimeoutSeconds,
 	podInitialBackoffSeconds: int64(internalqueue.DefaultPodInitialBackoffDuration.Seconds()),
 	podMaxBackoffSeconds:     int64(internalqueue.DefaultPodMaxBackoffDuration.Seconds()),
 }
@@ -252,7 +242,6 @@ func New(client clientset.Interface,
 		StopEverything:           stopEverything,
 		disablePreemption:        options.disablePreemption,
 		percentageOfNodesToScore: options.percentageOfNodesToScore,
-		bindTimeoutSeconds:       options.bindTimeoutSeconds,
 		podInitialBackoffSeconds: options.podInitialBackoffSeconds,
 		podMaxBackoffSeconds:     options.podMaxBackoffSeconds,
 		profiles:                 append([]schedulerapi.KubeSchedulerProfile(nil), options.profiles...),
@@ -556,10 +545,22 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 					" No preemption is performed.")
 			} else {
 				preemptionStartTime := time.Now()
+				// TODO(Huang-Wei): implement the preemption logic as a PostFilter plugin.
 				nominatedNode, _ = sched.preempt(schedulingCycleCtx, prof, state, pod, fitError)
 				metrics.PreemptionAttempts.Inc()
 				metrics.SchedulingAlgorithmPreemptionEvaluationDuration.Observe(metrics.SinceInSeconds(preemptionStartTime))
 				metrics.DeprecatedSchedulingDuration.WithLabelValues(metrics.PreemptionEvaluation).Observe(metrics.SinceInSeconds(preemptionStartTime))
+
+				// Run PostFilter plugins to try to make the pod schedulable in a future scheduling cycle.
+				result, status := prof.RunPostFilterPlugins(ctx, state, pod, fitError.FilteredNodesStatuses)
+				if status.Code() == framework.Error {
+					klog.Errorf("Status after running PostFilter plugins for pod %v/%v: %v", pod.Namespace, pod.Name, status)
+				} else {
+					klog.V(5).Infof("Status after running PostFilter plugins for pod %v/%v: %v", pod.Namespace, pod.Name, status)
+				}
+				if status.IsSuccess() && result != nil {
+					nominatedNode = result.NominatedNodeName
+				}
 			}
 			// Pod did not fit anywhere, so it is counted as a failure. If preemption
 			// succeeds, the pod should get counted as a success the next time we try to

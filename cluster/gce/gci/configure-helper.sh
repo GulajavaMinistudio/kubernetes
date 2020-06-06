@@ -1682,11 +1682,6 @@ function prepare-etcd-manifest {
   mv "${temp_file}" /etc/kubernetes/manifests
 }
 
-function start-etcd-empty-dir-cleanup-pod {
-  local -r src_file="${KUBE_HOME}/kube-manifests/kubernetes/gci-trusty/etcd-empty-dir-cleanup.yaml"
-  cp "${src_file}" "/etc/kubernetes/manifests"
-}
-
 # Starts etcd server pod (and etcd-events pod if needed).
 # More specifically, it prepares dirs and files, sets the variable value
 # in the manifests, and copies them to /etc/kubernetes/manifests.
@@ -1898,7 +1893,7 @@ function start-kube-controller-manager {
     params+=" --flex-volume-plugin-dir=${VOLUME_PLUGIN_DIR}"
   fi
   if [[ -n "${CLUSTER_SIGNING_DURATION:-}" ]]; then
-    params+=" --experimental-cluster-signing-duration=$CLUSTER_SIGNING_DURATION"
+    params+=" --cluster-signing-duration=$CLUSTER_SIGNING_DURATION"
   fi
   # Disable using HPA metrics REST clients if metrics-server isn't enabled,
   # or if we want to explicitly disable it by setting HPA_USE_REST_CLIENT.
@@ -2929,7 +2924,6 @@ function main() {
     compute-master-manifest-variables
     if [[ -z "${ETCD_SERVERS:-}" ]]; then
       start-etcd-servers
-      start-etcd-empty-dir-cleanup-pod
     fi
     source ${KUBE_BIN}/configure-kubeapiserver.sh
     start-kube-apiserver
