@@ -164,7 +164,7 @@ github.com/containernetworking/cni/pkg/types
 github.com/containernetworking/cni/pkg/types/020
 github.com/containernetworking/cni/pkg/types/current
 github.com/containernetworking/cni/pkg/version
-# github.com/coredns/corefile-migration v1.0.6 => github.com/coredns/corefile-migration v1.0.6
+# github.com/coredns/corefile-migration v1.0.8 => github.com/coredns/corefile-migration v1.0.8
 github.com/coredns/corefile-migration/migration
 github.com/coredns/corefile-migration/migration/corefile
 # github.com/coreos/go-oidc v2.1.0+incompatible => github.com/coreos/go-oidc v2.1.0+incompatible
@@ -1640,6 +1640,10 @@ k8s.io/client-go/util/workqueue
 # k8s.io/cloud-provider v0.0.0 => ./staging/src/k8s.io/cloud-provider
 k8s.io/cloud-provider
 k8s.io/cloud-provider/api
+k8s.io/cloud-provider/controllers/node
+k8s.io/cloud-provider/controllers/nodelifecycle
+k8s.io/cloud-provider/controllers/route
+k8s.io/cloud-provider/controllers/service
 k8s.io/cloud-provider/fake
 k8s.io/cloud-provider/node/helpers
 k8s.io/cloud-provider/service/helpers

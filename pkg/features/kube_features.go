@@ -78,6 +78,7 @@ const (
 
 	// owner: @mikedanese
 	// beta: v1.8
+	// ga: v1.19
 	//
 	// Automatically renews the client certificate used for communicating with
 	// the API server as the certificate approaches expiration.
@@ -291,6 +292,13 @@ const (
 	//
 	// Enables CSI Inline volumes support for pods
 	CSIInlineVolume featuregate.Feature = "CSIInlineVolume"
+
+	// owner: @alculquicondor
+	// alpha: v1.19
+	//
+	// Enables the use of PodTopologySpread scheduling plugin to do default
+	// spreading and disables legacy DefaultPodTopologySpread plugin.
+	DefaultPodTopologySpread featuregate.Feature = "DefaultPodTopologySpread"
 
 	// owner: @tallclair
 	// alpha: v1.12
@@ -587,7 +595,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	DevicePlugins:                  {Default: true, PreRelease: featuregate.Beta},
 	TaintBasedEvictions:            {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.19
 	RotateKubeletServerCertificate: {Default: true, PreRelease: featuregate.Beta},
-	RotateKubeletClientCertificate: {Default: true, PreRelease: featuregate.Beta},
+	RotateKubeletClientCertificate: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.20
 	LocalStorageCapacityIsolation:  {Default: true, PreRelease: featuregate.Beta},
 	Sysctls:                        {Default: true, PreRelease: featuregate.Beta},
 	EphemeralContainers:            {Default: false, PreRelease: featuregate.Alpha},
@@ -659,6 +667,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	HugePageStorageMediumSize:                      {Default: false, PreRelease: featuregate.Alpha},
 	ExternalPolicyForExternalIP:                    {Default: true, PreRelease: featuregate.GA}, // remove in 1.20
 	AnyVolumeDataSource:                            {Default: false, PreRelease: featuregate.Alpha},
+	DefaultPodTopologySpread:                       {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:

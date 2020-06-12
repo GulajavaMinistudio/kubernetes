@@ -20,6 +20,9 @@ import (
 	"sort"
 	"strings"
 
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/pkg/features"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/defaultbinder"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/defaultpodtopologyspread"
@@ -49,7 +52,10 @@ type Registry map[string]*schedulerapi.Plugins
 // NewRegistry returns an algorithm provider registry instance.
 func NewRegistry() Registry {
 	defaultConfig := getDefaultConfig()
+	applyFeatureGates(defaultConfig)
+
 	caConfig := getClusterAutoscalerConfig()
+	applyFeatureGates(caConfig)
 
 	return Registry{
 		schedulerapi.SchedulerDefaultProviderName: defaultConfig,
@@ -81,6 +87,7 @@ func getDefaultConfig() *schedulerapi.Plugins {
 				{Name: nodeports.Name},
 				{Name: podtopologyspread.Name},
 				{Name: interpodaffinity.Name},
+				{Name: volumebinding.Name},
 			},
 		},
 		Filter: &schedulerapi.PluginSet{
@@ -106,7 +113,6 @@ func getDefaultConfig() *schedulerapi.Plugins {
 			Enabled: []schedulerapi.Plugin{
 				{Name: interpodaffinity.Name},
 				{Name: podtopologyspread.Name},
-				{Name: defaultpodtopologyspread.Name},
 				{Name: tainttoleration.Name},
 			},
 		},
@@ -122,7 +128,6 @@ func getDefaultConfig() *schedulerapi.Plugins {
 				// - This is a score coming from user preference.
 				// - It makes its signal comparable to NodeResourcesLeastAllocated.
 				{Name: podtopologyspread.Name, Weight: 2},
-				{Name: defaultpodtopologyspread.Name, Weight: 1},
 				{Name: tainttoleration.Name, Weight: 1},
 			},
 		},
@@ -163,4 +168,16 @@ func getClusterAutoscalerConfig() *schedulerapi.Plugins {
 		}
 	}
 	return caConfig
+}
+
+func applyFeatureGates(config *schedulerapi.Plugins) {
+	if !utilfeature.DefaultFeatureGate.Enabled(features.DefaultPodTopologySpread) {
+		// When feature is enabled, the default spreading is done by
+		// PodTopologySpread plugin, which is enabled by default.
+		klog.Infof("Registering DefaultPodTopologySpread plugin")
+		s := schedulerapi.Plugin{Name: defaultpodtopologyspread.Name}
+		config.PreScore.Enabled = append(config.PreScore.Enabled, s)
+		s.Weight = 1
+		config.Score.Enabled = append(config.Score.Enabled, s)
+	}
 }
