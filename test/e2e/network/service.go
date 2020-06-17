@@ -17,6 +17,7 @@ limitations under the License.
 package network
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -516,123 +517,6 @@ func pokeUDP(host string, port int, request string, params *UDPPokeParams) UDPPo
 	ret.Status = UDPSuccess
 	framework.Logf("Poke(%q): success", url)
 	return ret
-}
-
-// continuousEcho() uses the same connection for multiple requests, made to run as a goroutine so that
-// manipulations can be made to the service and backend pods while a connection is ongoing
-// it starts by sending a series of packets to establish conntrack entries and waits for a signal to keep
-// sending packts. It returns an error if the number of failed attempts is >= 5
-func continuousEcho(host string, port int, timeout time.Duration, maxAttempts int, signal chan struct{}, errorChannel chan error) {
-	defer ginkgo.GinkgoRecover()
-	const threshold = 10
-
-	// Sanity check inputs, because it has happened.  These are the only things
-	// that should hard fail the test - they are basically ASSERT()s.
-	if host == "" {
-		errorChannel <- fmt.Errorf("Got empty host for continuous echo (%s)", host)
-		return
-	}
-	if port == 0 {
-		errorChannel <- fmt.Errorf("Got port ==0 for continuous echo (%d)", port)
-		return
-	}
-
-	hostPort := net.JoinHostPort(host, strconv.Itoa(port))
-	url := fmt.Sprintf("udp://%s", hostPort)
-
-	ret := UDPPokeResult{}
-
-	con, err := net.Dial("udp", hostPort)
-	if err != nil {
-		ret.Status = UDPError
-		ret.Error = err
-		errorChannel <- fmt.Errorf("Connection to %q failed: %v", url, err)
-		return
-	}
-
-	numErrors := 0
-	bufsize := len(strconv.Itoa(maxAttempts)) + 1
-	var buf = make([]byte, bufsize)
-
-	for i := 0; i < maxAttempts; i++ {
-		if i == threshold {
-			framework.Logf("Continuous echo waiting for signal to continue")
-			<-signal
-			if numErrors == threshold {
-				errorChannel <- fmt.Errorf("continuous echo was not able to communicate with initial server pod")
-				return
-			}
-		}
-		time.Sleep(1 * time.Second)
-		err = con.SetDeadline(time.Now().Add(timeout))
-		if err != nil {
-			ret.Status = UDPError
-			ret.Error = err
-			framework.Logf("Continuous echo (%q): %v", url, err)
-			numErrors++
-			continue
-		}
-		myRequest := fmt.Sprintf("echo %d", i)
-		_, err = con.Write([]byte(fmt.Sprintf("%s\n", myRequest)))
-		if err != nil {
-			ret.Error = err
-			neterr, ok := err.(net.Error)
-			if ok && neterr.Timeout() {
-				ret.Status = UDPTimeout
-			} else if strings.Contains(err.Error(), "connection refused") {
-				ret.Status = UDPRefused
-			} else {
-				ret.Status = UDPError
-			}
-			numErrors++
-			framework.Logf("Continuous echo (%q): %v - %d errors seen so far", url, err, numErrors)
-			continue
-		}
-
-		err = con.SetDeadline(time.Now().Add(timeout))
-		if err != nil {
-			ret.Status = UDPError
-			ret.Error = err
-			numErrors++
-			framework.Logf("Continuous echo (%q): %v - %d errors seen so far", url, err, numErrors)
-			continue
-		}
-
-		n, err := con.Read(buf)
-		if err != nil {
-			ret.Error = err
-			neterr, ok := err.(net.Error)
-			if ok && neterr.Timeout() {
-				ret.Status = UDPTimeout
-			} else if strings.Contains(err.Error(), "connection refused") {
-				ret.Status = UDPRefused
-			} else {
-				ret.Status = UDPError
-			}
-			numErrors++
-			framework.Logf("Continuous echo (%q): %v - %d errors seen so far", url, err, numErrors)
-			continue
-		}
-		ret.Response = buf[0:n]
-
-		if string(ret.Response) != fmt.Sprintf("%d", i) {
-			ret.Status = UDPBadResponse
-			ret.Error = fmt.Errorf("response does not match expected string: %q", string(ret.Response))
-			framework.Logf("Continuous echo (%q): %v", url, ret.Error)
-			numErrors++
-			continue
-
-		}
-		ret.Status = UDPSuccess
-		framework.Logf("Continuous echo(%q): success", url)
-	}
-
-	err = nil
-	if numErrors >= threshold {
-		err = fmt.Errorf("Too many Errors in continuous echo")
-	}
-
-	errorChannel <- err
 }
 
 // testReachableUDP tests that the given host serves UDP on the given port.
@@ -1238,69 +1122,6 @@ var _ = SIGDescribe("Services", func() {
 		}
 		framework.ExpectNoError(verifyServeHostnameServiceUp(cs, ns, host, podNames1, svc1IP, servicePort))
 		framework.ExpectNoError(verifyServeHostnameServiceUp(cs, ns, host, podNames2, svc2IP, servicePort))
-	})
-
-	ginkgo.It("should be able to preserve UDP traffic when server pod cycles for a NodePort service", func() {
-		serviceName := "clusterip-test"
-		serverPod1Name := "server-1"
-		serverPod2Name := "server-2"
-
-		ns := f.Namespace.Name
-
-		nodeIP, err := e2enode.PickIP(cs) // for later
-		framework.ExpectNoError(err)
-
-		// Create a NodePort service
-		udpJig := e2eservice.NewTestJig(cs, ns, serviceName)
-		ginkgo.By("creating a UDP service " + serviceName + " with type=NodePort in " + ns)
-		udpService, err := udpJig.CreateUDPService(func(svc *v1.Service) {
-			svc.Spec.Type = v1.ServiceTypeNodePort
-			svc.Spec.Ports = []v1.ServicePort{
-				{Port: 80, Name: "http", Protocol: v1.ProtocolUDP, TargetPort: intstr.FromInt(80)},
-			}
-		})
-		framework.ExpectNoError(err)
-
-		// Add a backend pod to the service
-		ginkgo.By("creating a backend pod for the service " + serviceName)
-		serverPod1 := newAgnhostPod(serverPod1Name, "netexec", fmt.Sprintf("--udp-port=%d", 80))
-		serverPod1.Labels = udpJig.Labels
-		_, err = cs.CoreV1().Pods(ns).Create(context.TODO(), serverPod1, metav1.CreateOptions{})
-		ginkgo.By(fmt.Sprintf("checking NodePort service %s on node with public IP %s", serviceName, nodeIP))
-		framework.ExpectNoError(err)
-		framework.ExpectNoError(e2epod.WaitTimeoutForPodReadyInNamespace(f.ClientSet, serverPod1.Name, f.Namespace.Name, framework.PodStartTimeout))
-
-		// Waiting for service to expose endpoint.
-		err = validateEndpointsPorts(cs, ns, serviceName, portsByPodName{serverPod1Name: {80}})
-		framework.ExpectNoError(err, "failed to validate endpoints for service %s in namespace: %s", serviceName, ns)
-
-		// Check that the pod reveives the traffic
-		ginkgo.By("Sending UDP traffic to NodePort service " + serviceName + " on node with publicIP " + nodeIP)
-		errorChannel := make(chan error)
-		signal := make(chan struct{}, 1)
-		go continuousEcho(nodeIP, int(udpService.Spec.Ports[0].NodePort), 3*time.Second, 20, signal, errorChannel)
-
-		// Create a second pod
-		ginkgo.By("creating a second pod for the service " + serviceName)
-		serverPod2 := newAgnhostPod(serverPod2Name, "netexec", fmt.Sprintf("--udp-port=%d", 80))
-		serverPod2.Labels = udpJig.Labels
-		_, err = cs.CoreV1().Pods(ns).Create(context.TODO(), serverPod2, metav1.CreateOptions{})
-		framework.ExpectNoError(err)
-		framework.ExpectNoError(e2epod.WaitTimeoutForPodReadyInNamespace(f.ClientSet, serverPod2.Name, f.Namespace.Name, framework.PodStartTimeout))
-
-		// and delete the first pod
-		framework.Logf("Cleaning up %s pod", serverPod1Name)
-		err = cs.CoreV1().Pods(ns).Delete(context.TODO(), serverPod1Name, metav1.DeleteOptions{})
-		framework.ExpectNoError(err, "failed to delete pod: %s on node", serverPod1Name)
-
-		// Check that the second pod keeps receiving traffic
-		ginkgo.By("Sending UDP traffic to NodePort service " + serviceName + " on node with publicIP " + nodeIP)
-		signal <- struct{}{}
-
-		// Check that there are no errors
-		err = <-errorChannel
-		framework.ExpectNoError(err, "pod communication failed")
-
 	})
 
 	/*
@@ -3282,72 +3103,42 @@ var _ = SIGDescribe("ESIPP [Slow]", func() {
 			framework.Failf("Service HealthCheck NodePort still present")
 		}
 
-		epNodes, err := jig.ListNodesWithEndpoint()
+		endpointNodeMap, err := jig.GetEndpointNodes()
 		framework.ExpectNoError(err)
-		// map from name of nodes with endpoint to internal ip
-		// it is assumed that there is only a single node with the endpoint
-		endpointNodeMap := make(map[string]string)
-		// map from name of nodes without endpoint to internal ip
-		noEndpointNodeMap := make(map[string]string)
-		for _, node := range epNodes {
-			ips := e2enode.GetAddresses(&node, v1.NodeInternalIP)
-			if len(ips) < 1 {
-				framework.Failf("No internal ip found for node %s", node.Name)
-			}
-			endpointNodeMap[node.Name] = ips[0]
-		}
+		noEndpointNodeMap := map[string][]string{}
 		for _, n := range nodes.Items {
-			ips := e2enode.GetAddresses(&n, v1.NodeInternalIP)
-			if len(ips) < 1 {
-				framework.Failf("No internal ip found for node %s", n.Name)
+			if _, ok := endpointNodeMap[n.Name]; ok {
+				continue
 			}
-			if _, ok := endpointNodeMap[n.Name]; !ok {
-				noEndpointNodeMap[n.Name] = ips[0]
-			}
+			noEndpointNodeMap[n.Name] = e2enode.GetAddresses(&n, v1.NodeExternalIP)
 		}
-		framework.ExpectNotEqual(len(endpointNodeMap), 0)
-		framework.ExpectNotEqual(len(noEndpointNodeMap), 0)
 
 		svcTCPPort := int(svc.Spec.Ports[0].Port)
 		svcNodePort := int(svc.Spec.Ports[0].NodePort)
 		ingressIP := e2eservice.GetIngressPoint(&svc.Status.LoadBalancer.Ingress[0])
 		path := "/clientip"
-		dialCmd := "clientip"
-
-		config := e2enetwork.NewNetworkingTestConfig(f, false, false)
 
 		ginkgo.By(fmt.Sprintf("endpoints present on nodes %v, absent on nodes %v", endpointNodeMap, noEndpointNodeMap))
-		for nodeName, nodeIP := range noEndpointNodeMap {
-			ginkgo.By(fmt.Sprintf("Checking %v (%v:%v/%v) proxies to endpoints on another node", nodeName, nodeIP[0], svcNodePort, dialCmd))
-			_, err := GetHTTPContentFromTestContainer(config, nodeIP, svcNodePort, e2eservice.KubeProxyLagTimeout, dialCmd)
-			framework.ExpectNoError(err, "Could not reach HTTP service through %v:%v/%v after %v", nodeIP, svcNodePort, dialCmd, e2eservice.KubeProxyLagTimeout)
+		for nodeName, nodeIPs := range noEndpointNodeMap {
+			ginkgo.By(fmt.Sprintf("Checking %v (%v:%v%v) proxies to endpoints on another node", nodeName, nodeIPs[0], svcNodePort, path))
+			GetHTTPContent(nodeIPs[0], svcNodePort, e2eservice.KubeProxyLagTimeout, path)
 		}
 
-		for nodeName, nodeIP := range endpointNodeMap {
-			ginkgo.By(fmt.Sprintf("checking kube-proxy health check fails on node with endpoint (%s), public IP %s", nodeName, nodeIP))
-			var body string
-			pollFn := func() (bool, error) {
-				// we expect connection failure here, but not other errors
-
-				resp, err := config.GetResponseFromTestContainer(
-					"http",
-					"healthz",
-					nodeIP,
-					healthCheckNodePort)
-				if err != nil {
-					return false, nil
-				}
-				if len(resp.Errors) > 0 {
+		for nodeName, nodeIPs := range endpointNodeMap {
+			ginkgo.By(fmt.Sprintf("checking kube-proxy health check fails on node with endpoint (%s), public IP %s", nodeName, nodeIPs[0]))
+			var body bytes.Buffer
+			pollfn := func() (bool, error) {
+				result := e2enetwork.PokeHTTP(nodeIPs[0], healthCheckNodePort, "/healthz", nil)
+				if result.Code == 0 {
 					return true, nil
 				}
-				if len(resp.Responses) > 0 {
-					body = resp.Responses[0]
-				}
+				body.Reset()
+				body.Write(result.Body)
 				return false, nil
 			}
-			if pollErr := wait.PollImmediate(framework.Poll, e2eservice.TestTimeout, pollFn); pollErr != nil {
+			if pollErr := wait.PollImmediate(framework.Poll, e2eservice.TestTimeout, pollfn); pollErr != nil {
 				framework.Failf("Kube-proxy still exposing health check on node %v:%v, after ESIPP was turned off. body %s",
-					nodeName, healthCheckNodePort, body)
+					nodeName, healthCheckNodePort, body.String())
 			}
 		}
 

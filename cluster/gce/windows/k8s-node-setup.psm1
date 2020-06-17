@@ -241,6 +241,14 @@ function Set_CurrentShellEnvironmentVar {
 # Sets environment variables used by Kubernetes binaries and by other functions
 # in this module. Depends on numerous ${kube_env} keys.
 function Set-EnvironmentVars {
+  if ($kube_env.ContainsKey('WINDOWS_CONTAINER_RUNTIME')) {
+      $container_runtime = ${kube_env}['WINDOWS_CONTAINER_RUNTIME']
+      $container_runtime_endpoint = ${kube_env}['WINDOWS_CONTAINER_RUNTIME_ENDPOINT']
+  } else {
+      Log-Output "ERROR: WINDOWS_CONTAINER_RUNTIME not set in kube-env, falling back in CONTAINER_RUNTIME"
+      $container_runtime = ${kube_env}['CONTAINER_RUNTIME']
+      $container_runtime_endpoint = ${kube_env}['CONTAINER_RUNTIME_ENDPOINT']
+  }
   # Turning the kube-env values into environment variables is not required but
   # it makes debugging this script easier, and it also makes the syntax a lot
   # easier (${env:K8S_DIR} can be expanded within a string but
@@ -268,8 +276,8 @@ function Set-EnvironmentVars {
     "KUBELET_CERT_PATH" = ${kube_env}['PKI_DIR'] + '\kubelet.crt'
     "KUBELET_KEY_PATH" = ${kube_env}['PKI_DIR'] + '\kubelet.key'
 
-    "CONTAINER_RUNTIME" = ${kube_env}['CONTAINER_RUNTIME']
-    "CONTAINER_RUNTIME_ENDPOINT" = ${kube_env}['CONTAINER_RUNTIME_ENDPOINT']
+    "CONTAINER_RUNTIME" = $container_runtime
+    "CONTAINER_RUNTIME_ENDPOINT" = $container_runtime_endpoint
 
     'LICENSE_DIR' = 'C:\Program Files\Google\Compute Engine\THIRD_PARTY_NOTICES'
   }
@@ -1532,6 +1540,38 @@ function Restart-LoggingAgent {
   Start-Service StackdriverLogging
 }
 
+# Check whether the logging agent is installed by whether it's registered as service
+function IsLoggingAgentInstalled {
+  $stackdriver_status = (Get-Service StackdriverLogging -ErrorAction Ignore).Status
+  return -not [string]::IsNullOrEmpty($stackdriver_status)
+}
+
+# Clean up the logging agent's registry key and root folder if they exist from a prior installation.
+# Try to uninstall it first, if it failed, remove the registry key at least, 
+# as the registry key will block the silent installation later on.
+function Cleanup-LoggingAgent {
+  # For 64 bits app, the registry path is 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+  # for 32 bits app, it's 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+  # StackdriverLogging is installed as 32 bits app
+  $x32_app_reg = 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+  $uninstall_string = (Get-ChildItem $x32_app_reg | Get-ItemProperty | Where-Object {$_.DisplayName -match "Stackdriver"}).UninstallString
+  if (-not [string]::IsNullOrEmpty($uninstall_string)) {
+    try {
+      Start-Process -FilePath "$uninstall_string" -ArgumentList "/S" -Wait
+    } catch {
+      Log-Output "Exception happens during uninstall logging agent, so remove the registry key at least"
+      Remove-Item -Path "$x32_app_reg\GoogleStackdriverLoggingAgent\"
+    }
+  }
+
+  #  If we chose reboot after uninstallation, the root folder would be clean.
+  #  But since we couldn't reboot, so some files & folders would be left there, 
+  #  which could block the re-installation later on, so clean it up
+  if(Test-Path $STACKDRIVER_ROOT){
+    Remove-Item -Force -Recurse $STACKDRIVER_ROOT
+  }
+}
+
 # Installs the Stackdriver logging agent according to
 # https://cloud.google.com/logging/docs/agent/installation.
 # TODO(yujuhong): Update to a newer Stackdriver agent once it is released to
@@ -1548,17 +1588,18 @@ function Install-LoggingAgent {
       ("$STACKDRIVER_ROOT\LoggingAgent\Main\pos\winevtlog.pos\worker0\" +
        "storage.json")
 
-  if (Test-Path $STACKDRIVER_ROOT) {
+  if (IsLoggingAgentInstalled) {
     # Note: we should reinstall the Stackdriver agent if $REDO_STEPS is true
     # here, but we don't know how to run the installer without it prompting
     # when Stackdriver is already installed. We dumped the strings in the
     # installer binary and searched for flags to do this but found nothing. Oh
     # well.
-    Log-Output ("Skip: $STACKDRIVER_ROOT is already present, assuming that " +
-                "Stackdriver logging agent is already installed")
-    Restart-LoggingAgent
+    Log-Output ("Skip: Stackdriver logging agent is already installed")
     return
   }
+  
+  # After a crash, the StackdriverLogging service could be missing, but its files will still be present
+  Cleanup-LoggingAgent
 
   $url = ("https://storage.googleapis.com/gke-release/winnode/stackdriver/" +
           "StackdriverLogging-${STACKDRIVER_VERSION}.exe")

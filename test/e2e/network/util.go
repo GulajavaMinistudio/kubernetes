@@ -53,23 +53,6 @@ func GetHTTPContent(host string, port int, timeout time.Duration, url string) by
 	return body
 }
 
-// GetHTTPContentFromTestContainer returns the content of the given url by HTTP via a test container.
-func GetHTTPContentFromTestContainer(config *e2enetwork.NetworkingTestConfig, host string, port int, timeout time.Duration, dialCmd string) (string, error) {
-	var body string
-	pollFn := func() (bool, error) {
-		resp, err := config.GetResponseFromTestContainer("http", dialCmd, host, port)
-		if err != nil || len(resp.Errors) > 0 || len(resp.Responses) == 0 {
-			return false, nil
-		}
-		body = resp.Responses[0]
-		return true, nil
-	}
-	if pollErr := wait.PollImmediate(framework.Poll, timeout, pollFn); pollErr != nil {
-		return "", pollErr
-	}
-	return body, nil
-}
-
 // DescribeSvc logs the output of kubectl describe svc for the given namespace
 func DescribeSvc(ns string) {
 	framework.Logf("\nOutput of kubectl describe svc:\n")
@@ -81,11 +64,13 @@ func DescribeSvc(ns string) {
 // newAgnhostPod returns a pod that uses the agnhost image. The image's binary supports various subcommands
 // that behave the same, no matter the underlying OS.
 func newAgnhostPod(name string, args ...string) *v1.Pod {
+	zero := int64(0)
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
 		Spec: v1.PodSpec{
+			TerminationGracePeriodSeconds: &zero,
 			Containers: []v1.Container{
 				{
 					Name:  "agnhost",
