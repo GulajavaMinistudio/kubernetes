@@ -364,6 +364,13 @@ function ensure-local-ssds() {
   # The following mounts or symlinks NVMe devices
   get-local-disk-num "nvme" "block"
   local nvmeblocknum="${localdisknum}"
+  get-local-disk-num "nvme" "fs"
+  local nvmefsnum="${localdisknum}"
+  # Check if NVMe SSD specified.
+  if [ "${nvmeblocknum}" -eq "0" ] && [ "${nvmefsnum}" -eq "0" ]; then
+    echo "No local NVMe SSD specified."
+    return
+  fi
   local i=0
   for ssd in /dev/nvme*; do
     if [ -e "${ssd}" ]; then
@@ -522,16 +529,6 @@ function create-node-pki {
     KUBELET_KEY_PATH="${pki_dir}/kubelet.key"
     write-pki-data "${KUBELET_KEY}" "${KUBELET_KEY_PATH}"
   fi
-
-  if [[ "${ENABLE_EGRESS_VIA_KONNECTIVITY_SERVICE:-false}" == "true" ]]; then
-    mkdir -p "${pki_dir}/konnectivity-agent"
-    KONNECTIVITY_AGENT_CA_CERT_PATH="${pki_dir}/konnectivity-agent/ca.crt"
-    KONNECTIVITY_AGENT_CLIENT_KEY_PATH="${pki_dir}/konnectivity-agent/client.key"
-    KONNECTIVITY_AGENT_CLIENT_CERT_PATH="${pki_dir}/konnectivity-agent/client.crt"
-    write-pki-data "${KONNECTIVITY_AGENT_CA_CERT}" "${KONNECTIVITY_AGENT_CA_CERT_PATH}"
-    write-pki-data "${KONNECTIVITY_AGENT_CLIENT_KEY}" "${KONNECTIVITY_AGENT_CLIENT_KEY_PATH}"
-    write-pki-data "${KONNECTIVITY_AGENT_CLIENT_CERT}" "${KONNECTIVITY_AGENT_CLIENT_CERT_PATH}"
-  fi
 }
 
 function create-master-pki {
@@ -598,42 +595,6 @@ function create-master-pki {
 
     PROXY_CLIENT_CERT_PATH="${pki_dir}/proxy_client.crt"
     write-pki-data "${PROXY_CLIENT_CERT}" "${PROXY_CLIENT_CERT_PATH}"
-  fi
-
-  if [[ ! -z "${KONNECTIVITY_SERVER_CA_CERT:-}" ]]; then
-    mkdir -p "${pki_dir}"/konnectivity-server
-    #KONNECTIVITY_SERVER_CA_KEY_PATH="${pki_dir}/konnectivity-server/ca.key"
-    #write-pki-data "${KONNECTIVITY_SERVER_CA_KEY}" "${KONNECTIVITY_SERVER_CA_KEY_PATH}"
-
-    KONNECTIVITY_SERVER_CA_CERT_PATH="${pki_dir}/konnectivity-server/ca.crt"
-    write-pki-data "${KONNECTIVITY_SERVER_CA_CERT}" "${KONNECTIVITY_SERVER_CA_CERT_PATH}"
-
-    KONNECTIVITY_SERVER_KEY_PATH="${pki_dir}/konnectivity-server/server.key"
-    write-pki-data "${KONNECTIVITY_SERVER_KEY}" "${KONNECTIVITY_SERVER_KEY_PATH}"
-
-    KONNECTIVITY_SERVER_CERT_PATH="${pki_dir}/konnectivity-server/server.crt"
-    write-pki-data "${KONNECTIVITY_SERVER_CERT}" "${KONNECTIVITY_SERVER_CERT_PATH}"
-
-    KONNECTIVITY_SERVER_CLIENT_KEY_PATH="${pki_dir}/konnectivity-server/client.key"
-    write-pki-data "${KONNECTIVITY_SERVER_CLIENT_KEY}" "${KONNECTIVITY_SERVER_CLIENT_KEY_PATH}"
-
-    KONNECTIVITY_SERVER_CLIENT_CERT_PATH="${pki_dir}/konnectivity-server/client.crt"
-    write-pki-data "${KONNECTIVITY_SERVER_CLIENT_CERT}" "${KONNECTIVITY_SERVER_CLIENT_CERT_PATH}"
-  fi
-
-  if [[ ! -z "${KONNECTIVITY_AGENT_CA_CERT:-}" ]]; then
-    mkdir -p "${pki_dir}"/konnectivity-agent
-    KONNECTIVITY_AGENT_CA_KEY_PATH="${pki_dir}/konnectivity-agent/ca.key"
-    write-pki-data "${KONNECTIVITY_AGENT_CA_KEY}" "${KONNECTIVITY_AGENT_CA_KEY_PATH}"
-
-    KONNECTIVITY_AGENT_CA_CERT_PATH="${pki_dir}/konnectivity-agent/ca.crt"
-    write-pki-data "${KONNECTIVITY_AGENT_CA_CERT}" "${KONNECTIVITY_AGENT_CA_CERT_PATH}"
-
-    KONNECTIVITY_AGENT_KEY_PATH="${pki_dir}/konnectivity-agent/server.key"
-    write-pki-data "${KONNECTIVITY_AGENT_KEY}" "${KONNECTIVITY_AGENT_KEY_PATH}"
-
-    KONNECTIVITY_AGENT_CERT_PATH="${pki_dir}/konnectivity-agent/server.crt"
-    write-pki-data "${KONNECTIVITY_AGENT_CERT}" "${KONNECTIVITY_AGENT_CERT_PATH}"
   fi
 }
 
@@ -1268,6 +1229,15 @@ current-context: service-account-context
 EOF
 }
 
+function create-kube-scheduler-config {
+  echo "Creating kube-scheduler config file"
+  mkdir -p /etc/srv/kubernetes/kube-scheduler
+  cat <<EOF >/etc/srv/kubernetes/kube-scheduler/config
+${KUBE_SCHEDULER_CONFIG}
+EOF
+}
+
+# TODO(#92143): Remove legacy policy config creation once kube-scheduler config is GA.
 function create-kubescheduler-policy-config {
   echo "Creating kube-scheduler policy config file"
   mkdir -p /etc/srv/kubernetes/kube-scheduler
@@ -1345,10 +1315,6 @@ function create-master-etcd-apiserver-auth {
      ETCD_APISERVER_CLIENT_CERT_PATH="${auth_dir}/etcd-apiserver-client.crt"
      echo "${ETCD_APISERVER_CLIENT_CERT}" | base64 --decode | gunzip > "${ETCD_APISERVER_CLIENT_CERT_PATH}"
    fi
-}
-
-function create-master-konnectivity-server-apiserver-auth {
-  echo TODO: implement create-master-konnectivity-server-apiserver-auth
 }
 
 function assemble-docker-flags {
@@ -1838,6 +1804,16 @@ function update-node-label() {
   done
 }
 
+# A helper function that sets file permissions for kube-controller-manager to
+# run as non root.
+function run-kube-controller-manager-as-non-root {
+  prepare-log-file /var/log/kube-controller-manager.log ${KUBE_CONTROLLER_MANAGER_RUNASUSER} ${KUBE_CONTROLLER_MANAGER_RUNASGROUP}
+  setfacl -m u:${KUBE_CONTROLLER_MANAGER_RUNASUSER}:r "${CA_CERT_BUNDLE_PATH}"
+  setfacl -m u:${KUBE_CONTROLLER_MANAGER_RUNASUSER}:r "${SERVICEACCOUNT_CERT_PATH}"
+  setfacl -m u:${KUBE_CONTROLLER_MANAGER_RUNASUSER}:r "${SERVICEACCOUNT_KEY_PATH}"
+}
+
+
 # Starts kubernetes controller manager.
 # It prepares the log file, loads the docker image, calculates variables, sets them
 # in the manifest file, and then copies the manifest file to /etc/kubernetes/manifests.
@@ -1935,6 +1911,15 @@ function start-kube-controller-manager {
   sed -i -e "s@{{flexvolume_hostpath}}@${FLEXVOLUME_HOSTPATH_VOLUME}@g" "${src_file}"
   sed -i -e "s@{{cpurequest}}@${KUBE_CONTROLLER_MANAGER_CPU_REQUEST}@g" "${src_file}"
 
+  if [[ -n "${KUBE_CONTROLLER_MANAGER_RUNASUSER:-}" && -n "${KUBE_CONTROLLER_MANAGER_RUNASGROUP:-}" ]]; then
+    run-kube-controller-manager-as-non-root
+    sed -i -e "s@{{runAsUser}}@${KUBE_CONTROLLER_MANAGER_RUNASUSER}@g" "${src_file}"
+    sed -i -e "s@{{runAsGroup}}@${KUBE_CONTROLLER_MANAGER_RUNASGROUP}@g" "${src_file}"
+  else
+    sed -i -e "s@{{runAsUser}}@0@g" "${src_file}"
+    sed -i -e "s@{{runAsGroup}}@0@g" "${src_file}"
+  fi
+
   cp "${src_file}" /etc/kubernetes/manifests
 }
 
@@ -1951,17 +1936,24 @@ function start-kube-scheduler {
 
   # Calculate variables and set them in the manifest.
   params="${SCHEDULER_TEST_LOG_LEVEL:-"--v=2"} ${SCHEDULER_TEST_ARGS:-}"
-  params+=" --kubeconfig=/etc/srv/kubernetes/kube-scheduler/kubeconfig"
   if [[ -n "${FEATURE_GATES:-}" ]]; then
     params+=" --feature-gates=${FEATURE_GATES}"
   fi
-  if [[ -n "${SCHEDULING_ALGORITHM_PROVIDER:-}"  ]]; then
-    params+=" --algorithm-provider=${SCHEDULING_ALGORITHM_PROVIDER}"
-  fi
-  if [[ -n "${SCHEDULER_POLICY_CONFIG:-}" ]]; then
-    create-kubescheduler-policy-config
-    params+=" --use-legacy-policy-config"
-    params+=" --policy-config-file=/etc/srv/kubernetes/kube-scheduler/policy-config"
+
+  # Scheduler Component Config takes precedence over some flags.
+  if [[ -n "${KUBE_SCHEDULER_CONFIG:-}" ]]; then
+    create-kube-scheduler-config
+    params+=" --config=/etc/srv/kubernetes/kube-scheduler/config"
+  else
+    params+=" --kubeconfig=/etc/srv/kubernetes/kube-scheduler/kubeconfig"
+    if [[ -n "${SCHEDULING_ALGORITHM_PROVIDER:-}"  ]]; then
+      params+=" --algorithm-provider=${SCHEDULING_ALGORITHM_PROVIDER}"
+    fi
+    if [[ -n "${SCHEDULER_POLICY_CONFIG:-}" ]]; then
+      create-kubescheduler-policy-config
+      params+=" --use-legacy-policy-config"
+      params+=" --policy-config-file=/etc/srv/kubernetes/kube-scheduler/policy-config"
+    fi
   fi
 
   params="$(convert-manifest-params "${params}")"
@@ -2887,9 +2879,6 @@ function main() {
     create-master-pki
     create-master-auth
     ensure-master-bootstrap-kubectl-auth
-    if [[ "${ENABLE_EGRESS_VIA_KONNECTIVITY_SERVICE:-false}" == "true" ]]; then
-      create-master-konnectivity-server-apiserver-auth
-    fi
     create-master-kubelet-auth
     create-master-etcd-auth
     create-master-etcd-apiserver-auth
