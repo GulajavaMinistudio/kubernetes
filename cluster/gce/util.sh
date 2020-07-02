@@ -241,7 +241,7 @@ function copy-to-staging() {
 
   echo "${hash}" > "${tar}.sha1"
   gsutil -m -q -h "Cache-Control:private, max-age=0" cp "${tar}" "${tar}.sha1" "${staging_path}"
-  gsutil -m acl ch -g all:R "${gs_url}" "${gs_url}.sha1" >/dev/null 2>&1
+  gsutil -m acl ch -g all:R "${gs_url}" "${gs_url}.sha1" >/dev/null 2>&1 || true
   echo "+++ ${basename_tar} uploaded (sha1 = ${hash})"
 }
 
@@ -280,7 +280,6 @@ function set-preferred-region() {
 # Assumed vars:
 #   PROJECT
 #   SERVER_BINARY_TAR
-#   NODE_BINARY_TAR (optional)
 #   KUBE_MANIFESTS_TAR
 #   ZONE
 # Vars set:
@@ -338,7 +337,7 @@ function upload-tars() {
     # Ensure the buckets are created
     if ! gsutil ls "${staging_bucket}" >/dev/null; then
       echo "Creating ${staging_bucket}"
-      gsutil mb -l "${region}" "${staging_bucket}"
+      gsutil mb -l "${region}" -p "${PROJECT}" "${staging_bucket}"
     fi
 
     local staging_path="${staging_bucket}/${INSTANCE_PREFIX}-devel"
@@ -1528,6 +1527,8 @@ function build-windows-kube-env {
 WINDOWS_NODE_INSTANCE_PREFIX: $(yaml-quote ${WINDOWS_NODE_INSTANCE_PREFIX})
 NODE_BINARY_TAR_URL: $(yaml-quote ${NODE_BINARY_TAR_URL})
 NODE_BINARY_TAR_HASH: $(yaml-quote ${NODE_BINARY_TAR_HASH})
+CSI_PROXY_STORAGE_PATH: $(yaml-quote ${CSI_PROXY_STORAGE_PATH})
+CSI_PROXY_VERSION: $(yaml-quote ${CSI_PROXY_VERSION})
 K8S_DIR: $(yaml-quote ${WINDOWS_K8S_DIR})
 NODE_DIR: $(yaml-quote ${WINDOWS_NODE_DIR})
 LOGS_DIR: $(yaml-quote ${WINDOWS_LOGS_DIR})
