@@ -29,7 +29,7 @@ require (
 	github.com/codegangsta/negroni v1.0.0 // indirect
 	github.com/container-storage-interface/spec v1.2.0
 	github.com/containernetworking/cni v0.8.0
-	github.com/coredns/corefile-migration v1.0.8
+	github.com/coredns/corefile-migration v1.0.10
 	github.com/coreos/go-oidc v2.1.0+incompatible
 	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
@@ -209,7 +209,7 @@ replace (
 	github.com/containerd/ttrpc => github.com/containerd/ttrpc v1.0.0
 	github.com/containerd/typeurl => github.com/containerd/typeurl v1.0.0
 	github.com/containernetworking/cni => github.com/containernetworking/cni v0.8.0
-	github.com/coredns/corefile-migration => github.com/coredns/corefile-migration v1.0.8
+	github.com/coredns/corefile-migration => github.com/coredns/corefile-migration v1.0.10
 	github.com/coreos/bbolt => github.com/coreos/bbolt v1.3.2
 	github.com/coreos/etcd => github.com/coreos/etcd v3.3.10+incompatible
 	github.com/coreos/go-oidc => github.com/coreos/go-oidc v2.1.0+incompatible
@@ -379,7 +379,7 @@ replace (
 	github.com/robfig/cron => github.com/robfig/cron v1.1.0
 	github.com/rogpeppe/fastuuid => github.com/rogpeppe/fastuuid v0.0.0-20150106093220-6724a57986af
 	github.com/rogpeppe/go-internal => github.com/rogpeppe/go-internal v1.3.0
-	github.com/rubiojr/go-vhd => github.com/rubiojr/go-vhd v0.0.0-20160810183302-0bfd3b39853c
+	github.com/rubiojr/go-vhd => github.com/rubiojr/go-vhd v0.0.0-20200706105327-02e210299021
 	github.com/russross/blackfriday => github.com/russross/blackfriday v1.5.2
 	github.com/russross/blackfriday/v2 => github.com/russross/blackfriday/v2 v2.0.1
 	github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0
@@ -497,7 +497,7 @@ replace (
 	rsc.io/pdf => rsc.io/pdf v0.1.1
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client => sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.9
 	sigs.k8s.io/kustomize => sigs.k8s.io/kustomize v2.0.3+incompatible
-	sigs.k8s.io/structured-merge-diff/v3 => sigs.k8s.io/structured-merge-diff/v3 v3.0.0
+	sigs.k8s.io/structured-merge-diff/v3 => sigs.k8s.io/structured-merge-diff/v3 v3.0.1-0.20200706213357-43c19bbb7fba
 	sigs.k8s.io/yaml => sigs.k8s.io/yaml v1.2.0
 	vbom.ml/util => vbom.ml/util v0.0.0-20160121211510-db5cfe13f5cc
 )

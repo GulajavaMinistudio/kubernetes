@@ -306,6 +306,12 @@ const (
 	// spreading and disables legacy SelectorSpread plugin.
 	DefaultPodTopologySpread featuregate.Feature = "DefaultPodTopologySpread"
 
+	// owner: @pohly
+	// alpha: v1.19
+	//
+	// Enables generic ephemeral inline volume support for pods
+	GenericEphemeralVolume featuregate.Feature = "GenericEphemeralVolume"
+
 	// owner: @tallclair
 	// alpha: v1.12
 	// beta:  v1.14
@@ -417,13 +423,13 @@ const (
 	CSIMigrationAzureFileComplete featuregate.Feature = "CSIMigrationAzureFileComplete"
 
 	// owner: @divyenpatel
-	// alpha: v1.19
+	// beta: v1.19 (requires: vSphere vCenter/ESXi Version: 7.0u1, HW Version: VM version 15)
 	//
 	// Enables the vSphere in-tree driver to vSphere CSI Driver migration feature.
 	CSIMigrationvSphere featuregate.Feature = "CSIMigrationvSphere"
 
 	// owner: @divyenpatel
-	// alpha: v1.19
+	// beta: v1.19 (requires: vSphere vCenter/ESXi Version: 7.0u1, HW Version: VM version 15)
 	//
 	// Disables the vSphere in-tree driver.
 	// Expects vSphere CSI Driver to be installed and configured on all nodes.
@@ -521,9 +527,16 @@ const (
 
 	// owner: @robscott @freehan
 	// alpha: v1.18
+	// beta: v1.19
 	//
 	// Enable Endpoint Slice consumption by kube-proxy for improved scalability.
 	EndpointSliceProxying featuregate.Feature = "EndpointSliceProxying"
+
+	// owner: @robscott @kumarvin123
+	// alpha: v1.19
+	//
+	// Enable Endpoint Slice consumption by kube-proxy in Windows for improved scalability.
+	WindowsEndpointSliceProxying featuregate.Feature = "WindowsEndpointSliceProxying"
 
 	// owner: @Huang-Wei
 	// alpha: v1.16
@@ -660,8 +673,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	CSIMigrationAzureDiskComplete:  {Default: false, PreRelease: featuregate.Alpha},
 	CSIMigrationAzureFile:          {Default: false, PreRelease: featuregate.Alpha},
 	CSIMigrationAzureFileComplete:  {Default: false, PreRelease: featuregate.Alpha},
-	CSIMigrationvSphere:            {Default: false, PreRelease: featuregate.Alpha},
-	CSIMigrationvSphereComplete:    {Default: false, PreRelease: featuregate.Alpha},
+	CSIMigrationvSphere:            {Default: false, PreRelease: featuregate.Beta},
+	CSIMigrationvSphereComplete:    {Default: false, PreRelease: featuregate.Beta},
 	RunAsGroup:                     {Default: true, PreRelease: featuregate.Beta},
 	CSIMigrationOpenStack:          {Default: false, PreRelease: featuregate.Beta}, // Off by default (requires OpenStack Cinder CSI driver)
 	CSIMigrationOpenStackComplete:  {Default: false, PreRelease: featuregate.Alpha},
@@ -671,6 +684,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	CSIBlockVolume:                 {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.20
 	CSIInlineVolume:                {Default: true, PreRelease: featuregate.Beta},
 	CSIStorageCapacity:             {Default: false, PreRelease: featuregate.Alpha},
+	GenericEphemeralVolume:         {Default: false, PreRelease: featuregate.Alpha},
 	RuntimeClass:                   {Default: true, PreRelease: featuregate.Beta},
 	NodeLease:                      {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
 	SCTPSupport:                    {Default: true, PreRelease: featuregate.Beta},
@@ -687,7 +701,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	PodOverhead:                                    {Default: true, PreRelease: featuregate.Beta},
 	IPv6DualStack:                                  {Default: false, PreRelease: featuregate.Alpha},
 	EndpointSlice:                                  {Default: true, PreRelease: featuregate.Beta},
-	EndpointSliceProxying:                          {Default: false, PreRelease: featuregate.Alpha},
+	EndpointSliceProxying:                          {Default: true, PreRelease: featuregate.Beta},
+	WindowsEndpointSliceProxying:                   {Default: false, PreRelease: featuregate.Alpha},
 	EvenPodsSpread:                                 {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.21
 	StartupProbe:                                   {Default: true, PreRelease: featuregate.Beta},
 	AllowInsecureBackendProxy:                      {Default: true, PreRelease: featuregate.Beta},

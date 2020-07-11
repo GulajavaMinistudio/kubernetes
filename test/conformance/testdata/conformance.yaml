@@ -431,14 +431,6 @@
     environment variables when backticks are supplied.
   release: v1.19
   file: test/e2e/common/expansion.go
-- testname: VolumeSubpathEnvExpansion, subpath lifecycle
-  codename: '[k8s.io] Variable Expansion should not change the subpath mount on a
-    container restart if the environment variable changes [sig-storage][Slow] [Conformance]'
-  description: "Verify should not change the subpath mount on a container restart
-    if the environment variable changes 1.\tvalid subpathexpr starts a container running
-    2.\ttest for valid subpath writes 3.\tcontainer restarts 4.\tdelete cleanly"
-  release: v1.19
-  file: test/e2e/common/expansion.go
 - testname: VolumeSubpathEnvExpansion, subpath test writes
   codename: '[k8s.io] Variable Expansion should succeed in writing subpaths in container
     [sig-storage][Slow] [Conformance]'
@@ -1888,6 +1880,13 @@
     visible at runtime in the container.
   release: v1.9
   file: test/e2e/common/downward_api.go
+- testname: PodTemplate, delete a collection
+  codename: '[sig-node] PodTemplates should delete a collection of pod templates [Conformance]'
+  description: A set of Pod Templates is created with a label selector which MUST
+    be found when listed. The set of Pod Templates is deleted and MUST NOT show up
+    when listed by its label selector.
+  release: v1.19
+  file: test/e2e/common/podtemplates.go
 - testname: PodTemplate lifecycle
   codename: '[sig-node] PodTemplates should run the lifecycle of PodTemplates [Conformance]'
   description: Attempt to create a PodTemplate. Patch the created PodTemplate. Fetching
