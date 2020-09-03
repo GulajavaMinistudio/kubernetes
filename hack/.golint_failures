@@ -8,7 +8,6 @@ pkg/apis/abac/v1beta1
 pkg/apis/admission
 pkg/apis/admissionregistration/v1
 pkg/apis/admissionregistration/v1beta1
-pkg/apis/admissionregistration/validation
 pkg/apis/apps/v1
 pkg/apis/apps/v1beta1
 pkg/apis/apps/v1beta2
@@ -90,6 +89,8 @@ pkg/controller/volume/attachdetach/testing
 pkg/controller/volume/expand
 pkg/controller/volume/persistentvolume
 pkg/controller/volume/persistentvolume/config/v1alpha1
+pkg/controlplane/controller/crdregistration
+pkg/controlplane/tunneler
 pkg/features
 pkg/kubeapiserver
 pkg/kubectl/cmd/convert
@@ -110,8 +111,6 @@ pkg/kubelet/stats
 pkg/kubelet/sysctl
 pkg/kubelet/types
 pkg/kubemark
-pkg/master/controller/crdregistration
-pkg/master/tunneler
 pkg/proxy/apis/config
 pkg/proxy/apis/config/v1alpha1
 pkg/proxy/userspace
@@ -487,6 +486,7 @@ staging/src/k8s.io/metrics/pkg/client/custom_metrics/fake
 staging/src/k8s.io/metrics/pkg/client/custom_metrics/scheme
 staging/src/k8s.io/metrics/pkg/client/external_metrics
 staging/src/k8s.io/metrics/pkg/client/external_metrics/fake
+staging/src/k8s.io/mount-utils
 staging/src/k8s.io/sample-apiserver/pkg/admission/wardleinitializer
 staging/src/k8s.io/sample-apiserver/pkg/apis/wardle/v1alpha1
 staging/src/k8s.io/sample-apiserver/pkg/registry/wardle/fischer
