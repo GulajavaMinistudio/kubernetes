@@ -11,7 +11,6 @@ filegroup(
     name = "all-srcs",
     srcs = [
         ":package-srcs",
-        "//pkg/api/endpoints:all-srcs",
         "//pkg/api/legacyscheme:all-srcs",
         "//pkg/api/persistentvolume:all-srcs",
         "//pkg/api/persistentvolumeclaim:all-srcs",
@@ -27,6 +26,7 @@ filegroup(
         "//pkg/apis/abac:all-srcs",
         "//pkg/apis/admission:all-srcs",
         "//pkg/apis/admissionregistration:all-srcs",
+        "//pkg/apis/apiserverinternal:all-srcs",
         "//pkg/apis/apps:all-srcs",
         "//pkg/apis/authentication:all-srcs",
         "//pkg/apis/authorization:all-srcs",
