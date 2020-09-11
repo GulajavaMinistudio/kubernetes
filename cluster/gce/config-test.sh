@@ -89,7 +89,7 @@ ALLOWED_NOTREADY_NODES=${ALLOWED_NOTREADY_NODES:-$(($(get-num-nodes) / 100))}
 # you are updating the os image versions, update this variable.
 # Also please update corresponding image for node e2e at:
 # https://github.com/kubernetes/kubernetes/blob/master/test/e2e_node/jenkins/image-config.yaml
-GCI_VERSION=${KUBE_GCI_VERSION:-cos-rc-85-13310-1040-0}
+GCI_VERSION=${KUBE_GCI_VERSION:-cos-81-12871-59-0}
 export MASTER_IMAGE=${KUBE_GCE_MASTER_IMAGE:-}
 export MASTER_IMAGE_PROJECT=${KUBE_GCE_MASTER_PROJECT:-cos-cloud}
 export NODE_IMAGE=${KUBE_GCE_NODE_IMAGE:-${GCI_VERSION}}
@@ -467,12 +467,19 @@ ADVANCED_AUDIT_LOG_MODE=${ADVANCED_AUDIT_LOG_MODE:-batch} # batch, blocking
 
 ENABLE_BIG_CLUSTER_SUBNETS=${ENABLE_BIG_CLUSTER_SUBNETS:-false}
 
+# Optional: Enable log rotation for k8s services
+ENABLE_LOGROTATE_FILES="${ENABLE_LOGROTATE_FILES:-false}"
+PROVIDER_VARS="${PROVIDER_VARS:-} ENABLE_LOGROTATE_FILES"
 if [[ -n "${LOGROTATE_FILES_MAX_COUNT:-}" ]]; then
   PROVIDER_VARS="${PROVIDER_VARS:-} LOGROTATE_FILES_MAX_COUNT"
 fi
 if [[ -n "${LOGROTATE_MAX_SIZE:-}" ]]; then
   PROVIDER_VARS="${PROVIDER_VARS:-} LOGROTATE_MAX_SIZE"
 fi
+
+# Optional: Enable log rotation for pod logs
+ENABLE_POD_LOG="${ENABLE_POD_LOG:-false}"
+PROVIDER_VARS="${PROVIDER_VARS:-} ENABLE_POD_LOG"
 
 if [[ -n "${POD_LOG_MAX_FILE:-}" ]]; then
   PROVIDER_VARS="${PROVIDER_VARS:-} POD_LOG_MAX_FILE"
