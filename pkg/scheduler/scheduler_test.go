@@ -210,6 +210,7 @@ func TestSchedulerScheduleOne(t *testing.T) {
 	eventBroadcaster := events.NewBroadcaster(&events.EventSinkImpl{Interface: client.EventsV1()})
 	errS := errors.New("scheduler")
 	errB := errors.New("binder")
+	preBindErr := errors.New("on PreBind")
 
 	table := []struct {
 		name                string
@@ -255,12 +256,12 @@ func TestSchedulerScheduleOne(t *testing.T) {
 			sendPod: podWithID("foo", ""),
 			algo:    mockScheduler{core.ScheduleResult{SuggestedHost: testNode.Name, EvaluatedNodes: 1, FeasibleNodes: 1}, nil},
 			registerPluginFuncs: []st.RegisterPluginFunc{
-				st.RegisterPreBindPlugin("FakePreBind", st.NewFakePreBindPlugin(framework.NewStatus(framework.Error, "prebind error"))),
+				st.RegisterPreBindPlugin("FakePreBind", st.NewFakePreBindPlugin(framework.AsStatus(preBindErr))),
 			},
 			expectErrorPod:   podWithID("foo", testNode.Name),
 			expectForgetPod:  podWithID("foo", testNode.Name),
 			expectAssumedPod: podWithID("foo", testNode.Name),
-			expectError:      errors.New(`error while running "FakePreBind" prebind plugin for pod "foo": prebind error`),
+			expectError:      fmt.Errorf(`error while running "FakePreBind" prebind plugin for pod "foo": %w`, preBindErr),
 			eventReason:      "FailedScheduling",
 		},
 		{
@@ -807,7 +808,12 @@ func setupTestScheduler(queuedPodStore *clientcache.FIFO, scache internalcache.C
 		return true, b, nil
 	})
 
-	fwk, _ := st.NewFramework(fns, frameworkruntime.WithClientSet(client), frameworkruntime.WithPodNominator(internalqueue.NewPodNominator()))
+	fwk, _ := st.NewFramework(
+		fns,
+		frameworkruntime.WithClientSet(client),
+		frameworkruntime.WithInformerFactory(informerFactory),
+		frameworkruntime.WithPodNominator(internalqueue.NewPodNominator()),
+	)
 	prof := &profile.Profile{
 		Framework: fwk,
 		Recorder:  &events.FakeRecorder{},
@@ -824,7 +830,6 @@ func setupTestScheduler(queuedPodStore *clientcache.FIFO, scache internalcache.C
 		scache,
 		internalcache.NewEmptySnapshot(),
 		[]framework.Extender{},
-		informerFactory.Core().V1().PersistentVolumeClaims().Lister(),
 		schedulerapi.DefaultPercentageOfNodesToScore,
 	)
 
@@ -858,12 +863,14 @@ func setupTestSchedulerWithVolumeBinding(volumeBinder scheduling.SchedulerVolume
 	testPVC := v1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "testPVC", Namespace: pod.Namespace, UID: types.UID("testPVC")}}
 	client := clientsetfake.NewSimpleClientset(&testNode, &testPVC)
 	informerFactory := informers.NewSharedInformerFactory(client, 0)
+	pvcInformer := informerFactory.Core().V1().PersistentVolumeClaims()
+	pvcInformer.Informer().GetStore().Add(&testPVC)
 
 	fns := []st.RegisterPluginFunc{
 		st.RegisterQueueSortPlugin(queuesort.Name, queuesort.New),
 		st.RegisterBindPlugin(defaultbinder.Name, defaultbinder.New),
 		st.RegisterPluginAsExtensions(volumebinding.Name, func(plArgs runtime.Object, handle framework.FrameworkHandle) (framework.Plugin, error) {
-			return &volumebinding.VolumeBinding{Binder: volumeBinder}, nil
+			return &volumebinding.VolumeBinding{Binder: volumeBinder, PVCLister: pvcInformer.Lister()}, nil
 		}, "PreFilter", "Filter", "Reserve", "PreBind"),
 	}
 	s, bindingChan, errChan := setupTestScheduler(queuedPodStore, scache, informerFactory, broadcaster, fns...)
@@ -1172,7 +1179,6 @@ func TestSchedulerBinding(t *testing.T) {
 				scache,
 				nil,
 				test.extenders,
-				nil,
 				0,
 			)
 			sched := Scheduler{

@@ -590,13 +590,6 @@ const (
 	// Enables a feature to make secrets and configmaps data immutable.
 	ImmutableEphemeralVolumes featuregate.Feature = "ImmutableEphemeralVolumes"
 
-	// owner: @robscott
-	// beta: v1.18
-	// ga: v1.19
-	//
-	// Enables DefaultIngressClass admission controller.
-	DefaultIngressClass featuregate.Feature = "DefaultIngressClass"
-
 	// owner: @bart0sh
 	// alpha: v1.18
 	// beta: v1.19
@@ -628,6 +621,7 @@ const (
 
 	// owner: @ksubrmnn
 	// alpha: v1.14
+	// beta: v1.20
 	//
 	// Allows kube-proxy to run in Overlay mode for Windows
 	WinOverlay featuregate.Feature = "WinOverlay"
@@ -732,13 +726,12 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	ServiceTopology:                                {Default: false, PreRelease: featuregate.Alpha},
 	ServiceAppProtocol:                             {Default: true, PreRelease: featuregate.Beta},
 	ImmutableEphemeralVolumes:                      {Default: true, PreRelease: featuregate.Beta},
-	DefaultIngressClass:                            {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.20
 	HugePageStorageMediumSize:                      {Default: true, PreRelease: featuregate.Beta},
-	ExternalPolicyForExternalIP:                    {Default: true, PreRelease: featuregate.GA}, // remove in 1.20
+	ExternalPolicyForExternalIP:                    {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.22
 	AnyVolumeDataSource:                            {Default: false, PreRelease: featuregate.Alpha},
 	DefaultPodTopologySpread:                       {Default: false, PreRelease: featuregate.Alpha},
 	SetHostnameAsFQDN:                              {Default: false, PreRelease: featuregate.Alpha},
-	WinOverlay:                                     {Default: false, PreRelease: featuregate.Alpha},
+	WinOverlay:                                     {Default: true, PreRelease: featuregate.Beta},
 	WinDSR:                                         {Default: false, PreRelease: featuregate.Alpha},
 	DisableAcceleratorUsageMetrics:                 {Default: false, PreRelease: featuregate.Alpha},
 
