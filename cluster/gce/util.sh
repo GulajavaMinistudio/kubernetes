@@ -88,11 +88,11 @@ function set-linux-node-image() {
 function set-windows-node-image() {
   WINDOWS_NODE_IMAGE_PROJECT="windows-cloud"
   if [[ "${WINDOWS_NODE_OS_DISTRIBUTION}" == "win2019" ]]; then
-    WINDOWS_NODE_IMAGE="windows-server-2019-dc-core-for-containers-v20200310"
+    WINDOWS_NODE_IMAGE="windows-server-2019-dc-core-for-containers-v20200908"
   elif [[ "${WINDOWS_NODE_OS_DISTRIBUTION}" == "win1909" ]]; then
-    WINDOWS_NODE_IMAGE="windows-server-1909-dc-core-for-containers-v20200310"
+    WINDOWS_NODE_IMAGE="windows-server-1909-dc-core-for-containers-v20200908"
   elif [[ "${WINDOWS_NODE_OS_DISTRIBUTION}" == "win1809" ]]; then
-    WINDOWS_NODE_IMAGE="windows-server-1809-dc-core-for-containers-v20200310"
+    WINDOWS_NODE_IMAGE="windows-server-1809-dc-core-for-containers-v20200908"
   else
     echo "Unknown WINDOWS_NODE_OS_DISTRIBUTION ${WINDOWS_NODE_OS_DISTRIBUTION}" >&2
     exit 1
@@ -1530,6 +1530,7 @@ NODE_BINARY_TAR_URL: $(yaml-quote "${NODE_BINARY_TAR_URL}")
 NODE_BINARY_TAR_HASH: $(yaml-quote "${NODE_BINARY_TAR_HASH}")
 CSI_PROXY_STORAGE_PATH: $(yaml-quote "${CSI_PROXY_STORAGE_PATH}")
 CSI_PROXY_VERSION: $(yaml-quote "${CSI_PROXY_VERSION}")
+ENABLE_CSI_PROXY: $(yaml-quote "${ENABLE_CSI_PROXY}")
 K8S_DIR: $(yaml-quote "${WINDOWS_K8S_DIR}")
 NODE_DIR: $(yaml-quote "${WINDOWS_NODE_DIR}")
 LOGS_DIR: $(yaml-quote "${WINDOWS_LOGS_DIR}")
