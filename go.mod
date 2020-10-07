@@ -44,7 +44,6 @@ require (
 	github.com/evanphx/json-patch v4.9.0+incompatible
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/go-bindata/go-bindata v3.1.1+incompatible
-	github.com/go-openapi/analysis v0.19.5
 	github.com/go-openapi/loads v0.19.4
 	github.com/go-openapi/spec v0.19.3
 	github.com/go-openapi/strfmt v0.19.3
@@ -121,6 +120,7 @@ require (
 	k8s.io/cluster-bootstrap v0.0.0
 	k8s.io/code-generator v0.0.0
 	k8s.io/component-base v0.0.0
+	k8s.io/controller-manager v0.0.0
 	k8s.io/cri-api v0.0.0
 	k8s.io/csi-translation-lib v0.0.0
 	k8s.io/gengo v0.0.0-20200428234225-8167cfdcfc14
