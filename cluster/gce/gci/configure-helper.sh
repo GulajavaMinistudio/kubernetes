@@ -922,7 +922,7 @@ contexts:
   name: webhook
 EOF
   fi
-  if [[ "${ENABLE_EGRESS_VIA_KONNECTIVITY_SERVICE:-false}" == "true" ]]; then
+  if [[ "${PREPARE_KONNECTIVITY_SERVICE:-false}" == "true" ]]; then
     if [[ "${KONNECTIVITY_SERVICE_PROXY_PROTOCOL_MODE:-grpc}" == 'grpc' ]]; then
       cat <<EOF >/etc/srv/kubernetes/egress_selector_configuration.yaml
 apiVersion: apiserver.k8s.io/v1beta1
@@ -1265,11 +1265,18 @@ EOF
   fi
 }
 
+# Create kubeconfig files for control plane components.
 function create-kubeconfig {
   local component=$1
   local token=$2
   echo "Creating kubeconfig file for component ${component}"
   mkdir -p "/etc/srv/kubernetes/${component}"
+
+  local kube_apiserver="localhost"
+  if [[ ${KUBECONFIG_USE_HOST_IP:-} == "true" ]] ; then
+    kube_apiserver=$(hostname -i)
+  fi
+  
   cat <<EOF >"/etc/srv/kubernetes/${component}/kubeconfig"
 apiVersion: v1
 kind: Config
@@ -1281,7 +1288,7 @@ clusters:
 - name: local
   cluster:
     insecure-skip-tls-verify: true
-    server: https://localhost:443
+    server: https://${kube_apiserver}:443
 contexts:
 - context:
     cluster: local
@@ -2148,12 +2155,14 @@ function start-cluster-autoscaler {
     # Remove salt comments and replace variables with values
     local -r src_file="${KUBE_HOME}/kube-manifests/kubernetes/gci-trusty/cluster-autoscaler.manifest"
 
-    local params=("${AUTOSCALER_MIG_CONFIG}" "${CLOUD_CONFIG_OPT}" "${AUTOSCALER_EXPANDER_CONFIG:---expander=price}")
+    local params
+    read -r -a params <<< "${AUTOSCALER_MIG_CONFIG}"
+    params+=("${CLOUD_CONFIG_OPT}" "${AUTOSCALER_EXPANDER_CONFIG:---expander=price}")
     params+=("--kubeconfig=/etc/srv/kubernetes/cluster-autoscaler/kubeconfig")
 
     # split the params into separate arguments passed to binary
     local params_split
-    params_split=$(eval 'for param in "${params[@]}"; do echo -n "$param",; done')
+    params_split=$(eval 'for param in "${params[@]}"; do echo -n \""$param"\",; done')
     params_split=${params_split%?}
 
     sed -i -e "s@{{params}}@${params_split}@g" "${src_file}"
@@ -2599,7 +2608,7 @@ EOF
       setup-node-termination-handler-manifest ''
   fi
   # Setting up the konnectivity-agent daemonset
-  if [[ "${ENABLE_EGRESS_VIA_KONNECTIVITY_SERVICE:-false}" == "true" ]]; then
+  if [[ "${RUN_KONNECTIVITY_PODS:-false}" == "true" ]]; then
     setup-addon-manifests "addons" "konnectivity-agent"
     setup-konnectivity-agent-manifest
   fi
@@ -3028,7 +3037,7 @@ function main() {
   if [[ "${ENABLE_APISERVER_INSECURE_PORT:-false}" != "true" ]]; then
     KUBE_BOOTSTRAP_TOKEN="$(secure_random 32)"
   fi
-  if [[ "${ENABLE_EGRESS_VIA_KONNECTIVITY_SERVICE:-false}" == "true" ]]; then
+  if [[ "${PREPARE_KONNECTIVITY_SERVICE:-false}" == "true" ]]; then
     KONNECTIVITY_SERVER_TOKEN="$(secure_random 32)"
   fi
   if [[ "${ENABLE_MONITORING_TOKEN:-false}" == "true" ]]; then
@@ -3089,7 +3098,7 @@ function main() {
     fi
     source ${KUBE_BIN}/configure-kubeapiserver.sh
     start-kube-apiserver
-    if [[ "${ENABLE_EGRESS_VIA_KONNECTIVITY_SERVICE:-false}" == "true" ]]; then
+    if [[ "${RUN_KONNECTIVITY_PODS:-false}" == "true" ]]; then
       start-konnectivity-server
     fi
     start-kube-controller-manager
