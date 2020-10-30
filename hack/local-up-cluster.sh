@@ -207,7 +207,7 @@ fi
 # Shut down anyway if there's an error.
 set +e
 
-API_PORT=${API_PORT:-8080}
+API_PORT=${API_PORT:-0}
 API_SECURE_PORT=${API_SECURE_PORT:-6443}
 
 # WARNING: For DNS to work on most setups you should export API_HOST as the docker0 ip address,
@@ -640,6 +640,7 @@ function start_controller_manager {
       --v="${LOG_LEVEL}" \
       --vmodule="${LOG_SPEC}" \
       --service-account-private-key-file="${SERVICE_ACCOUNT_KEY}" \
+      --service-cluster-ip-range="${SERVICE_CLUSTER_IP_RANGE}" \
       --root-ca-file="${ROOT_CA_FILE}" \
       --cluster-signing-cert-file="${CLUSTER_SIGNING_CERT_FILE}" \
       --cluster-signing-key-file="${CLUSTER_SIGNING_KEY_FILE}" \

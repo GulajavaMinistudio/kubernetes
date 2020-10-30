@@ -26,9 +26,11 @@ ZONE=${KUBE_GCE_ZONE:-us-central1-b}
 export REGION=${ZONE%-*}
 RELEASE_REGION_FALLBACK=${RELEASE_REGION_FALLBACK:-false}
 REGIONAL_KUBE_ADDONS=${REGIONAL_KUBE_ADDONS:-true}
+# TODO: Migrate to e2-standard machine family.
 NODE_SIZE=${NODE_SIZE:-n1-standard-2}
 NUM_NODES=${NUM_NODES:-3}
 NUM_WINDOWS_NODES=${NUM_WINDOWS_NODES:-0}
+# TODO: Migrate to e2-standard machine family.
 MASTER_SIZE=${MASTER_SIZE:-n1-standard-$(get-master-size)}
 MASTER_MIN_CPU_ARCHITECTURE=${MASTER_MIN_CPU_ARCHITECTURE:-} # To allow choosing better architectures.
 export MASTER_DISK_TYPE=pd-ssd
@@ -575,10 +577,17 @@ export GCE_UPLOAD_KUBCONFIG_TO_MASTER_METADATA=true
 # Optoinal: Enable Windows CSI-Proxy
 export ENABLE_CSI_PROXY="${ENABLE_CSI_PROXY:-true}"
 
-# ETCD_LISTEN_ON_HOST_IP decides whether etcd servers should also listen on host IP,
+# KUBE_APISERVER_HEALTHCHECK_ON_HOST_IP decides whether
+# kube-apiserver is healthchecked on host IP instead of 127.0.0.1.
+export KUBE_APISERVER_HEALTHCHECK_ON_HOST_IP="${KUBE_APISERVER_HEALTHCHECK_ON_HOST_IP:-false}"
+
+# ETCD_LISTEN_ON_HOST_IP decides whether etcd servers should also listen on host IP, 
 # in addition to listening to 127.0.0.1, and whether kube-apiserver should connect to etcd servers
 # through host IP.
 export ETCD_LISTEN_ON_HOST_IP="${ETCD_LISTEN_ON_HOST_IP:-false}"
+
+# ETCD_PROGRESS_NOTIFY_INTERVAL defines the interval for etcd watch progress notify events.
+export ETCD_PROGRESS_NOTIFY_INTERVAL="${ETCD_PROGRESS_NOTIFY_INTERVAL:-10m}"
 
 # Use host IP instead of localhost in control plane kubeconfig files.
 export KUBECONFIG_USE_HOST_IP="${KUBECONFIG_USE_HOST_IP:-false}"
