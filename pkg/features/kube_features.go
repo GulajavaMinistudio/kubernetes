@@ -484,14 +484,6 @@ const (
 	// Expects the OpenStack Cinder CSI Driver to be installed and configured on all nodes.
 	CSIMigrationOpenStackComplete featuregate.Feature = "CSIMigrationOpenStackComplete"
 
-	// owner: @MrHohn
-	// alpha: v1.15
-	// beta:  v1.16
-	// GA: v1.17
-	//
-	// Enables Finalizer Protection for Service LoadBalancers.
-	ServiceLoadBalancerFinalizer featuregate.Feature = "ServiceLoadBalancerFinalizer"
-
 	// owner: @RobertKrawitz
 	// alpha: v1.15
 	//
@@ -651,6 +643,14 @@ const (
 	// Add support for the HPA to scale based on metrics from individual containers
 	// in target pods
 	HPAContainerMetrics featuregate.Feature = "HPAContainerMetrics"
+
+	// owner: @zshihang
+	// alpha: v1.13
+	// beta: v1.20
+	//
+	// Allows kube-controller-manager to publish kube-root-ca.crt configmap to
+	// every namespace. This feature is a prerequisite of BoundServiceAccountTokenVolume.
+	RootCAConfigMap featuregate.Feature = "RootCAConfigMap"
 )
 
 func init() {
@@ -724,7 +724,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	KubeletPodResources:            {Default: true, PreRelease: featuregate.Beta},
 	WindowsGMSA:                    {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.20
 	WindowsRunAsUserName:           {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.20
-	ServiceLoadBalancerFinalizer:   {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
 	LocalStorageCapacityIsolationFSQuotaMonitoring: {Default: false, PreRelease: featuregate.Alpha},
 	NonPreemptingPriority:                          {Default: true, PreRelease: featuregate.Beta},
 	VolumePVCDataSource:                            {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.20
@@ -749,6 +748,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	WinDSR:                                         {Default: false, PreRelease: featuregate.Alpha},
 	DisableAcceleratorUsageMetrics:                 {Default: true, PreRelease: featuregate.Beta},
 	HPAContainerMetrics:                            {Default: false, PreRelease: featuregate.Alpha},
+	RootCAConfigMap:                                {Default: true, PreRelease: featuregate.Beta},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
