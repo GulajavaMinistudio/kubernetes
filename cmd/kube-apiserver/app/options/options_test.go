@@ -160,6 +160,7 @@ func TestAddFlags(t *testing.T) {
 				CompactionInterval:    storagebackend.DefaultCompactInterval,
 				CountMetricPollPeriod: time.Minute,
 				DBMetricPollInterval:  storagebackend.DefaultDBMetricPollInterval,
+				HealthcheckTimeout:    storagebackend.DefaultHealthcheckTimeout,
 			},
 			DefaultStorageMediaType: "application/vnd.kubernetes.protobuf",
 			DeleteCollectionWorkers: 1,
@@ -272,7 +273,8 @@ func TestAddFlags(t *testing.T) {
 			},
 			RequestHeader: &apiserveroptions.RequestHeaderAuthenticationOptions{},
 			ServiceAccounts: &kubeoptions.ServiceAccountAuthenticationOptions{
-				Lookup: true,
+				Lookup:           true,
+				ExtendExpiration: true,
 			},
 			TokenFile:            &kubeoptions.TokenFileAuthenticationOptions{},
 			TokenSuccessCacheTTL: 10 * time.Second,
