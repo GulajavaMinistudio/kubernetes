@@ -657,6 +657,12 @@ const (
 	//
 	// Enable Terminating condition in Endpoint Slices.
 	EndpointSliceTerminatingCondition featuregate.Feature = "EndpointSliceTerminatingCondition"
+
+	// owner: @derekwaynecarr
+	// alpha: v1.20
+	//
+	// Enables kubelet support to size memory backed volumes
+	SizeMemoryBackedVolumes featuregate.Feature = "SizeMemoryBackedVolumes"
 )
 
 func init() {
@@ -691,8 +697,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	CSINodeInfo:                    {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.19
 	BlockVolume:                    {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.20
 	StorageObjectInUseProtection:   {Default: true, PreRelease: featuregate.GA},
-	SupportPodPidsLimit:            {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.21
-	SupportNodePidsLimit:           {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.21
+	SupportPodPidsLimit:            {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.23
+	SupportNodePidsLimit:           {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.23
 	HyperVContainer:                {Default: false, PreRelease: featuregate.Deprecated},
 	TokenRequest:                   {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.21
 	TokenRequestProjection:         {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.21
@@ -740,7 +746,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	EndpointSliceTerminatingCondition:              {Default: false, PreRelease: featuregate.Alpha},
 	WindowsEndpointSliceProxying:                   {Default: false, PreRelease: featuregate.Alpha},
 	EvenPodsSpread:                                 {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.21
-	StartupProbe:                                   {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.21
+	StartupProbe:                                   {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.23
 	AllowInsecureBackendProxy:                      {Default: true, PreRelease: featuregate.Beta},
 	PodDisruptionBudget:                            {Default: true, PreRelease: featuregate.Beta},
 	ServiceTopology:                                {Default: false, PreRelease: featuregate.Alpha},
@@ -756,6 +762,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	DisableAcceleratorUsageMetrics:                 {Default: true, PreRelease: featuregate.Beta},
 	HPAContainerMetrics:                            {Default: false, PreRelease: featuregate.Alpha},
 	RootCAConfigMap:                                {Default: true, PreRelease: featuregate.Beta},
+	SizeMemoryBackedVolumes:                        {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
