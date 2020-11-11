@@ -436,6 +436,7 @@ const (
 
 	// owner: @gnufied
 	// alpha: v1.18
+	// beta: v1.20
 	// Allows user to configure volume permission change policy for fsGroups when mounting
 	// a volume in a Pod.
 	ConfigurableFSGroupPolicy featuregate.Feature = "ConfigurableFSGroupPolicy"
@@ -588,6 +589,12 @@ const (
 	//        medium: HugePages-1Gi
 	HugePageStorageMediumSize featuregate.Feature = "HugePageStorageMediumSize"
 
+	// owner: @derekwaynecarr
+	// alpha: v1.20
+	//
+	// Enables usage of hugepages-<size> in downward API.
+	DownwardAPIHugePages featuregate.Feature = "DownwardAPIHugePages"
+
 	// owner: @freehan
 	// GA: v1.18
 	//
@@ -724,7 +731,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	CSIMigrationOpenStack:          {Default: false, PreRelease: featuregate.Beta}, // Off by default (requires OpenStack Cinder CSI driver)
 	CSIMigrationOpenStackComplete:  {Default: false, PreRelease: featuregate.Alpha},
 	VolumeSubpath:                  {Default: true, PreRelease: featuregate.GA},
-	ConfigurableFSGroupPolicy:      {Default: false, PreRelease: featuregate.Alpha},
+	ConfigurableFSGroupPolicy:      {Default: true, PreRelease: featuregate.Beta},
 	BalanceAttachedNodeVolumes:     {Default: false, PreRelease: featuregate.Alpha},
 	CSIBlockVolume:                 {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.20
 	CSIInlineVolume:                {Default: true, PreRelease: featuregate.Beta},
@@ -757,6 +764,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	ServiceAppProtocol:                             {Default: true, PreRelease: featuregate.Beta},
 	ImmutableEphemeralVolumes:                      {Default: true, PreRelease: featuregate.Beta},
 	HugePageStorageMediumSize:                      {Default: true, PreRelease: featuregate.Beta},
+	DownwardAPIHugePages:                           {Default: false, PreRelease: featuregate.Alpha},
 	ExternalPolicyForExternalIP:                    {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.22
 	AnyVolumeDataSource:                            {Default: false, PreRelease: featuregate.Alpha},
 	DefaultPodTopologySpread:                       {Default: true, PreRelease: featuregate.Beta},
