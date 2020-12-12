@@ -202,6 +202,11 @@ function Get-RemoteFile {
     [parameter(Mandatory = $false)] [System.Collections.IDictionary]$Headers = @{}
   )
 
+  # Load the System.Net.Http assembly if it's not loaded yet.
+  if ("System.Net.Http.HttpClient" -as [type]) {} else {
+    Add-Type -AssemblyName System.Net.Http
+  }
+
   $timeout = New-TimeSpan -Minutes 5
 
   try {
@@ -215,19 +220,19 @@ function Get-RemoteFile {
     # If the URL is for GCS and the node has dev storage scope, add the
     # service account OAuth2 bearer token to the request headers.
     # https://cloud.google.com/compute/docs/access/create-enable-service-accounts-for-instances#applications
-    if (($Url -match "^https://storage`.googleapis`.com.*") -And $(Check-StorageScope)) {
+    if (($Url -match "^https://storage`.googleapis`.com.*") -and $(Check-StorageScope)) {
       $httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer $(Get-Credentials)")
     }
 
     # Attempt to download the file
     $httpResponseMessage = $httpClient.GetAsync([System.Uri]::new($Url))
     $httpResponseMessage.Wait()
-    if (-Not $httpResponseMessage.IsCanceled) {
+    if (-not $httpResponseMessage.IsCanceled) {
       # Check if the request was successful.
       # 
       # DO NOT replace with EnsureSuccessStatusCode(), it prints the
       # OAuth2 bearer token.
-      if (-Not $httpResponseMessage.Result.IsSuccessStatusCode) {
+      if (-not $httpResponseMessage.Result.IsSuccessStatusCode) {
         $statusCode = $httpResponseMessage.Result.StatusCode
         throw "Downloading ${Url} returned status code ${statusCode}, retrying."
       }
@@ -633,6 +638,26 @@ function Test-NodeUsesAuthPlugin {
   )
 
   return $KubeEnv.Contains('EXEC_AUTH_PLUGIN_URL')
+}
+
+# Permanently adds a directory to the $env:PATH environment variable.
+function Add-MachineEnvironmentPath {
+  param (
+    [parameter(Mandatory=$true)] [string]$Path
+  )
+  # Verify that the $Path is not already in the $env:Path variable.
+  $pathForCompare = $Path.TrimEnd('\').ToLower()
+  foreach ($p in $env:Path.Split(";")) {
+    if ($p.TrimEnd('\').ToLower() -eq $pathForCompare) {
+        return
+    }
+  }
+
+  $newMachinePath = $Path + ";" + `
+    [System.Environment]::GetEnvironmentVariable("Path","Machine")
+  [Environment]::SetEnvironmentVariable("Path", $newMachinePath, `
+    [System.EnvironmentVariableTarget]::Machine)
+  $env:Path = $Path + ";" + $env:Path
 }
 
 # Export all public functions:
