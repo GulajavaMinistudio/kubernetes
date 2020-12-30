@@ -29,7 +29,7 @@ require (
 	github.com/codegangsta/negroni v1.0.0 // indirect
 	github.com/container-storage-interface/spec v1.2.0
 	github.com/containernetworking/cni v0.8.0
-	github.com/coredns/corefile-migration v1.0.10
+	github.com/coredns/corefile-migration v1.0.11
 	github.com/coreos/go-oidc v2.1.0+incompatible
 	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
@@ -139,7 +139,7 @@ require (
 	k8s.io/metrics v0.0.0
 	k8s.io/mount-utils v0.0.0
 	k8s.io/sample-apiserver v0.0.0
-	k8s.io/system-validators v1.2.0
+	k8s.io/system-validators v1.3.0
 	k8s.io/utils v0.0.0-20201110183641-67b214c5f920
 	sigs.k8s.io/yaml v1.2.0
 )
@@ -215,7 +215,7 @@ replace (
 	github.com/containerd/ttrpc => github.com/containerd/ttrpc v1.0.2
 	github.com/containerd/typeurl => github.com/containerd/typeurl v1.0.1
 	github.com/containernetworking/cni => github.com/containernetworking/cni v0.8.0
-	github.com/coredns/corefile-migration => github.com/coredns/corefile-migration v1.0.10
+	github.com/coredns/corefile-migration => github.com/coredns/corefile-migration v1.0.11
 	github.com/coreos/bbolt => github.com/coreos/bbolt v1.3.2
 	github.com/coreos/etcd => github.com/coreos/etcd v3.3.13+incompatible
 	github.com/coreos/go-oidc => github.com/coreos/go-oidc v2.1.0+incompatible
@@ -521,7 +521,7 @@ replace (
 	k8s.io/sample-apiserver => ./staging/src/k8s.io/sample-apiserver
 	k8s.io/sample-cli-plugin => ./staging/src/k8s.io/sample-cli-plugin
 	k8s.io/sample-controller => ./staging/src/k8s.io/sample-controller
-	k8s.io/system-validators => k8s.io/system-validators v1.2.0
+	k8s.io/system-validators => k8s.io/system-validators v1.3.0
 	k8s.io/utils => k8s.io/utils v0.0.0-20201110183641-67b214c5f920
 	modernc.org/cc => modernc.org/cc v1.0.0
 	modernc.org/golex => modernc.org/golex v1.0.0

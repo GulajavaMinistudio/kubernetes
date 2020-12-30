@@ -267,9 +267,9 @@ github.com/containernetworking/cni/pkg/types/020
 github.com/containernetworking/cni/pkg/types/current
 github.com/containernetworking/cni/pkg/utils
 github.com/containernetworking/cni/pkg/version
-# github.com/coredns/corefile-migration v1.0.10 => github.com/coredns/corefile-migration v1.0.10
+# github.com/coredns/corefile-migration v1.0.11 => github.com/coredns/corefile-migration v1.0.11
 ## explicit
-# github.com/coredns/corefile-migration => github.com/coredns/corefile-migration v1.0.10
+# github.com/coredns/corefile-migration => github.com/coredns/corefile-migration v1.0.11
 github.com/coredns/corefile-migration/migration
 github.com/coredns/corefile-migration/migration/corefile
 # github.com/coreos/bbolt => github.com/coreos/bbolt v1.3.2
@@ -2555,9 +2555,9 @@ k8s.io/sample-apiserver/pkg/registry/wardle/fischer
 k8s.io/sample-apiserver/pkg/registry/wardle/flunder
 # k8s.io/sample-cli-plugin => ./staging/src/k8s.io/sample-cli-plugin
 # k8s.io/sample-controller => ./staging/src/k8s.io/sample-controller
-# k8s.io/system-validators v1.2.0 => k8s.io/system-validators v1.2.0
+# k8s.io/system-validators v1.3.0 => k8s.io/system-validators v1.3.0
 ## explicit
-# k8s.io/system-validators => k8s.io/system-validators v1.2.0
+# k8s.io/system-validators => k8s.io/system-validators v1.3.0
 k8s.io/system-validators/validators
 # k8s.io/utils v0.0.0-20201110183641-67b214c5f920 => k8s.io/utils v0.0.0-20201110183641-67b214c5f920
 ## explicit
