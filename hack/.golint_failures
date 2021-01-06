@@ -106,7 +106,6 @@ pkg/kubelet/pluginmanager/pluginwatcher
 pkg/kubelet/pod/testing
 pkg/kubelet/preemption
 pkg/kubelet/sysctl
-pkg/kubelet/types
 pkg/kubemark
 pkg/proxy/apis/config
 pkg/proxy/apis/config/v1alpha1
@@ -191,10 +190,6 @@ plugin/pkg/admission/eventratelimit/apis/eventratelimit/v1alpha1
 plugin/pkg/admission/limitranger
 plugin/pkg/auth/authorizer/node
 plugin/pkg/auth/authorizer/rbac
-staging/src/k8s.io/api/admission/v1
-staging/src/k8s.io/api/admission/v1beta1
-staging/src/k8s.io/api/admissionregistration/v1
-staging/src/k8s.io/api/admissionregistration/v1beta1
 staging/src/k8s.io/api/apiserverinternal/v1alpha1
 staging/src/k8s.io/api/apps/v1
 staging/src/k8s.io/api/apps/v1beta1

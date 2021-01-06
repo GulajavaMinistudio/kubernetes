@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package alpha
+package cmd
 
 import (
 	"fmt"
@@ -27,6 +27,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"k8s.io/apimachinery/pkg/util/duration"
+
 	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
 	kubeadmscheme "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/scheme"
 	kubeadmapiv1beta2 "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/v1beta2"
@@ -90,8 +91,8 @@ var (
 `)
 )
 
-// NewCmdCertsUtility returns main command for certs phase
-func NewCmdCertsUtility(out io.Writer) *cobra.Command {
+// newCmdCertsUtility returns main command for certs phase
+func newCmdCertsUtility(out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "certs",
 		Aliases: []string{"certificates"},
@@ -133,7 +134,7 @@ func (o *genCSRConfig) addFlagSet(flagSet *pflag.FlagSet) {
 func (o *genCSRConfig) load() (err error) {
 	o.kubeadmConfig, err = configutil.LoadOrDefaultInitConfiguration(
 		o.kubeadmConfigPath,
-		&kubeadmapiv1beta2.InitConfiguration{},
+		cmdutil.DefaultInitConfiguration(),
 		&kubeadmapiv1beta2.ClusterConfiguration{},
 	)
 	if err != nil {
@@ -358,7 +359,7 @@ func getInternalCfg(cfgPath string, kubeconfigPath string, cfg kubeadmapiv1beta2
 	}
 
 	// Otherwise read config from --config if provided, otherwise use default configuration
-	return configutil.LoadOrDefaultInitConfiguration(cfgPath, &kubeadmapiv1beta2.InitConfiguration{}, &cfg)
+	return configutil.LoadOrDefaultInitConfiguration(cfgPath, cmdutil.DefaultInitConfiguration(), &cfg)
 }
 
 // newCmdCertsExpiration creates a new `cert check-expiration` command.
