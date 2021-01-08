@@ -122,10 +122,10 @@ var _ = SIGDescribeCopy("Netpol [LinuxOnly]", func() {
 				_ = initializeResources(f)
 
 				_, _, _, model, k8s := getK8SModel(f)
-				framework.ExpectNoError(k8s.CleanNetworkPolicies(model.NamespaceNames), "unable to clean network policies")
+				framework.ExpectNoError(k8s.cleanNetworkPolicies(model.NamespaceNames), "unable to clean network policies")
 				err := wait.Poll(waitInterval, waitTimeout, func() (done bool, err error) {
 					for _, ns := range model.NamespaceNames {
-						netpols, err := k8s.ClientSet.NetworkingV1().NetworkPolicies(ns).List(context.TODO(), metav1.ListOptions{})
+						netpols, err := k8s.clientSet.NetworkingV1().NetworkPolicies(ns).List(context.TODO(), metav1.ListOptions{})
 						framework.ExpectNoError(err, "get network policies from ns %s", ns)
 						if len(netpols.Items) > 0 {
 							return false, nil
@@ -586,6 +586,17 @@ var _ = SIGDescribeCopy("Netpol [LinuxOnly]", func() {
 			ValidateOrFail(k8s, model, &TestCase{FromPort: 81, ToPort: 80, Protocol: v1.ProtocolTCP, Reachability: reachabilityIsolated})
 		})
 
+		ginkgo.It("should deny egress from pods based on PodSelector [Feature:NetworkPolicy] ", func() {
+			nsX, _, _, model, k8s := getK8SModel(f)
+			policy := GetDenyEgressForTarget("deny-egress-pod-a", metav1.LabelSelector{MatchLabels: map[string]string{"pod": "a"}})
+			CreatePolicy(k8s, policy, nsX)
+
+			reachability := NewReachability(model.AllPods(), true)
+			reachability.ExpectAllEgress(NewPodString(nsX, "a"), false)
+
+			ValidateOrFail(k8s, model, &TestCase{FromPort: 81, ToPort: 80, Protocol: v1.ProtocolTCP, Reachability: reachability})
+		})
+
 		ginkgo.It("should work with Ingress, Egress specified together [Feature:NetworkPolicy]", func() {
 			allowedPodLabels := &metav1.LabelSelector{MatchLabels: map[string]string{"pod": "b"}}
 			policy := GetAllowIngressByPod("allow-client-a-via-pod-selector", map[string]string{"pod": "a"}, allowedPodLabels)
@@ -621,6 +632,95 @@ var _ = SIGDescribeCopy("Netpol [LinuxOnly]", func() {
 			reachabilityPort81.ExpectAllEgress(NewPodString(nsX, "a"), false)
 			reachabilityPort81.Expect(NewPodString(nsX, "b"), NewPodString(nsX, "a"), true)
 			ValidateOrFail(k8s, model, &TestCase{FromPort: 81, ToPort: 81, Protocol: v1.ProtocolTCP, Reachability: reachabilityPort81})
+		})
+
+		ginkgo.It("should support denying of egress traffic on the client side (even if the server explicitly allows this traffic) [Feature:NetworkPolicy]", func() {
+			// x/a --> y/a and y/b
+			// Egress allowed to y/a only. Egress to y/b should be blocked
+			// Ingress on y/a and y/b allow traffic from x/a
+			// Expectation: traffic from x/a to y/a allowed only, traffic from x/a to y/b denied by egress policy
+
+			nsX, nsY, _, model, k8s := getK8SModel(f)
+
+			// Building egress policy for x/a to y/a only
+			allowedEgressNamespaces := &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"ns": nsY,
+				},
+			}
+			allowedEgressPods := &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"pod": "a",
+				},
+			}
+			egressPolicy := GetAllowEgressByNamespaceAndPod("allow-to-ns-y-pod-a", map[string]string{"pod": "a"}, allowedEgressNamespaces, allowedEgressPods)
+			CreatePolicy(k8s, egressPolicy, nsX)
+
+			// Creating ingress policy to allow from x/a to y/a and y/b
+			allowedIngressNamespaces := &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"ns": nsX,
+				},
+			}
+			allowedIngressPods := &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"pod": "a",
+				},
+			}
+			allowIngressPolicyPodA := GetAllowIngressByNamespaceAndPod("allow-from-xa-on-ya-match-selector", map[string]string{"pod": "a"}, allowedIngressNamespaces, allowedIngressPods)
+			allowIngressPolicyPodB := GetAllowIngressByNamespaceAndPod("allow-from-xa-on-yb-match-selector", map[string]string{"pod": "b"}, allowedIngressNamespaces, allowedIngressPods)
+
+			CreatePolicy(k8s, allowIngressPolicyPodA, nsY)
+			CreatePolicy(k8s, allowIngressPolicyPodB, nsY)
+
+			// While applying the policies, traffic needs to be allowed by both egress and ingress rules.
+			// Egress rules only
+			// 	xa	xb	xc	ya	yb	yc	za	zb	zc
+			// xa	X	X	X	.	*X*	X	X	X	X
+			// xb	.	.	.	.	.	.	.	.	.
+			// xc	.	.	.	.	.	.	.	.	.
+			// ya	.	.	.	.	.	.	.	.	.
+			// yb	.	.	.	.	.	.	.	.	.
+			// yc	.	.	.	.	.	.	.	.	.
+			// za	.	.	.	.	.	.	.	.	.
+			// zb	.	.	.	.	.	.	.	.	.
+			// zc	.	.	.	.	.	.	.	.	.
+			// Ingress rules only
+			// 	xa	xb	xc	ya	yb	yc	za	zb	zc
+			// xa	.	.	.	*.*	.	.	.	.	.
+			// xb	.	.	X	X	.	.	.	.	.
+			// xc	.	.	X	X	.	.	.	.	.
+			// ya	.	.	X	X	.	.	.	.	.
+			// yb	.	.	X	X	.	.	.	.	.
+			// yc	.	.	X	X	.	.	.	.	.
+			// za	.	.	X	X	.	.	.	.	.
+			// zb	.	.	X	X	.	.	.	.	.
+			// zc	.	.	X	X	.	.	.	.	.
+			// In the resulting truth table, connections from x/a should only be allowed to y/a. x/a to y/b should be blocked by the egress on x/a.
+			// Expected results
+			// 	xa	xb	xc	ya	yb	yc	za	zb	zc
+			// xa	X	X	X	.	*X*	X	X	X	X
+			// xb	.	.	.	X	X	.	.	.	.
+			// xc	.	.	.	X	X	.	.	.	.
+			// ya	.	.	.	X	X	.	.	.	.
+			// yb	.	.	.	X	X	.	.	.	.
+			// yc	.	.	.	X	X	.	.	.	.
+			// za	.	.	.	X	X	.	.	.	.
+			// zb	.	.	.	X	X	.	.	.	.
+			// zc	.	.	.	X	X	.	.	.	.
+
+			reachability := NewReachability(model.AllPods(), true)
+			// Default all traffic flows.
+			// Exception: x/a can only egress to y/a, others are false
+			// Exception: y/a can only allow ingress from x/a, others are false
+			// Exception: y/b has no allowed traffic (due to limit on x/a egress)
+
+			reachability.ExpectPeer(&Peer{Namespace: nsX, Pod: "a"}, &Peer{}, false)
+			reachability.ExpectPeer(&Peer{}, &Peer{Namespace: nsY, Pod: "a"}, false)
+			reachability.ExpectPeer(&Peer{Namespace: nsX, Pod: "a"}, &Peer{Namespace: nsY, Pod: "a"}, true)
+			reachability.ExpectPeer(&Peer{}, &Peer{Namespace: nsY, Pod: "b"}, false)
+
+			ValidateOrFail(k8s, model, &TestCase{FromPort: 81, ToPort: 80, Protocol: v1.ProtocolTCP, Reachability: reachability})
 		})
 
 		ginkgo.It("should enforce egress policy allowing traffic to a server in a different namespace based on PodSelector and NamespaceSelector [Feature:NetworkPolicy]", func() {
@@ -698,7 +798,7 @@ var _ = SIGDescribeCopy("Netpol [LinuxOnly]", func() {
 			reachability.ExpectPeer(&Peer{}, &Peer{Namespace: nsX}, false)
 			ValidateOrFail(k8s, model, &TestCase{FromPort: 81, ToPort: 80, Protocol: v1.ProtocolTCP, Reachability: reachability})
 
-			err := k8s.CleanNetworkPolicies(model.NamespaceNames)
+			err := k8s.cleanNetworkPolicies(model.NamespaceNames)
 			time.Sleep(3 * time.Second) // TODO we can remove this eventually, its just a hack to keep CI stable.
 			framework.ExpectNoError(err, "unable to clean network policies")
 
@@ -880,10 +980,10 @@ func defaultModel(namespaces []string, dnsDomain string) *Model {
 	return NewModel(namespaces, []string{"a", "b", "c"}, []int32{80, 81}, protocols, dnsDomain)
 }
 
-// getK8sModel uses the e2e framework to create all necessary namespace resources, and returns the default probing model used
-// in the scaffold of this test.
-func getK8SModel(f *framework.Framework) (string, string, string, *Model, *Scenario) {
-	k8s := NewScenario(f)
+// getK8sModel generates a network policy model using the framework's root namespace and cluster DNS domain.
+// This function is deterministic and has no side effects, so may be safely called multiple times.
+func getK8SModel(f *framework.Framework) (string, string, string, *Model, *kubeManager) {
+	k8s := newKubeManager(f)
 	rootNs := f.Namespace.GetName()
 	nsX, nsY, nsZ, namespaces := getNamespaces(rootNs)
 
@@ -892,13 +992,15 @@ func getK8SModel(f *framework.Framework) (string, string, string, *Model, *Scena
 	return nsX, nsY, nsZ, model, k8s
 }
 
-// initializeResources generates a model and then waits for the model to be up-and-running (i.e. all pods are ready and running in their namespaces).
+// initializeResources uses the e2e framework to create all necessary namespace resources, based on the network policy
+// model derived from the framework.  It then waits for the resources described by the model to be up and running
+// (i.e. all pods are ready and running in their namespaces).
 func initializeResources(f *framework.Framework) error {
 	_, _, _, model, k8s := getK8SModel(f)
 
 	framework.Logf("initializing cluster: ensuring namespaces, deployments, and pods exist and are ready")
 
-	err := k8s.InitializeCluster(model)
+	err := k8s.initializeCluster(model)
 	if err != nil {
 		return err
 	}
