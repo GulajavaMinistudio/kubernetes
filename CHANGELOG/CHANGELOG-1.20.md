@@ -342,7 +342,7 @@ We expect this implementation to progress from alpha to beta and GA in coming re
 
 ### go1.15.5
 
-go1.15.5 has been integrated to Kubernets project as of this release, [including other infrastructure related updates on this effort](https://github.com/kubernetes/kubernetes/pull/95776).
+go1.15.5 has been integrated to Kubernetes project as of this release, [including other infrastructure related updates on this effort](https://github.com/kubernetes/kubernetes/pull/95776).
 
 ### CSI Volume Snapshot graduates to General Availability
 
@@ -2124,7 +2124,7 @@ filename | sha512 hash
   
   - bazel: output go_binary rule directly from go_binary_conditional_pure
     
-    From: @mikedanese:
+    From: [@mikedanese](https://github.com/mikedanese):
     Instead of aliasing. Aliases are annoying in a number of ways. This is
     specifically bugging me now because they make the action graph harder to
     analyze programmatically. By using aliases here, we would need to handle
@@ -2306,7 +2306,7 @@ filename | sha512 hash
 - Fixes the message about no auth for metrics in scheduler. ([#94035](https://github.com/kubernetes/kubernetes/pull/94035), [@zhouya0](https://github.com/zhouya0)) [SIG Scheduling]
 - Kube-up: defaults to limiting critical pods to the kube-system namespace to match behavior prior to 1.17 ([#93121](https://github.com/kubernetes/kubernetes/pull/93121), [@liggitt](https://github.com/liggitt)) [SIG Cloud Provider and Scheduling]
 - Kubeadm: Separate argument key/value in log msg ([#94016](https://github.com/kubernetes/kubernetes/pull/94016), [@mrueg](https://github.com/mrueg)) [SIG Cluster Lifecycle]
-- Kubeadm: remove support for the "ci/k8s-master" version label. This label has been removed in the Kubernetes CI release process and would no longer work in kubeadm. You can use the "ci/latest" version label instead. See kubernetes/test-infra&#35;18517 ([#93626](https://github.com/kubernetes/kubernetes/pull/93626), [@vikkyomkar](https://github.com/vikkyomkar)) [SIG Cluster Lifecycle]
+- Kubeadm: remove support for the "ci/k8s-master" version label. This label has been removed in the Kubernetes CI release process and would no longer work in kubeadm. You can use the "ci/latest" version label instead. See [kubernetes/test-infra#18517](https://github.com/kubernetes/test-infra/pull/18517). ([#93626](https://github.com/kubernetes/kubernetes/pull/93626), [@vikkyomkar](https://github.com/vikkyomkar)) [SIG Cluster Lifecycle]
 - Kubeadm: remove the CoreDNS check for known image digests when applying the addon ([#94506](https://github.com/kubernetes/kubernetes/pull/94506), [@neolit123](https://github.com/neolit123)) [SIG Cluster Lifecycle]
 - Kubernetes is now built with go1.15.0 ([#93939](https://github.com/kubernetes/kubernetes/pull/93939), [@justaugustus](https://github.com/justaugustus)) [SIG Release and Testing]
 - Kubernetes is now built with go1.15.0-rc.2 ([#93827](https://github.com/kubernetes/kubernetes/pull/93827), [@justaugustus](https://github.com/justaugustus)) [SIG API Machinery, CLI, Cloud Provider, Cluster Lifecycle, Instrumentation, Node, Release and Testing]

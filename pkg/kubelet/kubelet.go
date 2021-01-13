@@ -124,6 +124,9 @@ const (
 	// Max amount of time to wait for the container runtime to come up.
 	maxWaitForContainerRuntime = 30 * time.Second
 
+	// Max amount of time to wait for node list/watch to initially sync
+	maxWaitForAPIServerSync = 10 * time.Second
+
 	// nodeStatusUpdateRetry specifies how many times kubelet retries when posting node status failed.
 	nodeStatusUpdateRetry = 5
 
@@ -431,14 +434,31 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		serviceHasSynced = func() bool { return true }
 	}
 
-	nodeIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	var nodeHasSynced cache.InformerSynced
+	var nodeLister corelisters.NodeLister
+
 	if kubeDeps.KubeClient != nil {
-		fieldSelector := fields.Set{api.ObjectNameField: string(nodeName)}.AsSelector()
-		nodeLW := cache.NewListWatchFromClient(kubeDeps.KubeClient.CoreV1().RESTClient(), "nodes", metav1.NamespaceAll, fieldSelector)
-		r := cache.NewReflector(nodeLW, &v1.Node{}, nodeIndexer, 0)
-		go r.Run(wait.NeverStop)
+		kubeInformers := informers.NewSharedInformerFactoryWithOptions(kubeDeps.KubeClient, 0, informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+			options.FieldSelector = fields.Set{api.ObjectNameField: string(nodeName)}.String()
+		}))
+		nodeLister = kubeInformers.Core().V1().Nodes().Lister()
+		nodeHasSynced = func() bool {
+			if kubeInformers.Core().V1().Nodes().Informer().HasSynced() {
+				klog.Infof("kubelet nodes sync")
+				return true
+			}
+			klog.Infof("kubelet nodes not sync")
+			return false
+		}
+		kubeInformers.Start(wait.NeverStop)
+		klog.Info("Kubelet client is not nil")
+	} else {
+		// we dont have a client to sync!
+		nodeIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+		nodeLister = corelisters.NewNodeLister(nodeIndexer)
+		nodeHasSynced = func() bool { return true }
+		klog.Info("Kubelet client is nil")
 	}
-	nodeLister := corelisters.NewNodeLister(nodeIndexer)
 
 	// construct a node reference used for events
 	nodeRef := &v1.ObjectReference{
@@ -481,6 +501,7 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		serviceLister:                           serviceLister,
 		serviceHasSynced:                        serviceHasSynced,
 		nodeLister:                              nodeLister,
+		nodeHasSynced:                           nodeHasSynced,
 		masterServiceNamespace:                  masterServiceNamespace,
 		streamingConnectionIdleTimeout:          kubeCfg.StreamingConnectionIdleTimeout.Duration,
 		recorder:                                kubeDeps.Recorder,
@@ -669,7 +690,6 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	}
 	klet.containerGC = containerGC
 	klet.containerDeletor = newPodContainerDeletor(klet.containerRuntime, integer.IntMax(containerGCPolicy.MaxPerPodContainer, minDeadContainerInPod))
-	klet.sandboxDeleter = newPodSandboxDeleter(klet.containerRuntime)
 
 	// setup imageManager
 	imageManager, err := images.NewImageGCManager(klet.containerRuntime, klet.StatsProvider, kubeDeps.Recorder, nodeRef, imageGCPolicy, crOptions.PodSandboxImage)
@@ -885,7 +905,9 @@ type Kubelet struct {
 	serviceHasSynced cache.InformerSynced
 	// nodeLister knows how to list nodes
 	nodeLister corelisters.NodeLister
-
+	// nodeHasSynced indicates whether nodes have been sync'd at least once.
+	// Check this before trusting a response from the node lister.
+	nodeHasSynced cache.InformerSynced
 	// a list of node labels to register
 	nodeLabels map[string]string
 
@@ -1103,9 +1125,6 @@ type Kubelet struct {
 
 	// trigger deleting containers in a pod
 	containerDeletor *podContainerDeletor
-
-	// trigger deleting sandboxes in a pod
-	sandboxDeleter *podSandboxDeleter
 
 	// config iptables util rules
 	makeIPTablesUtilChains bool
@@ -1933,9 +1952,6 @@ func (kl *Kubelet) syncLoopIteration(configCh <-chan kubetypes.PodUpdate, handle
 				klog.V(4).Infof("SyncLoop (PLEG): ignore irrelevant event: %#v", e)
 			}
 		}
-		if e.Type == pleg.ContainerRemoved {
-			kl.deletePodSandbox(e.ID)
-		}
 
 		if e.Type == pleg.ContainerDied {
 			if containerID, ok := e.Data.(string); ok {
@@ -2256,16 +2272,6 @@ func (kl *Kubelet) fastStatusUpdateOnce() {
 			kl.syncNodeStatus()
 			return
 		}
-	}
-}
-
-func (kl *Kubelet) deletePodSandbox(podID types.UID) {
-	if podStatus, err := kl.podCache.Get(podID); err == nil {
-		toKeep := 1
-		if kl.IsPodDeleted(podID) {
-			toKeep = 0
-		}
-		kl.sandboxDeleter.deleteSandboxesInPod(podStatus, toKeep)
 	}
 }
 
