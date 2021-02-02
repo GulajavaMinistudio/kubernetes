@@ -194,6 +194,7 @@ const (
 	// owner: @mtaufen
 	// alpha: v1.18
 	// beta: v1.20
+	// stable: v1.21
 	//
 	// Enable OIDC discovery endpoints (issuer and JWKS URLs) for the service
 	// account issuer in the API server.
@@ -296,6 +297,12 @@ const (
 	//
 	// Enables SCTP as new protocol for Service ports, NetworkPolicy, and ContainerPort in Pod/Containers definition
 	SCTPSupport featuregate.Feature = "SCTPSupport"
+
+	// owner: @rikatz
+	// alpha: v1.21
+	//
+	// Enables the endPort field in NetworkPolicy to enable a Port Range behavior in Network Policies.
+	NetworkPolicyEndPort featuregate.Feature = "NetworkPolicyEndPort"
 
 	// owner: @xing-yang
 	// alpha: v1.12
@@ -699,7 +706,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	SupportPodPidsLimit:                            {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.23
 	SupportNodePidsLimit:                           {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.23
 	BoundServiceAccountTokenVolume:                 {Default: false, PreRelease: featuregate.Alpha},
-	ServiceAccountIssuerDiscovery:                  {Default: true, PreRelease: featuregate.Beta},
+	ServiceAccountIssuerDiscovery:                  {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.22
 	CRIContainerLogRotation:                        {Default: true, PreRelease: featuregate.Beta},
 	CSIMigration:                                   {Default: true, PreRelease: featuregate.Beta},
 	CSIMigrationGCE:                                {Default: false, PreRelease: featuregate.Beta}, // Off by default (requires GCE PD CSI Driver)
@@ -728,6 +735,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	RuntimeClass:                                   {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.23
 	NodeLease:                                      {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
 	SCTPSupport:                                    {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.22
+	NetworkPolicyEndPort:                           {Default: false, PreRelease: featuregate.Alpha},
 	VolumeSnapshotDataSource:                       {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.21
 	ProcMountType:                                  {Default: false, PreRelease: featuregate.Alpha},
 	TTLAfterFinished:                               {Default: false, PreRelease: featuregate.Alpha},
