@@ -18,6 +18,7 @@ package util
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -25,6 +26,7 @@ import (
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/volume"
+	"k8s.io/kubernetes/pkg/volume/util/types"
 )
 
 const (
@@ -47,13 +49,22 @@ var storageOperationMetric = metrics.NewHistogramVec(
 		Buckets:        []float64{.1, .25, .5, 1, 2.5, 5, 10, 15, 25, 50, 120, 300, 600},
 		StabilityLevel: metrics.ALPHA,
 	},
-	[]string{"volume_plugin", "operation_name", "status"},
+	[]string{"volume_plugin", "operation_name", "status", "migrated"},
+)
+
+var storageOperationErrorMetric = metrics.NewCounterVec(
+	&metrics.CounterOpts{
+		Name:           "storage_operation_errors_total",
+		Help:           "Storage operation errors (Deprecated since 1.21.0)",
+		StabilityLevel: metrics.ALPHA,
+	},
+	[]string{"volume_plugin", "operation_name"},
 )
 
 var storageOperationStatusMetric = metrics.NewCounterVec(
 	&metrics.CounterOpts{
 		Name:           "storage_operation_status_count",
-		Help:           "Storage operation return statuses count",
+		Help:           "Storage operation return statuses count (Deprecated since 1.21.0)",
 		StabilityLevel: metrics.ALPHA,
 	},
 	[]string{"volume_plugin", "operation_name", "status"},
@@ -77,30 +88,36 @@ func registerMetrics() {
 	// legacyregistry is the internal k8s wrapper around the prometheus
 	// global registry, used specifically for metric stability enforcement
 	legacyregistry.MustRegister(storageOperationMetric)
+	legacyregistry.MustRegister(storageOperationErrorMetric)
 	legacyregistry.MustRegister(storageOperationStatusMetric)
 	legacyregistry.MustRegister(storageOperationEndToEndLatencyMetric)
 }
 
 // OperationCompleteHook returns a hook to call when an operation is completed
-func OperationCompleteHook(plugin, operationName string) func(*error) {
+func OperationCompleteHook(plugin, operationName string) func(types.CompleteFuncParam) {
 	requestTime := time.Now()
-	opComplete := func(err *error) {
+	opComplete := func(c types.CompleteFuncParam) {
 		timeTaken := time.Since(requestTime).Seconds()
 		// Create metric with operation name and plugin name
 		status := statusSuccess
-		if *err != nil {
+		if *c.Err != nil {
 			// TODO: Establish well-known error codes to be able to distinguish
 			// user configuration errors from system errors.
 			status = statusFailUnknown
+			storageOperationErrorMetric.WithLabelValues(plugin, operationName).Inc()
 		}
-		storageOperationMetric.WithLabelValues(plugin, operationName, status).Observe(timeTaken)
+		migrated := false
+		if c.Migrated != nil {
+			migrated = *c.Migrated
+		}
+		storageOperationMetric.WithLabelValues(plugin, operationName, status, strconv.FormatBool(migrated)).Observe(timeTaken)
 		storageOperationStatusMetric.WithLabelValues(plugin, operationName, status).Inc()
 	}
 	return opComplete
 }
 
 // FSGroupCompleteHook returns a hook to call when volume recursive permission is changed
-func FSGroupCompleteHook(plugin volume.VolumePlugin, spec *volume.Spec) func(*error) {
+func FSGroupCompleteHook(plugin volume.VolumePlugin, spec *volume.Spec) func(types.CompleteFuncParam) {
 	return OperationCompleteHook(GetFullQualifiedPluginNameForVolume(plugin.GetPluginName(), spec), "volume_fsgroup_recursive_apply")
 }
 
