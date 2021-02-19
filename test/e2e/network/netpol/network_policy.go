@@ -197,6 +197,19 @@ var _ = SIGDescribeCopy("Netpol [LinuxOnly]", func() {
 			ValidateOrFail(k8s, model, &TestCase{ToPort: 80, Protocol: v1.ProtocolTCP, Reachability: reachability})
 		})
 
+		ginkgo.It("should enforce policy to allow ingress traffic from pods in all namespaces [Feature:NetworkPolicy]", func() {
+			nsX, _, _, model, k8s := getK8SModel(f)
+
+			emptyLabel := &metav1.LabelSelector{
+				MatchLabels: map[string]string{},
+			}
+			policy := GetAllowIngressByNamespace("allow-from-another-ns", map[string]string{"pod": "a"}, emptyLabel)
+			CreatePolicy(k8s, policy, nsX)
+
+			reachability := NewReachability(model.AllPods(), true)
+			ValidateOrFail(k8s, model, &TestCase{ToPort: 80, Protocol: v1.ProtocolTCP, Reachability: reachability})
+		})
+
 		ginkgo.It("should enforce policy to allow traffic only from a different namespace, based on NamespaceSelector [Feature:NetworkPolicy]", func() {
 			nsX, nsY, nsZ, model, k8s := getK8SModel(f)
 			allowedLabels := &metav1.LabelSelector{
@@ -326,6 +339,23 @@ var _ = SIGDescribeCopy("Netpol [LinuxOnly]", func() {
 			reachability.ExpectPeer(&Peer{Namespace: nsX}, &Peer{Namespace: nsX, Pod: "a"}, false)
 			reachability.Expect(NewPodString(nsY, "a"), NewPodString(nsX, "a"), false)
 			reachability.Expect(NewPodString(nsZ, "a"), NewPodString(nsX, "a"), false)
+
+			ValidateOrFail(k8s, model, &TestCase{ToPort: 80, Protocol: v1.ProtocolTCP, Reachability: reachability})
+		})
+
+		ginkgo.It("should enforce policy based on any PodSelectors [Feature:NetworkPolicy]", func() {
+			nsX, _, _, model, k8s := getK8SModel(f)
+
+			peers := []map[string]string{{"pod": "b"}, {"pod": "c"}}
+			policy := GetAllowIngressByAnyPod("allow-ns-x-pod-b-c", map[string]string{"pod": "a"}, peers)
+			CreatePolicy(k8s, policy, nsX)
+
+			reachability := NewReachability(model.AllPods(), true)
+			reachability.ExpectAllIngress(NewPodString(nsX, "a"), false)
+
+			// Connect Pods b and c to pod a from namespace nsX
+			reachability.Expect(NewPodString(nsX, "b"), NewPodString(nsX, "a"), true)
+			reachability.Expect(NewPodString(nsX, "c"), NewPodString(nsX, "a"), true)
 
 			ValidateOrFail(k8s, model, &TestCase{ToPort: 80, Protocol: v1.ProtocolTCP, Reachability: reachability})
 		})

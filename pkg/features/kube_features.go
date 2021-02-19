@@ -191,6 +191,7 @@ const (
 
 	// owner: @mikedanese
 	// alpha: v1.13
+	// beta: v1.21
 	//
 	// Migrate ServiceAccount volumes to use a projected volume consisting of a
 	// ServiceAccountTokenVolumeProjection. This feature adds new required flags
@@ -221,7 +222,7 @@ const (
 	RunAsGroup featuregate.Feature = "RunAsGroup"
 
 	// owner: @saad-ali
-	// ga
+	// ga: 	  v1.10
 	//
 	// Allow mounting a subpath of a volume in a container
 	// Do not remove this feature gate even though it's GA
@@ -298,7 +299,7 @@ const (
 
 	// owner: @janosi
 	// alpha: v1.12
-	// beta:  v1.18
+	// beta:  v1.19
 	// GA:    v1.20
 	//
 	// Enables SCTP as new protocol for Service ports, NetworkPolicy, and ContainerPort in Pod/Containers definition
@@ -714,7 +715,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	StorageObjectInUseProtection:                   {Default: true, PreRelease: featuregate.GA},
 	SupportPodPidsLimit:                            {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.23
 	SupportNodePidsLimit:                           {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.23
-	BoundServiceAccountTokenVolume:                 {Default: false, PreRelease: featuregate.Alpha},
+	BoundServiceAccountTokenVolume:                 {Default: true, PreRelease: featuregate.Beta},
 	ServiceAccountIssuerDiscovery:                  {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.22
 	CRIContainerLogRotation:                        {Default: true, PreRelease: featuregate.Beta},
 	CSIMigration:                                   {Default: true, PreRelease: featuregate.Beta},
