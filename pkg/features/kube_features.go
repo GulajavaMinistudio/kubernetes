@@ -160,21 +160,6 @@ const (
 	// Enable nodes to exclude themselves from network disruption checks
 	NodeDisruptionExclusion featuregate.Feature = "NodeDisruptionExclusion"
 
-	// owner: @saad-ali
-	// alpha: v1.12
-	// beta:  v1.14
-	// GA:    v1.18
-	// Enable all logic related to the CSIDriver API object in storage.k8s.io
-	CSIDriverRegistry featuregate.Feature = "CSIDriverRegistry"
-
-	// owner: @screeley44
-	// alpha: v1.9
-	// beta:  v1.13
-	// ga: 	  v1.18
-	//
-	// Enable Block volume support in containers.
-	BlockVolume featuregate.Feature = "BlockVolume"
-
 	// owner: @pospispa
 	// GA: v1.11
 	//
@@ -216,7 +201,8 @@ const (
 	CRIContainerLogRotation featuregate.Feature = "CRIContainerLogRotation"
 
 	// owner: @krmayankk
-	// beta: v1.14
+	// beta:  v1.14
+	// ga:    v1.21
 	//
 	// Enables control over the primary group ID of containers' init processes.
 	RunAsGroup featuregate.Feature = "RunAsGroup"
@@ -235,14 +221,6 @@ const (
 	// A node which has closer cpu,memory utilization and volume count is favoured by scheduler
 	// while making decisions.
 	BalanceAttachedNodeVolumes featuregate.Feature = "BalanceAttachedNodeVolumes"
-
-	// owner: @vladimirvivien
-	// alpha: v1.11
-	// beta:  v1.14
-	// ga: 	  v1.18
-	//
-	// Enables CSI to use raw block storage volumes
-	CSIBlockVolume featuregate.Feature = "CSIBlockVolume"
 
 	// owner: @pohly
 	// alpha: v1.14
@@ -710,8 +688,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	TopologyManager:                                {Default: true, PreRelease: featuregate.Beta},
 	ServiceNodeExclusion:                           {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.22
 	NodeDisruptionExclusion:                        {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.22
-	CSIDriverRegistry:                              {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.20
-	BlockVolume:                                    {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.20
 	StorageObjectInUseProtection:                   {Default: true, PreRelease: featuregate.GA},
 	SupportPodPidsLimit:                            {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.23
 	SupportNodePidsLimit:                           {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.23
@@ -730,13 +706,11 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	CSIMigrationvSphere:                            {Default: false, PreRelease: featuregate.Beta}, // Off by default (requires vSphere CSI driver)
 	CSIMigrationvSphereComplete:                    {Default: false, PreRelease: featuregate.Beta}, // remove in 1.22
 	InTreePluginvSphereUnregister:                  {Default: false, PreRelease: featuregate.Alpha},
-	RunAsGroup:                                     {Default: true, PreRelease: featuregate.Beta},
 	CSIMigrationOpenStack:                          {Default: false, PreRelease: featuregate.Beta}, // Off by default (requires OpenStack Cinder CSI driver)
 	InTreePluginOpenStackUnregister:                {Default: false, PreRelease: featuregate.Alpha},
 	VolumeSubpath:                                  {Default: true, PreRelease: featuregate.GA},
 	ConfigurableFSGroupPolicy:                      {Default: true, PreRelease: featuregate.Beta},
 	BalanceAttachedNodeVolumes:                     {Default: false, PreRelease: featuregate.Alpha},
-	CSIBlockVolume:                                 {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.20
 	CSIInlineVolume:                                {Default: true, PreRelease: featuregate.Beta},
 	CSIStorageCapacity:                             {Default: false, PreRelease: featuregate.Alpha},
 	CSIServiceAccountToken:                         {Default: false, PreRelease: featuregate.Alpha},
@@ -785,6 +759,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	ServiceLBNodePortControl:                       {Default: false, PreRelease: featuregate.Alpha},
 	MixedProtocolLBService:                         {Default: false, PreRelease: featuregate.Alpha},
 	PreferNominatedNode:                            {Default: false, PreRelease: featuregate.Alpha},
+	RunAsGroup:                                     {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.22
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
