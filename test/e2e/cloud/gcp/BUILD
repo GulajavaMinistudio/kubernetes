@@ -6,6 +6,7 @@ go_library(
         "addon_update.go",
         "cluster_upgrade.go",
         "framework.go",
+        "gke_node_pools.go",
         "ha_master.go",
         "kubelet_security.go",
         "node_lease.go",
@@ -16,7 +17,6 @@ go_library(
     importpath = "k8s.io/kubernetes/test/e2e/cloud/gcp",
     visibility = ["//visibility:public"],
     deps = [
-        "//pkg/apis/core:go_default_library",
         "//pkg/cluster/ports:go_default_library",
         "//staging/src/k8s.io/api/core/v1:go_default_library",
         "//staging/src/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",

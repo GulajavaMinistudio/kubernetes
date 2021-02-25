@@ -35,7 +35,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/events"
 	extenderv1 "k8s.io/kube-scheduler/extender/v1"
-	apicore "k8s.io/kubernetes/pkg/apis/core"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	frameworkplugins "k8s.io/kubernetes/pkg/scheduler/framework/plugins"
@@ -467,7 +466,7 @@ func TestDefaultErrorFunc(t *testing.T) {
 				queue.Delete(testPod)
 			}
 
-			testPodInfo := &framework.QueuedPodInfo{Pod: testPod}
+			testPodInfo := &framework.QueuedPodInfo{PodInfo: framework.NewPodInfo(testPod)}
 			errFunc := MakeDefaultErrorFunc(client, podInformer.Lister(), queue, schedulerCache)
 			errFunc(testPodInfo, tt.injectErr)
 
@@ -504,13 +503,13 @@ func TestDefaultErrorFunc_NodeNotFound(t *testing.T) {
 			name:             "node is deleted during a scheduling cycle",
 			nodes:            []v1.Node{*nodeFoo, *nodeBar},
 			nodeNameToDelete: "foo",
-			injectErr:        apierrors.NewNotFound(apicore.Resource("node"), nodeFoo.Name),
+			injectErr:        apierrors.NewNotFound(v1.Resource("node"), nodeFoo.Name),
 			expectNodeNames:  sets.NewString("bar"),
 		},
 		{
 			name:            "node is not deleted but NodeNotFound is received incorrectly",
 			nodes:           []v1.Node{*nodeFoo, *nodeBar},
-			injectErr:       apierrors.NewNotFound(apicore.Resource("node"), nodeFoo.Name),
+			injectErr:       apierrors.NewNotFound(v1.Resource("node"), nodeFoo.Name),
 			expectNodeNames: sets.NewString("foo", "bar"),
 		},
 	}
@@ -538,7 +537,7 @@ func TestDefaultErrorFunc_NodeNotFound(t *testing.T) {
 				}
 			}
 
-			testPodInfo := &framework.QueuedPodInfo{Pod: testPod}
+			testPodInfo := &framework.QueuedPodInfo{PodInfo: framework.NewPodInfo(testPod)}
 			errFunc := MakeDefaultErrorFunc(client, podInformer.Lister(), queue, schedulerCache)
 			errFunc(testPodInfo, tt.injectErr)
 
@@ -573,7 +572,7 @@ func TestDefaultErrorFunc_PodAlreadyBound(t *testing.T) {
 	// Add node to schedulerCache no matter it's deleted in API server or not.
 	schedulerCache.AddNode(&nodeFoo)
 
-	testPodInfo := &framework.QueuedPodInfo{Pod: testPod}
+	testPodInfo := &framework.QueuedPodInfo{PodInfo: framework.NewPodInfo(testPod)}
 	errFunc := MakeDefaultErrorFunc(client, podInformer.Lister(), queue, schedulerCache)
 	errFunc(testPodInfo, fmt.Errorf("binding rejected: timeout"))
 
