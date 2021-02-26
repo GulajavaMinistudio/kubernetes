@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package common
+package node
 
 import (
 	"context"
@@ -33,7 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-var _ = ginkgo.Describe("[sig-api-machinery] Secrets", func() {
+var _ = SIGDescribe("Secrets", func() {
 	f := framework.NewDefaultFramework("secrets")
 
 	/*
@@ -233,6 +233,21 @@ var _ = ginkgo.Describe("[sig-api-machinery] Secrets", func() {
 	})
 })
 
+func secretForTest(namespace, name string) *v1.Secret {
+	return &v1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      name,
+		},
+		Data: map[string][]byte{
+			"data-1": []byte("value-1\n"),
+			"data-2": []byte("value-2\n"),
+			"data-3": []byte("value-3\n"),
+		},
+	}
+}
+
+// TODO: Unify with secretForTest.
 func newEnvFromSecret(namespace, name string) *v1.Secret {
 	return &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
