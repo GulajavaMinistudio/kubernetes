@@ -479,6 +479,7 @@ const (
 
 	// owner: @robscott @kumarvin123
 	// alpha: v1.19
+	// beta: v1.21
 	//
 	// Enable Endpoint Slice consumption by kube-proxy in Windows for improved scalability.
 	WindowsEndpointSliceProxying featuregate.Feature = "WindowsEndpointSliceProxying"
@@ -681,6 +682,11 @@ const (
 	//
 	// Allow specifying NamespaceSelector in PodAffinityTerm.
 	PodAffinityNamespaceSelector featuregate.Feature = "PodAffinityNamespaceSelector"
+	// owner: @andrewsykim @xudongliuharold
+	// alpha: v1.21
+	//
+	// Enable support multiple Service "type: LoadBalancer" implementations in a cluster by specifying LoadBalancerClass
+	ServiceLoadBalancerClass featuregate.Feature = "ServiceLoadBalancerClass"
 )
 
 func init() {
@@ -753,8 +759,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	EndpointSlice:                                  {Default: true, PreRelease: featuregate.Beta},
 	EndpointSliceProxying:                          {Default: true, PreRelease: featuregate.Beta},
 	EndpointSliceTerminatingCondition:              {Default: false, PreRelease: featuregate.Alpha},
-	EndpointSliceNodeName:                          {Default: false, PreRelease: featuregate.Alpha},
-	WindowsEndpointSliceProxying:                   {Default: false, PreRelease: featuregate.Alpha},
+	EndpointSliceNodeName:                          {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, //remove in 1.25
+	WindowsEndpointSliceProxying:                   {Default: true, PreRelease: featuregate.Beta},
 	StartupProbe:                                   {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.23
 	AllowInsecureBackendProxy:                      {Default: true, PreRelease: featuregate.Beta},
 	PodDisruptionBudget:                            {Default: true, PreRelease: featuregate.Beta},
@@ -784,6 +790,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	RunAsGroup:                                     {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.22
 	PodDeletionCost:                                {Default: false, PreRelease: featuregate.Alpha},
 	PodAffinityNamespaceSelector:                   {Default: false, PreRelease: featuregate.Alpha},
+	ServiceLoadBalancerClass:                       {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
