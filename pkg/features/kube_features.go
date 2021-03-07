@@ -466,6 +466,8 @@ const (
 
 	// owner: @robscott @freehan
 	// alpha: v1.16
+	// beta: v1.18
+	// ga: v1.21
 	//
 	// Enable Endpoint Slices for more scalable Service endpoints.
 	EndpointSlice featuregate.Feature = "EndpointSlice"
@@ -657,6 +659,7 @@ const (
 
 	// owner: @bobbypage
 	// alpha: v1.20
+	// beta:  v1.21
 	// Adds support for kubelet to detect node shutdown and gracefully terminate pods prior to the node being shutdown.
 	GracefulNodeShutdown featuregate.Feature = "GracefulNodeShutdown"
 
@@ -672,21 +675,39 @@ const (
 	// Enables the usage of different protocols in the same Service with type=LoadBalancer
 	MixedProtocolLBService featuregate.Feature = "MixedProtocolLBService"
 
+	// owner: @cofyc
+	// alpha: v1.21
+	VolumeCapacityPriority featuregate.Feature = "VolumeCapacityPriority"
+
 	// owner: @ahg-g
 	// alpha: v1.21
 	//
 	// Enables controlling pod ranking on replicaset scale-down.
 	PodDeletionCost featuregate.Feature = "PodDeletionCost"
+
 	// owner: @ahg-g
 	// alpha: v1.21
 	//
 	// Allow specifying NamespaceSelector in PodAffinityTerm.
 	PodAffinityNamespaceSelector featuregate.Feature = "PodAffinityNamespaceSelector"
+
 	// owner: @andrewsykim @xudongliuharold
 	// alpha: v1.21
 	//
 	// Enable support multiple Service "type: LoadBalancer" implementations in a cluster by specifying LoadBalancerClass
 	ServiceLoadBalancerClass featuregate.Feature = "ServiceLoadBalancerClass"
+
+	// owner: @damemi
+	// aplpha: v1.21
+	//
+	// Enables scaling down replicas via logarithmic comparison of creation/ready timestamps
+	LogarithmicScaleDown featuregate.Feature = "LogarithmicScaleDown"
+
+	// owner: @hbagdi
+	// alpha: v1.21
+	//
+	// Enable Scope and Namespace fields on IngressClassParametersReference.
+	IngressClassNamespacedParams featuregate.Feature = "IngressClassNamespacedParams"
 )
 
 func init() {
@@ -756,7 +777,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	NonPreemptingPriority:                          {Default: true, PreRelease: featuregate.Beta},
 	PodOverhead:                                    {Default: true, PreRelease: featuregate.Beta},
 	IPv6DualStack:                                  {Default: true, PreRelease: featuregate.Beta},
-	EndpointSlice:                                  {Default: true, PreRelease: featuregate.Beta},
+	EndpointSlice:                                  {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.25
 	EndpointSliceProxying:                          {Default: true, PreRelease: featuregate.Beta},
 	EndpointSliceTerminatingCondition:              {Default: false, PreRelease: featuregate.Alpha},
 	EndpointSliceNodeName:                          {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, //remove in 1.25
@@ -783,14 +804,17 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	SizeMemoryBackedVolumes:                        {Default: false, PreRelease: featuregate.Alpha},
 	ExecProbeTimeout:                               {Default: true, PreRelease: featuregate.GA}, // lock to default in v1.21 and remove in v1.22
 	KubeletCredentialProviders:                     {Default: false, PreRelease: featuregate.Alpha},
-	GracefulNodeShutdown:                           {Default: false, PreRelease: featuregate.Alpha},
+	GracefulNodeShutdown:                           {Default: true, PreRelease: featuregate.Beta},
 	ServiceLBNodePortControl:                       {Default: false, PreRelease: featuregate.Alpha},
 	MixedProtocolLBService:                         {Default: false, PreRelease: featuregate.Alpha},
+	VolumeCapacityPriority:                         {Default: false, PreRelease: featuregate.Alpha},
 	PreferNominatedNode:                            {Default: false, PreRelease: featuregate.Alpha},
 	RunAsGroup:                                     {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.22
 	PodDeletionCost:                                {Default: false, PreRelease: featuregate.Alpha},
 	PodAffinityNamespaceSelector:                   {Default: false, PreRelease: featuregate.Alpha},
 	ServiceLoadBalancerClass:                       {Default: false, PreRelease: featuregate.Alpha},
+	LogarithmicScaleDown:                           {Default: false, PreRelease: featuregate.Alpha},
+	IngressClassNamespacedParams:                   {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
