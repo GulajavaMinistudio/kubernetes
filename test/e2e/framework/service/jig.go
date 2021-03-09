@@ -27,7 +27,7 @@ import (
 
 	"github.com/onsi/ginkgo"
 	v1 "k8s.io/api/core/v1"
-	discoveryv1beta1 "k8s.io/api/discovery/v1beta1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -64,6 +64,9 @@ type TestJig struct {
 	Name      string
 	ID        string
 	Labels    map[string]string
+	// ExternalIPs should be false for Conformance test
+	// Don't check nodeport on external addrs in conformance test, but in e2e test.
+	ExternalIPs bool
 }
 
 // NewTestJig allocates and inits a new TestJig.
@@ -392,52 +395,47 @@ func (j *TestJig) waitForAvailableEndpoint(timeout time.Duration) error {
 
 	go controller.Run(stopCh)
 
-	// If EndpointSlice API is enabled, then validate if appropriate EndpointSlice objects were also create/updated/deleted.
-	if _, err := j.Client.Discovery().ServerResourcesForGroupVersion(discoveryv1beta1.SchemeGroupVersion.String()); err == nil {
-		var esController cache.Controller
-		_, esController = cache.NewInformer(
-			&cache.ListWatch{
-				ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-					options.LabelSelector = "kubernetes.io/service-name=" + j.Name
-					obj, err := j.Client.DiscoveryV1beta1().EndpointSlices(j.Namespace).List(context.TODO(), options)
-					return runtime.Object(obj), err
-				},
-				WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-					options.LabelSelector = "kubernetes.io/service-name=" + j.Name
-					return j.Client.DiscoveryV1beta1().EndpointSlices(j.Namespace).Watch(context.TODO(), options)
-				},
+	var esController cache.Controller
+	_, esController = cache.NewInformer(
+		&cache.ListWatch{
+			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+				options.LabelSelector = "kubernetes.io/service-name=" + j.Name
+				obj, err := j.Client.DiscoveryV1().EndpointSlices(j.Namespace).List(context.TODO(), options)
+				return runtime.Object(obj), err
 			},
-			&discoveryv1beta1.EndpointSlice{},
-			0,
-			cache.ResourceEventHandlerFuncs{
-				AddFunc: func(obj interface{}) {
-					if es, ok := obj.(*discoveryv1beta1.EndpointSlice); ok {
-						// TODO: currently we only consider addreses in 1 slice, but services with
-						// a large number of endpoints (>1000) may have multiple slices. Some slices
-						// with only a few addresses. We should check the addresses in all slices.
-						if len(es.Endpoints) > 0 && len(es.Endpoints[0].Addresses) > 0 {
-							endpointSliceAvailable = true
-						}
-					}
-				},
-				UpdateFunc: func(old, cur interface{}) {
-					if es, ok := cur.(*discoveryv1beta1.EndpointSlice); ok {
-						// TODO: currently we only consider addreses in 1 slice, but services with
-						// a large number of endpoints (>1000) may have multiple slices. Some slices
-						// with only a few addresses. We should check the addresses in all slices.
-						if len(es.Endpoints) > 0 && len(es.Endpoints[0].Addresses) > 0 {
-							endpointSliceAvailable = true
-						}
-					}
-				},
+			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+				options.LabelSelector = "kubernetes.io/service-name=" + j.Name
+				return j.Client.DiscoveryV1().EndpointSlices(j.Namespace).Watch(context.TODO(), options)
 			},
-		)
+		},
+		&discoveryv1.EndpointSlice{},
+		0,
+		cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				if es, ok := obj.(*discoveryv1.EndpointSlice); ok {
+					// TODO: currently we only consider addreses in 1 slice, but services with
+					// a large number of endpoints (>1000) may have multiple slices. Some slices
+					// with only a few addresses. We should check the addresses in all slices.
+					if len(es.Endpoints) > 0 && len(es.Endpoints[0].Addresses) > 0 {
+						endpointSliceAvailable = true
+					}
+				}
+			},
+			UpdateFunc: func(old, cur interface{}) {
+				if es, ok := cur.(*discoveryv1.EndpointSlice); ok {
+					// TODO: currently we only consider addreses in 1 slice, but services with
+					// a large number of endpoints (>1000) may have multiple slices. Some slices
+					// with only a few addresses. We should check the addresses in all slices.
+					if len(es.Endpoints) > 0 && len(es.Endpoints[0].Addresses) > 0 {
+						endpointSliceAvailable = true
+					}
+				}
+			},
+		},
+	)
 
-		go esController.Run(stopCh)
+	go esController.Run(stopCh)
 
-	} else {
-		endpointSliceAvailable = true
-	}
 	err := wait.Poll(1*time.Second, timeout, func() (bool, error) {
 		return endpointAvailable && endpointSliceAvailable, nil
 	})
@@ -828,9 +826,8 @@ func testReachabilityOverExternalIP(externalIP string, sp v1.ServicePort, execPo
 	return testEndpointReachability(externalIP, sp.Port, sp.Protocol, execPod)
 }
 
-func testReachabilityOverNodePorts(nodes *v1.NodeList, sp v1.ServicePort, pod *v1.Pod, clusterIP string) error {
+func testReachabilityOverNodePorts(nodes *v1.NodeList, sp v1.ServicePort, pod *v1.Pod, clusterIP string, externalIPs bool) error {
 	internalAddrs := e2enode.CollectAddresses(nodes, v1.NodeInternalIP)
-	externalAddrs := e2enode.CollectAddresses(nodes, v1.NodeExternalIP)
 	isClusterIPV4 := utilsnet.IsIPv4String(clusterIP)
 
 	for _, internalAddr := range internalAddrs {
@@ -851,14 +848,17 @@ func testReachabilityOverNodePorts(nodes *v1.NodeList, sp v1.ServicePort, pod *v
 			return err
 		}
 	}
-	for _, externalAddr := range externalAddrs {
-		if isClusterIPV4 != utilsnet.IsIPv4String(externalAddr) {
-			framework.Logf("skipping testEndpointReachability() for external adddress %s as it does not match clusterIP (%s) family", externalAddr, clusterIP)
-			continue
-		}
-		err := testEndpointReachability(externalAddr, sp.NodePort, sp.Protocol, pod)
-		if err != nil {
-			return err
+	if externalIPs {
+		externalAddrs := e2enode.CollectAddresses(nodes, v1.NodeExternalIP)
+		for _, externalAddr := range externalAddrs {
+			if isClusterIPV4 != utilsnet.IsIPv4String(externalAddr) {
+				framework.Logf("skipping testEndpointReachability() for external adddress %s as it does not match clusterIP (%s) family", externalAddr, clusterIP)
+				continue
+			}
+			err := testEndpointReachability(externalAddr, sp.NodePort, sp.Protocol, pod)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -969,7 +969,7 @@ func (j *TestJig) checkNodePortServiceReachability(svc *v1.Service, pod *v1.Pod)
 		if err != nil {
 			return err
 		}
-		err = testReachabilityOverNodePorts(nodes, servicePort, pod, clusterIP)
+		err = testReachabilityOverNodePorts(nodes, servicePort, pod, clusterIP, j.ExternalIPs)
 		if err != nil {
 			return err
 		}
