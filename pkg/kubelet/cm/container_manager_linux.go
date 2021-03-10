@@ -38,6 +38,7 @@ import (
 	utilio "k8s.io/utils/io"
 	utilpath "k8s.io/utils/path"
 
+	libcontainerdevices "github.com/opencontainers/runc/libcontainer/devices"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -392,13 +393,13 @@ func createManager(containerName string) (cgroups.Manager, error) {
 		Parent: "/",
 		Name:   containerName,
 		Resources: &configs.Resources{
-			Devices: []*configs.DeviceRule{
+			Devices: []*libcontainerdevices.Rule{
 				{
 					Type:        'a',
 					Permissions: "rwm",
 					Allow:       true,
-					Minor:       configs.Wildcard,
-					Major:       configs.Wildcard,
+					Minor:       libcontainerdevices.Wildcard,
+					Major:       libcontainerdevices.Wildcard,
 				},
 			},
 			SkipDevices: true,
@@ -1069,11 +1070,19 @@ func (cm *containerManagerImpl) GetDevicePluginResourceCapacity() (v1.ResourceLi
 }
 
 func (cm *containerManagerImpl) GetDevices(podUID, containerName string) []*podresourcesapi.ContainerDevices {
-	return cm.deviceManager.GetDevices(podUID, containerName)
+	return containerDevicesFromResourceDeviceInstances(cm.deviceManager.GetDevices(podUID, containerName))
+}
+
+func (cm *containerManagerImpl) GetAllocatableDevices() []*podresourcesapi.ContainerDevices {
+	return containerDevicesFromResourceDeviceInstances(cm.deviceManager.GetAllocatableDevices())
 }
 
 func (cm *containerManagerImpl) GetCPUs(podUID, containerName string) []int64 {
 	return cm.cpuManager.GetCPUs(podUID, containerName).ToSliceNoSortInt64()
+}
+
+func (cm *containerManagerImpl) GetAllocatableCPUs() []int64 {
+	return cm.cpuManager.GetAllocatableCPUs().ToSliceNoSortInt64()
 }
 
 func (cm *containerManagerImpl) ShouldResetExtendedResourceCapacity() bool {
