@@ -656,6 +656,7 @@ const (
 
 	// owner: @zshihang
 	// alpha: v1.20
+	// beta: v1.21
 	//
 	// Enable kubelet to pass pod's service account token to NodePublishVolume
 	// call of CSI driver which is mounting volumes for that pod.
@@ -694,6 +695,12 @@ const (
 	//
 	// Enables topology aware hints for EndpointSlices
 	TopologyAwareHints featuregate.Feature = "TopologyAwareHints"
+
+	// owner: @ehashman
+	// alpha: v1.21
+	//
+	// Allows user to override pod-level terminationGracePeriod for probes
+	ProbeTerminationGracePeriod featuregate.Feature = "ProbeTerminationGracePeriod"
 
 	// owner: @ahg-g
 	// alpha: v1.21
@@ -801,7 +808,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	BalanceAttachedNodeVolumes:                     {Default: false, PreRelease: featuregate.Alpha},
 	CSIInlineVolume:                                {Default: true, PreRelease: featuregate.Beta},
 	CSIStorageCapacity:                             {Default: true, PreRelease: featuregate.Beta},
-	CSIServiceAccountToken:                         {Default: false, PreRelease: featuregate.Alpha},
+	CSIServiceAccountToken:                         {Default: true, PreRelease: featuregate.Beta},
 	GenericEphemeralVolume:                         {Default: true, PreRelease: featuregate.Beta},
 	CSIVolumeFSGroupPolicy:                         {Default: true, PreRelease: featuregate.Beta},
 	RuntimeClass:                                   {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.23
@@ -849,6 +856,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	MixedProtocolLBService:                         {Default: false, PreRelease: featuregate.Alpha},
 	VolumeCapacityPriority:                         {Default: false, PreRelease: featuregate.Alpha},
 	PreferNominatedNode:                            {Default: false, PreRelease: featuregate.Alpha},
+	ProbeTerminationGracePeriod:                    {Default: false, PreRelease: featuregate.Alpha},
 	RunAsGroup:                                     {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.22
 	PodDeletionCost:                                {Default: false, PreRelease: featuregate.Alpha},
 	TopologyAwareHints:                             {Default: false, PreRelease: featuregate.Alpha},
@@ -870,7 +878,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	genericfeatures.APIResponseCompression:  {Default: true, PreRelease: featuregate.Beta},
 	genericfeatures.APIListChunking:         {Default: true, PreRelease: featuregate.Beta},
 	genericfeatures.DryRun:                  {Default: true, PreRelease: featuregate.GA},
-	genericfeatures.ServerSideApply:         {Default: true, PreRelease: featuregate.GA},
+	genericfeatures.ServerSideApply:         {Default: true, PreRelease: featuregate.Beta},
 	genericfeatures.APIPriorityAndFairness:  {Default: true, PreRelease: featuregate.Beta},
 	genericfeatures.WarningHeaders:          {Default: true, PreRelease: featuregate.Beta},
 
