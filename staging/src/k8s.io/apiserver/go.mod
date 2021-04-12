@@ -32,7 +32,7 @@ require (
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	go.etcd.io/bbolt v1.3.5 // indirect
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200910180754-dd1b699fc489
-	go.uber.org/zap v1.10.0
+	go.uber.org/zap v1.16.0
 	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
 	golang.org/x/net v0.0.0-20210224082022-3d97a244fca7
 	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
@@ -50,7 +50,7 @@ require (
 	k8s.io/kube-openapi v0.0.0-20210305001622-591a79e4bda7
 	k8s.io/utils v0.0.0-20201110183641-67b214c5f920
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.15
-	sigs.k8s.io/structured-merge-diff/v4 v4.1.0
+	sigs.k8s.io/structured-merge-diff/v4 v4.1.1
 	sigs.k8s.io/yaml v1.2.0
 )
 

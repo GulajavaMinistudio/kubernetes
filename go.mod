@@ -137,7 +137,7 @@ require (
 	k8s.io/sample-apiserver v0.0.0
 	k8s.io/system-validators v1.4.0
 	k8s.io/utils v0.0.0-20201110183641-67b214c5f920
-	sigs.k8s.io/structured-merge-diff/v4 v4.1.0
+	sigs.k8s.io/structured-merge-diff/v4 v4.1.1
 	sigs.k8s.io/yaml v1.2.0
 )
 
@@ -447,9 +447,10 @@ replace (
 	go.mongodb.org/mongo-driver => go.mongodb.org/mongo-driver v1.1.2
 	go.opencensus.io => go.opencensus.io v0.22.3
 	go.starlark.net => go.starlark.net v0.0.0-20200306205701-8dd3e2ee1dd5
-	go.uber.org/atomic => go.uber.org/atomic v1.4.0
-	go.uber.org/multierr => go.uber.org/multierr v1.1.0
-	go.uber.org/zap => go.uber.org/zap v1.10.0
+	go.uber.org/atomic => go.uber.org/atomic v1.6.0
+	go.uber.org/multierr => go.uber.org/multierr v1.5.0
+	go.uber.org/tools => go.uber.org/tools v0.0.0-20190618225709-2cfd321de3ee
+	go.uber.org/zap => go.uber.org/zap v1.16.0
 	golang.org/x/crypto => golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
 	golang.org/x/exp => golang.org/x/exp v0.0.0-20210220032938-85be41e4509f
 	golang.org/x/image => golang.org/x/image v0.0.0-20190802002840-cff245a6509b
@@ -535,6 +536,6 @@ replace (
 	sigs.k8s.io/kustomize/cmd/config => sigs.k8s.io/kustomize/cmd/config v0.9.7
 	sigs.k8s.io/kustomize/kustomize/v4 => sigs.k8s.io/kustomize/kustomize/v4 v4.0.5
 	sigs.k8s.io/kustomize/kyaml => sigs.k8s.io/kustomize/kyaml v0.10.15
-	sigs.k8s.io/structured-merge-diff/v4 => sigs.k8s.io/structured-merge-diff/v4 v4.1.0
+	sigs.k8s.io/structured-merge-diff/v4 => sigs.k8s.io/structured-merge-diff/v4 v4.1.1
 	sigs.k8s.io/yaml => sigs.k8s.io/yaml v1.2.0
 )
