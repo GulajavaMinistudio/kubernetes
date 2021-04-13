@@ -29,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/cli-runtime/pkg/resource"
@@ -61,6 +62,7 @@ type Helper struct {
 	DeleteEmptyDirData  bool
 	Selector            string
 	PodSelector         string
+	ChunkSize           int64
 
 	// DisableEviction forces drain to use delete rather than evict
 	DisableEviction bool
@@ -151,7 +153,7 @@ func (d *Helper) DeletePod(pod corev1.Pod) error {
 			return err
 		}
 	}
-	return d.Client.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, d.makeDeleteOptions())
+	return d.Client.CoreV1().Pods(pod.Namespace).Delete(d.getContext(), pod.Name, d.makeDeleteOptions())
 }
 
 // EvictPod will evict the give pod, or return an error if it couldn't
@@ -176,7 +178,7 @@ func (d *Helper) EvictPod(pod corev1.Pod, policyGroupVersion string) error {
 	}
 
 	// Remember to change change the URL manipulation func when Eviction's version change
-	return d.Client.PolicyV1beta1().Evictions(eviction.Namespace).Evict(context.TODO(), eviction)
+	return d.Client.PolicyV1beta1().Evictions(eviction.Namespace).Evict(d.getContext(), eviction)
 }
 
 // GetPodsForDeletion receives resource info for a node, and returns those pods as PodDeleteList,
@@ -189,9 +191,23 @@ func (d *Helper) GetPodsForDeletion(nodeName string) (*PodDeleteList, []error) {
 		return nil, []error{err}
 	}
 
-	podList, err := d.Client.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{
+	podList := &corev1.PodList{}
+	initialOpts := &metav1.ListOptions{
 		LabelSelector: labelSelector.String(),
-		FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": nodeName}).String()})
+		FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": nodeName}).String(),
+		Limit:         d.ChunkSize,
+	}
+
+	err = resource.FollowContinue(initialOpts, func(options metav1.ListOptions) (runtime.Object, error) {
+		newPods, err := d.Client.CoreV1().Pods(metav1.NamespaceAll).List(d.getContext(), options)
+		if err != nil {
+			podR := corev1.SchemeGroupVersion.WithResource(corev1.ResourcePods.String())
+			return nil, resource.EnhanceListError(err, options, podR.String())
+		}
+		podList.Items = append(podList.Items, newPods.Items...)
+		return newPods, nil
+	})
+
 	if err != nil {
 		return nil, []error{err}
 	}
@@ -239,7 +255,7 @@ func (d *Helper) DeleteOrEvictPods(pods []corev1.Pod) error {
 
 	// TODO(justinsb): unnecessary?
 	getPodFn := func(namespace, name string) (*corev1.Pod, error) {
-		return d.Client.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		return d.Client.CoreV1().Pods(namespace).Get(d.getContext(), name, metav1.GetOptions{})
 	}
 
 	if !d.DisableEviction {
