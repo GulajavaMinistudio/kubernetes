@@ -251,6 +251,7 @@ func (a *APIInstaller) registerResourceHandlers(path string, storage rest.Storag
 	connecter, isConnecter := storage.(rest.Connecter)
 	storageMeta, isMetadata := storage.(rest.StorageMetadata)
 	storageVersionProvider, isStorageVersionProvider := storage.(rest.StorageVersionProvider)
+	gvAcceptor, _ := storage.(rest.GroupVersionAcceptor)
 	if !isMetadata {
 		storageMeta = defaultStorageMetadata{}
 	}
@@ -587,6 +588,8 @@ func (a *APIInstaller) registerResourceHandlers(path string, storage rest.Storag
 		Subresource: subresource,
 		Kind:        fqKindToRegister,
 
+		AcceptsGroupVersionDelegate: gvAcceptor,
+
 		HubGroupVersion: schema.GroupVersion{Group: fqKindToRegister.Group, Version: runtime.APIVersionInternal},
 
 		MetaGroupVersion: metav1.SchemeGroupVersion,
@@ -604,7 +607,7 @@ func (a *APIInstaller) registerResourceHandlers(path string, storage rest.Storag
 			a.group.Creater,
 			fqKindToRegister,
 			reqScope.HubGroupVersion,
-			isSubresource,
+			subresource,
 			resetFields,
 		)
 		if err != nil {
