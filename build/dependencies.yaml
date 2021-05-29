@@ -34,7 +34,7 @@ dependencies:
 
   # CNI plugins
   - name: "cni"
-    version: 0.8.7
+    version: 0.9.1
     refPaths:
     - path: cluster/gce/gci/configure.sh
       match: DEFAULT_CNI_VERSION=
@@ -214,6 +214,12 @@ dependencies:
       match: k8s.gcr.io\/pause:\d+\.\d+
     - path: test/utils/image/manifest.go
       match: configs\[Pause\] = Config{list\.GcRegistry, "pause", "\d+\.\d+(.\d+)?"}
+
+  - name: "k8s.gcr.io/setcap: dependents"
+    version: buster-v2.0.1
+    refPaths:
+    - path: build/common.sh
+      match: __default_setcap_version=
 
   # metadata-concealment: bump this one first
   - name: "metadata-concealment"
