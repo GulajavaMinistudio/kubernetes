@@ -92,7 +92,7 @@ github.com/armon/circbuf
 github.com/asaskevich/govalidator
 # github.com/auth0/go-jwt-middleware v0.0.0-20170425171159-5493cabe49f7 => github.com/auth0/go-jwt-middleware v0.0.0-20170425171159-5493cabe49f7
 ## explicit
-# github.com/aws/aws-sdk-go v1.35.24 => github.com/aws/aws-sdk-go v1.35.24
+# github.com/aws/aws-sdk-go v1.38.49 => github.com/aws/aws-sdk-go v1.38.49
 ## explicit
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/awserr
@@ -104,6 +104,7 @@ github.com/aws/aws-sdk-go/aws/credentials
 github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds
 github.com/aws/aws-sdk-go/aws/credentials/endpointcreds
 github.com/aws/aws-sdk-go/aws/credentials/processcreds
+github.com/aws/aws-sdk-go/aws/credentials/ssocreds
 github.com/aws/aws-sdk-go/aws/credentials/stscreds
 github.com/aws/aws-sdk-go/aws/csm
 github.com/aws/aws-sdk-go/aws/defaults
@@ -128,6 +129,7 @@ github.com/aws/aws-sdk-go/private/protocol/jsonrpc
 github.com/aws/aws-sdk-go/private/protocol/query
 github.com/aws/aws-sdk-go/private/protocol/query/queryutil
 github.com/aws/aws-sdk-go/private/protocol/rest
+github.com/aws/aws-sdk-go/private/protocol/restjson
 github.com/aws/aws-sdk-go/private/protocol/xml/xmlutil
 github.com/aws/aws-sdk-go/service/autoscaling
 github.com/aws/aws-sdk-go/service/ec2
@@ -135,6 +137,8 @@ github.com/aws/aws-sdk-go/service/ecr
 github.com/aws/aws-sdk-go/service/elb
 github.com/aws/aws-sdk-go/service/elbv2
 github.com/aws/aws-sdk-go/service/kms
+github.com/aws/aws-sdk-go/service/sso
+github.com/aws/aws-sdk-go/service/sso/ssoiface
 github.com/aws/aws-sdk-go/service/sts
 github.com/aws/aws-sdk-go/service/sts/stsiface
 # github.com/beorn7/perks v1.0.1 => github.com/beorn7/perks v1.0.1
@@ -420,7 +424,7 @@ github.com/google/shlex
 github.com/google/uuid
 # github.com/googleapis/gax-go/v2 v2.0.5 => github.com/googleapis/gax-go/v2 v2.0.5
 github.com/googleapis/gax-go/v2
-# github.com/googleapis/gnostic v0.5.1 => github.com/googleapis/gnostic v0.5.1
+# github.com/googleapis/gnostic v0.5.5 => github.com/googleapis/gnostic v0.5.5
 ## explicit
 github.com/googleapis/gnostic/compiler
 github.com/googleapis/gnostic/extensions
@@ -523,9 +527,6 @@ github.com/mailru/easyjson/jlexer
 github.com/mailru/easyjson/jwriter
 # github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 => github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369
 github.com/matttproud/golang_protobuf_extensions/pbutil
-# github.com/miekg/dns v1.1.35 => github.com/miekg/dns v1.1.35
-## explicit
-github.com/miekg/dns
 # github.com/mindprince/gonvml v0.0.0-20190828220739-9ebdce4bb989 => github.com/mindprince/gonvml v0.0.0-20190828220739-9ebdce4bb989
 github.com/mindprince/gonvml
 # github.com/mistifyio/go-zfs v2.1.2-0.20190413222219-f784269be439+incompatible => github.com/mistifyio/go-zfs v2.1.2-0.20190413222219-f784269be439+incompatible
@@ -1013,12 +1014,8 @@ golang.org/x/net/http/httpguts
 golang.org/x/net/http2
 golang.org/x/net/http2/hpack
 golang.org/x/net/idna
-golang.org/x/net/internal/iana
-golang.org/x/net/internal/socket
 golang.org/x/net/internal/socks
 golang.org/x/net/internal/timeseries
-golang.org/x/net/ipv4
-golang.org/x/net/ipv6
 golang.org/x/net/proxy
 golang.org/x/net/trace
 golang.org/x/net/websocket
@@ -2411,7 +2408,7 @@ sigs.k8s.io/yaml
 # github.com/armon/go-radix => github.com/armon/go-radix v0.0.0-20180808171621-7fddfc383310
 # github.com/asaskevich/govalidator => github.com/asaskevich/govalidator v0.0.0-20190424111038-f61b66f89f4a
 # github.com/auth0/go-jwt-middleware => github.com/auth0/go-jwt-middleware v0.0.0-20170425171159-5493cabe49f7
-# github.com/aws/aws-sdk-go => github.com/aws/aws-sdk-go v1.35.24
+# github.com/aws/aws-sdk-go => github.com/aws/aws-sdk-go v1.38.49
 # github.com/benbjohnson/clock => github.com/benbjohnson/clock v1.0.3
 # github.com/beorn7/perks => github.com/beorn7/perks v1.0.1
 # github.com/bgentry/speakeasy => github.com/bgentry/speakeasy v0.1.0
@@ -2513,7 +2510,7 @@ sigs.k8s.io/yaml
 # github.com/google/shlex => github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 # github.com/google/uuid => github.com/google/uuid v1.1.2
 # github.com/googleapis/gax-go/v2 => github.com/googleapis/gax-go/v2 v2.0.5
-# github.com/googleapis/gnostic => github.com/googleapis/gnostic v0.5.1
+# github.com/googleapis/gnostic => github.com/googleapis/gnostic v0.5.5
 # github.com/gophercloud/gophercloud => github.com/gophercloud/gophercloud v0.1.0
 # github.com/gopherjs/gopherjs => github.com/gopherjs/gopherjs v0.0.0-20181017120253-0766667cb4d1
 # github.com/gorilla/mux => github.com/gorilla/mux v1.8.0
@@ -2572,7 +2569,7 @@ sigs.k8s.io/yaml
 # github.com/mattn/go-isatty => github.com/mattn/go-isatty v0.0.3
 # github.com/mattn/go-runewidth => github.com/mattn/go-runewidth v0.0.9
 # github.com/matttproud/golang_protobuf_extensions => github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369
-# github.com/miekg/dns => github.com/miekg/dns v1.1.35
+# github.com/miekg/dns => github.com/miekg/dns v1.0.14
 # github.com/mindprince/gonvml => github.com/mindprince/gonvml v0.0.0-20190828220739-9ebdce4bb989
 # github.com/mistifyio/go-zfs => github.com/mistifyio/go-zfs v2.1.2-0.20190413222219-f784269be439+incompatible
 # github.com/mitchellh/cli => github.com/mitchellh/cli v1.0.0
