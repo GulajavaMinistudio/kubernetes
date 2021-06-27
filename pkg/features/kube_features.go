@@ -173,13 +173,6 @@ const (
 	// intended to be used for service account token verification.
 	ServiceAccountIssuerDiscovery featuregate.Feature = "ServiceAccountIssuerDiscovery"
 
-	// owner: @krmayankk
-	// beta:  v1.14
-	// ga:    v1.21
-	//
-	// Enables control over the primary group ID of containers' init processes.
-	RunAsGroup featuregate.Feature = "RunAsGroup"
-
 	// owner: @saad-ali
 	// ga: 	  v1.10
 	//
@@ -473,15 +466,6 @@ const (
 	// DaemonSets allow workloads to maintain availability during update per node
 	DaemonSetUpdateSurge featuregate.Feature = "DaemonSetUpdateSurge"
 
-	// owner: @robscott
-	// kep: http://kep.k8s.io/1507
-	// alpha: v1.18
-	// beta:  v1.19
-	// ga:    v1.20
-	//
-	// Enables AppProtocol field for Services and Endpoints.
-	ServiceAppProtocol featuregate.Feature = "ServiceAppProtocol"
-
 	// owner: @wojtek-t
 	// alpha: v1.18
 	// beta:  v1.19
@@ -593,6 +577,7 @@ const (
 	// owner: @zshihang
 	// alpha: v1.20
 	// beta: v1.21
+	// ga: v1.22
 	//
 	// Enable kubelet to pass pod's service account token to NodePublishVolume
 	// call of CSI driver which is mounting volumes for that pod.
@@ -649,9 +634,10 @@ const (
 	// Allow specifying NamespaceSelector in PodAffinityTerm.
 	PodAffinityNamespaceSelector featuregate.Feature = "PodAffinityNamespaceSelector"
 
-	// owner: @andrewsykim @xudongliuharold
+	// owner: @andrewsykim @XudongLiuHarold
 	// kep: http://kep.k8s.io/1959
 	// alpha: v1.21
+	// beta: v1.22
 	//
 	// Enable support multiple Service "type: LoadBalancer" implementations in a cluster by specifying LoadBalancerClass
 	ServiceLoadBalancerClass featuregate.Feature = "ServiceLoadBalancerClass"
@@ -721,6 +707,12 @@ const (
 	//
 	// Enables apiserver and kubelet to allow up to 32 DNSSearchPaths and up to 2048 DNSSearchListChars.
 	ExpandedDNSConfig featuregate.Feature = "ExpandedDNSConfig"
+
+	// owner: @saschagrunert
+	// alpha: v1.22
+	//
+	// Enables the use of `RuntimeDefault` as the default seccomp profile for all workloads.
+	SeccompDefault featuregate.Feature = "SeccompDefault"
 )
 
 func init() {
@@ -769,7 +761,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	ConfigurableFSGroupPolicy:                      {Default: true, PreRelease: featuregate.Beta},
 	CSIInlineVolume:                                {Default: true, PreRelease: featuregate.Beta},
 	CSIStorageCapacity:                             {Default: true, PreRelease: featuregate.Beta},
-	CSIServiceAccountToken:                         {Default: true, PreRelease: featuregate.Beta},
+	CSIServiceAccountToken:                         {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.23
 	GenericEphemeralVolume:                         {Default: true, PreRelease: featuregate.Beta},
 	CSIVolumeFSGroupPolicy:                         {Default: true, PreRelease: featuregate.Beta},
 	RuntimeClass:                                   {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.23
@@ -793,7 +785,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	PodDisruptionBudget:                            {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.25
 	CronJobControllerV2:                            {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.23
 	DaemonSetUpdateSurge:                           {Default: true, PreRelease: featuregate.Beta},                    // on by default in 1.22
-	ServiceAppProtocol:                             {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.22
 	ImmutableEphemeralVolumes:                      {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.24
 	HugePageStorageMediumSize:                      {Default: true, PreRelease: featuregate.Beta},
 	DownwardAPIHugePages:                           {Default: false, PreRelease: featuregate.Beta}, // on by default in 1.22
@@ -813,11 +804,10 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	VolumeCapacityPriority:                         {Default: false, PreRelease: featuregate.Alpha},
 	PreferNominatedNode:                            {Default: true, PreRelease: featuregate.Beta},
 	ProbeTerminationGracePeriod:                    {Default: false, PreRelease: featuregate.Alpha},
-	RunAsGroup:                                     {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.22
 	PodDeletionCost:                                {Default: true, PreRelease: featuregate.Beta},
 	TopologyAwareHints:                             {Default: false, PreRelease: featuregate.Alpha},
 	PodAffinityNamespaceSelector:                   {Default: true, PreRelease: featuregate.Beta},
-	ServiceLoadBalancerClass:                       {Default: false, PreRelease: featuregate.Alpha},
+	ServiceLoadBalancerClass:                       {Default: true, PreRelease: featuregate.Beta},
 	LogarithmicScaleDown:                           {Default: false, PreRelease: featuregate.Alpha},
 	IngressClassNamespacedParams:                   {Default: false, PreRelease: featuregate.Alpha},
 	ServiceInternalTrafficPolicy:                   {Default: false, PreRelease: featuregate.Alpha},
@@ -829,6 +819,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	DisableCloudProviders:                          {Default: false, PreRelease: featuregate.Alpha},
 	StatefulSetMinReadySeconds:                     {Default: false, PreRelease: featuregate.Alpha},
 	ExpandedDNSConfig:                              {Default: false, PreRelease: featuregate.Alpha},
+	SeccompDefault:                                 {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
