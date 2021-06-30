@@ -125,7 +125,8 @@ const (
 	TopologyManager featuregate.Feature = "TopologyManager"
 
 	// owner: @cynepco3hahue(alukiano) @cezaryzukowski @k-wiatrzyk
-	// alpha:: v1.20
+	// alpha: v1.21
+	// beta: v1.22
 
 	// Allows setting memory affinity for a container based on NUMA topology
 	MemoryManager featuregate.Feature = "MemoryManager"
@@ -540,6 +541,13 @@ const (
 	// Enable Terminating condition in Endpoint Slices.
 	EndpointSliceTerminatingCondition featuregate.Feature = "EndpointSliceTerminatingCondition"
 
+	// owner: @andrewsykim
+	// kep: http://kep.k8s.io/1669
+	// alpha: v1.22
+	//
+	// Enable kube-proxy to handle terminating ednpoints when externalTrafficPolicy=Local
+	ProxyTerminatingEndpoints featuregate.Feature = "ProxyTerminatingEndpoints"
+
 	// owner: @robscott
 	// kep: http://kep.k8s.io/752
 	// alpha: v1.20
@@ -651,6 +659,7 @@ const (
 	// owner: @hbagdi
 	// kep: http://kep.k8s.io/2365
 	// alpha: v1.21
+	// beta: v1.22
 	//
 	// Enable Scope and Namespace fields on IngressClassParametersReference.
 	IngressClassNamespacedParams featuregate.Feature = "IngressClassNamespacedParams"
@@ -713,6 +722,18 @@ const (
 	//
 	// Enables the use of `RuntimeDefault` as the default seccomp profile for all workloads.
 	SeccompDefault featuregate.Feature = "SeccompDefault"
+
+	// owner: @liggitt, @tallclair, sig-auth
+	// alpha: v1.22
+	//
+	// Enables the PodSecurity admission plugin
+	PodSecurity featuregate.Feature = "PodSecurity"
+
+	// owner: @chrishenzie
+	// alpha: v1.22
+	//
+	// Enables usage of the ReadWriteOncePod PersistentVolume access mode.
+	ReadWriteOncePod featuregate.Feature = "ReadWriteOncePod"
 )
 
 func init() {
@@ -736,7 +757,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	ExpandInUsePersistentVolumes:                   {Default: true, PreRelease: featuregate.Beta},
 	ExpandCSIVolumes:                               {Default: true, PreRelease: featuregate.Beta},
 	CPUManager:                                     {Default: true, PreRelease: featuregate.Beta},
-	MemoryManager:                                  {Default: false, PreRelease: featuregate.Alpha},
+	MemoryManager:                                  {Default: true, PreRelease: featuregate.Beta},
 	CPUCFSQuotaPeriod:                              {Default: false, PreRelease: featuregate.Alpha},
 	TopologyManager:                                {Default: true, PreRelease: featuregate.Beta},
 	StorageObjectInUseProtection:                   {Default: true, PreRelease: featuregate.GA},
@@ -778,6 +799,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	EndpointSlice:                                  {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.25
 	EndpointSliceProxying:                          {Default: true, PreRelease: featuregate.Beta},
 	EndpointSliceTerminatingCondition:              {Default: false, PreRelease: featuregate.Alpha},
+	ProxyTerminatingEndpoints:                      {Default: false, PreRelease: featuregate.Alpha},
 	EndpointSliceNodeName:                          {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, //remove in 1.25
 	WindowsEndpointSliceProxying:                   {Default: true, PreRelease: featuregate.Beta},
 	StartupProbe:                                   {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.23
@@ -809,7 +831,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	PodAffinityNamespaceSelector:                   {Default: true, PreRelease: featuregate.Beta},
 	ServiceLoadBalancerClass:                       {Default: true, PreRelease: featuregate.Beta},
 	LogarithmicScaleDown:                           {Default: false, PreRelease: featuregate.Alpha},
-	IngressClassNamespacedParams:                   {Default: false, PreRelease: featuregate.Alpha},
+	IngressClassNamespacedParams:                   {Default: true, PreRelease: featuregate.Beta},
 	ServiceInternalTrafficPolicy:                   {Default: false, PreRelease: featuregate.Alpha},
 	SuspendJob:                                     {Default: true, PreRelease: featuregate.Beta},
 	KubeletPodResourcesGetAllocatable:              {Default: false, PreRelease: featuregate.Alpha},
@@ -820,6 +842,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	StatefulSetMinReadySeconds:                     {Default: false, PreRelease: featuregate.Alpha},
 	ExpandedDNSConfig:                              {Default: false, PreRelease: featuregate.Alpha},
 	SeccompDefault:                                 {Default: false, PreRelease: featuregate.Alpha},
+	PodSecurity:                                    {Default: false, PreRelease: featuregate.Alpha},
+	ReadWriteOncePod:                               {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
