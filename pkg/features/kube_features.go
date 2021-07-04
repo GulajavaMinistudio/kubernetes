@@ -600,6 +600,7 @@ const (
 	// owner: @andrewsykim @uablrek
 	// kep: http://kep.k8s.io/1864
 	// alpha: v1.20
+	// beta: v1.22
 	//
 	// Allows control if NodePorts shall be created for services with "type: LoadBalancer" by defining the spec.AllocateLoadBalancerNodePorts field (bool)
 	ServiceLBNodePortControl featuregate.Feature = "ServiceLBNodePortControl"
@@ -740,6 +741,12 @@ const (
 	//
 	// Enables usage of the ReadWriteOncePod PersistentVolume access mode.
 	ReadWriteOncePod featuregate.Feature = "ReadWriteOncePod"
+
+	// owner: @enj
+	// beta: v1.22
+	//
+	// Allows clients to request a duration for certificates issued via the Kubernetes CSR API.
+	CSRDuration featuregate.Feature = "CSRDuration"
 )
 
 func init() {
@@ -827,7 +834,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	ExecProbeTimeout:                               {Default: true, PreRelease: featuregate.GA}, // lock to default and remove after v1.22 based on KEP #1972 update
 	KubeletCredentialProviders:                     {Default: false, PreRelease: featuregate.Alpha},
 	GracefulNodeShutdown:                           {Default: true, PreRelease: featuregate.Beta},
-	ServiceLBNodePortControl:                       {Default: false, PreRelease: featuregate.Alpha},
+	ServiceLBNodePortControl:                       {Default: true, PreRelease: featuregate.Beta},
 	MixedProtocolLBService:                         {Default: false, PreRelease: featuregate.Alpha},
 	VolumeCapacityPriority:                         {Default: false, PreRelease: featuregate.Alpha},
 	PreferNominatedNode:                            {Default: true, PreRelease: featuregate.Beta},
@@ -851,6 +858,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	SeccompDefault:                                 {Default: false, PreRelease: featuregate.Alpha},
 	PodSecurity:                                    {Default: false, PreRelease: featuregate.Alpha},
 	ReadWriteOncePod:                               {Default: false, PreRelease: featuregate.Alpha},
+	CSRDuration:                                    {Default: true, PreRelease: featuregate.Beta},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
