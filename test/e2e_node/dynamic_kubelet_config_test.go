@@ -106,6 +106,10 @@ var _ = SIGDescribe("[Feature:DynamicKubeletConfig][NodeFeature:DynamicKubeletCo
 				framework.ExpectNoError(err)
 				beforeKC = kc
 			}
+
+			// show hidden metrics for release 1.22
+			beforeKC = updateShowHiddenMetricsForVersion(beforeKC, "1.22")
+
 			// reset the node's assigned/active/last-known-good config by setting the source to nil,
 			// so each test starts from a clean-slate
 			(&nodeConfigTestCase{
@@ -118,6 +122,9 @@ var _ = SIGDescribe("[Feature:DynamicKubeletConfig][NodeFeature:DynamicKubeletCo
 				framework.ExpectNoError(err)
 				localKC = kc
 			}
+
+			// show hidden metrics for release 1.22
+			localKC = updateShowHiddenMetricsForVersion(localKC, "1.22")
 		})
 
 		ginkgo.AfterEach(func() {
@@ -136,7 +143,7 @@ var _ = SIGDescribe("[Feature:DynamicKubeletConfig][NodeFeature:DynamicKubeletCo
 			restore.run(f, setConfigSourceFunc, false, 0)
 		})
 
-		ginkgo.Context("update Node.Spec.ConfigSource: state transitions:", func() {
+		ginkgo.Context("[Slow] update Node.Spec.ConfigSource: state transitions:", func() {
 			ginkgo.It(itDescription, func() {
 				var err error
 				// we base the "correct" configmap off of the configuration from before the test
@@ -301,7 +308,7 @@ var _ = SIGDescribe("[Feature:DynamicKubeletConfig][NodeFeature:DynamicKubeletCo
 			})
 		})
 
-		ginkgo.Context("update Node.Spec.ConfigSource: recover to last-known-good ConfigMap:", func() {
+		ginkgo.Context("[Slow] update Node.Spec.ConfigSource: recover to last-known-good ConfigMap:", func() {
 			ginkgo.It(itDescription, func() {
 				var err error
 				// we base the "lkg" configmap off of the configuration from before the test
@@ -365,7 +372,7 @@ var _ = SIGDescribe("[Feature:DynamicKubeletConfig][NodeFeature:DynamicKubeletCo
 			})
 		})
 
-		ginkgo.Context("update Node.Spec.ConfigSource: recover to last-known-good ConfigMap.KubeletConfigKey:", func() {
+		ginkgo.Context("[Slow] update Node.Spec.ConfigSource: recover to last-known-good ConfigMap.KubeletConfigKey:", func() {
 			ginkgo.It(itDescription, func() {
 				const badConfigKey = "bad"
 				var err error
@@ -420,7 +427,7 @@ var _ = SIGDescribe("[Feature:DynamicKubeletConfig][NodeFeature:DynamicKubeletCo
 		})
 
 		// previously, we missed a panic because we were not exercising this path
-		ginkgo.Context("update Node.Spec.ConfigSource: non-nil last-known-good to a new non-nil last-known-good", func() {
+		ginkgo.Context("[Slow] update Node.Spec.ConfigSource: non-nil last-known-good to a new non-nil last-known-good", func() {
 			ginkgo.It(itDescription, func() {
 				var err error
 				// we base the "lkg" configmap off of the configuration from before the test
@@ -1190,4 +1197,15 @@ func (tc *nodeConfigTestCase) checkConfigMetrics(f *framework.Framework) {
 		}
 		return nil
 	}, timeout, interval).Should(gomega.BeNil())
+}
+
+func updateShowHiddenMetricsForVersion(cfg *kubeletconfig.KubeletConfiguration, version string) *kubeletconfig.KubeletConfiguration {
+	if cfg == nil {
+		return &kubeletconfig.KubeletConfiguration{
+			ShowHiddenMetricsForVersion: version,
+		}
+	}
+
+	cfg.ShowHiddenMetricsForVersion = version
+	return cfg
 }
