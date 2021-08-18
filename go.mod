@@ -118,11 +118,11 @@ require (
 	k8s.io/controller-manager v0.0.0
 	k8s.io/cri-api v0.0.0
 	k8s.io/csi-translation-lib v0.0.0
-	k8s.io/gengo v0.0.0-20201214224949-b6c5ce23f027
+	k8s.io/gengo v0.0.0-20210813121822-485abfe95c7c
 	k8s.io/klog/v2 v2.9.0
 	k8s.io/kube-aggregator v0.0.0
 	k8s.io/kube-controller-manager v0.0.0
-	k8s.io/kube-openapi v0.0.0-20210421082810-95288971da7e
+	k8s.io/kube-openapi v0.0.0-20210817084001-7fbd8d59e5b8
 	k8s.io/kube-proxy v0.0.0
 	k8s.io/kube-scheduler v0.0.0
 	k8s.io/kubectl v0.0.0
@@ -133,7 +133,7 @@ require (
 	k8s.io/pod-security-admission v0.0.0
 	k8s.io/sample-apiserver v0.0.0
 	k8s.io/system-validators v1.5.0
-	k8s.io/utils v0.0.0-20210707171843-4b05e18ac7d9
+	k8s.io/utils v0.0.0-20210802155522-efc7438f0176
 	sigs.k8s.io/structured-merge-diff/v4 v4.1.2
 	sigs.k8s.io/yaml v1.2.0
 )
@@ -495,11 +495,11 @@ replace (
 	k8s.io/controller-manager => ./staging/src/k8s.io/controller-manager
 	k8s.io/cri-api => ./staging/src/k8s.io/cri-api
 	k8s.io/csi-translation-lib => ./staging/src/k8s.io/csi-translation-lib
-	k8s.io/gengo => k8s.io/gengo v0.0.0-20201214224949-b6c5ce23f027
+	k8s.io/gengo => k8s.io/gengo v0.0.0-20210813121822-485abfe95c7c
 	k8s.io/klog/v2 => k8s.io/klog/v2 v2.9.0
 	k8s.io/kube-aggregator => ./staging/src/k8s.io/kube-aggregator
 	k8s.io/kube-controller-manager => ./staging/src/k8s.io/kube-controller-manager
-	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20210421082810-95288971da7e
+	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20210817084001-7fbd8d59e5b8
 	k8s.io/kube-proxy => ./staging/src/k8s.io/kube-proxy
 	k8s.io/kube-scheduler => ./staging/src/k8s.io/kube-scheduler
 	k8s.io/kubectl => ./staging/src/k8s.io/kubectl
@@ -512,7 +512,7 @@ replace (
 	k8s.io/sample-cli-plugin => ./staging/src/k8s.io/sample-cli-plugin
 	k8s.io/sample-controller => ./staging/src/k8s.io/sample-controller
 	k8s.io/system-validators => k8s.io/system-validators v1.5.0
-	k8s.io/utils => k8s.io/utils v0.0.0-20210707171843-4b05e18ac7d9
+	k8s.io/utils => k8s.io/utils v0.0.0-20210802155522-efc7438f0176
 	modernc.org/cc => modernc.org/cc v1.0.0
 	modernc.org/golex => modernc.org/golex v1.0.0
 	modernc.org/mathutil => modernc.org/mathutil v1.0.0

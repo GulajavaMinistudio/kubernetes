@@ -1,5 +1,3 @@
-// +build !linux
-
 /*
 Copyright 2021 The Kubernetes Authors.
 
@@ -16,16 +14,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package staticpod
+package testing
 
 import (
-	v1 "k8s.io/api/core/v1"
+	"time"
 
-	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
-	"k8s.io/kubernetes/cmd/kubeadm/app/util/users"
+	"k8s.io/utils/clock"
 )
 
-// RunComponentAsNonRoot is a NO-OP on non linux.
-func RunComponentAsNonRoot(componentName string, pod *v1.Pod, usersAndGroups *users.UsersAndGroups, cfg *kubeadmapi.ClusterConfiguration) error {
-	return nil
+var (
+	_ = clock.PassiveClock(&SimpleIntervalClock{})
+)
+
+// SimpleIntervalClock implements clock.PassiveClock, but each invocation of Now steps the clock forward the specified duration
+type SimpleIntervalClock struct {
+	Time     time.Time
+	Duration time.Duration
+}
+
+// Now returns i's time.
+func (i *SimpleIntervalClock) Now() time.Time {
+	i.Time = i.Time.Add(i.Duration)
+	return i.Time
+}
+
+// Since returns time since the time in i.
+func (i *SimpleIntervalClock) Since(ts time.Time) time.Duration {
+	return i.Time.Sub(ts)
 }
