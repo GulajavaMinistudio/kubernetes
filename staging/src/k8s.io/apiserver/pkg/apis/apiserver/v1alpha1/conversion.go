@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2021 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,21 +14,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package eventratelimit
+package v1alpha1
 
 import (
-	"time"
+	conversion "k8s.io/apimachinery/pkg/conversion"
+	apiserver "k8s.io/apiserver/pkg/apis/apiserver"
 )
 
-// realClock implements flowcontrol.Clock in terms of standard time functions.
-type realClock struct{}
-
-// Now is identical to time.Now.
-func (realClock) Now() time.Time {
-	return time.Now()
-}
-
-// Sleep is identical to time.Sleep.
-func (realClock) Sleep(d time.Duration) {
-	time.Sleep(d)
+func Convert_v1alpha1_EgressSelection_To_apiserver_EgressSelection(in *EgressSelection, out *apiserver.EgressSelection, s conversion.Scope) error {
+	if err := autoConvert_v1alpha1_EgressSelection_To_apiserver_EgressSelection(in, out, s); err != nil {
+		return err
+	}
+	if out.Name == "master" {
+		out.Name = "controlplane"
+	}
+	return nil
 }
