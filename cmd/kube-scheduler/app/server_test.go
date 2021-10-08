@@ -139,19 +139,6 @@ profiles:
 		t.Fatal(err)
 	}
 
-	// policy config file
-	policyConfigFile := filepath.Join(tmpDir, "policy-config.yaml")
-	if err := ioutil.WriteFile(policyConfigFile, []byte(`{
-		"kind": "Policy",
-		"apiVersion": "v1",
-		"predicates": [
-		  {"name": "MatchInterPodAffinity"}
-		],"priorities": [
-		  {"name": "InterPodAffinityPriority",   "weight": 2}
-		]}`), os.FileMode(0600)); err != nil {
-		t.Fatal(err)
-	}
-
 	testcases := []struct {
 		name        string
 		flags       []string
@@ -163,7 +150,7 @@ profiles:
 				"--kubeconfig", configKubeconfig,
 			},
 			wantPlugins: map[string]*config.Plugins{
-				"default-scheduler": defaults.PluginsV1beta2,
+				"default-scheduler": defaults.PluginsV1beta3,
 			},
 		},
 		{
@@ -203,30 +190,6 @@ profiles:
 					},
 					Reserve: config.PluginSet{Enabled: []config.Plugin{{Name: "VolumeBinding"}}},
 					PreBind: config.PluginSet{Enabled: []config.Plugin{{Name: "VolumeBinding"}}},
-				},
-			},
-		},
-		{
-			name: "policy config file",
-			flags: []string{
-				"--kubeconfig", configKubeconfig,
-				"--policy-config-file", policyConfigFile,
-			},
-			wantPlugins: map[string]*config.Plugins{
-				"default-scheduler": {
-					QueueSort: config.PluginSet{Enabled: []config.Plugin{{Name: "PrioritySort"}}},
-					PreFilter: config.PluginSet{Enabled: []config.Plugin{{Name: "InterPodAffinity"}}},
-					Filter: config.PluginSet{
-						Enabled: []config.Plugin{
-							{Name: "NodeUnschedulable"},
-							{Name: "TaintToleration"},
-							{Name: "InterPodAffinity"},
-						},
-					},
-					PostFilter: config.PluginSet{Enabled: []config.Plugin{{Name: "DefaultPreemption"}}},
-					PreScore:   config.PluginSet{Enabled: []config.Plugin{{Name: "InterPodAffinity"}}},
-					Score:      config.PluginSet{Enabled: []config.Plugin{{Name: "InterPodAffinity", Weight: 2}}},
-					Bind:       config.PluginSet{Enabled: []config.Plugin{{Name: "DefaultBinder"}}},
 				},
 			},
 		},

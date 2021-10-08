@@ -33,15 +33,32 @@ const (
 	maximumSeats = 10
 )
 
+// WorkEstimate carries three of the four parameters that determine the work in a request.
+// The fourth parameter is the duration of the initial phase of execution.
 type WorkEstimate struct {
-	// InitialSeats represents the number of initial seats associated with this request
+	// InitialSeats is the number of seats occupied while the server is
+	// executing this request.
 	InitialSeats uint
+
+	// FinalSeats is the number of seats occupied at the end,
+	// during the AdditionalLatency.
+	FinalSeats uint
 
 	// AdditionalLatency specifies the additional duration the seats allocated
 	// to this request must be reserved after the given request had finished.
 	// AdditionalLatency should not have any impact on the user experience, the
 	// caller must not experience this additional latency.
 	AdditionalLatency time.Duration
+}
+
+// MaxSeats returns the maximum number of seats the request occupies over the
+// phases of being served.
+func (we *WorkEstimate) MaxSeats() int {
+	if we.InitialSeats >= we.FinalSeats {
+		return int(we.InitialSeats)
+	}
+
+	return int(we.FinalSeats)
 }
 
 // objectCountGetterFunc represents a function that gets the total

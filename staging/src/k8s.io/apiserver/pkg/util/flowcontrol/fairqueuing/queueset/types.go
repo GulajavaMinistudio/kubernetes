@@ -47,7 +47,7 @@ type request struct {
 	startTime time.Time
 
 	// estimated amount of work of the request
-	workEstimate fcrequest.WorkEstimate
+	workEstimate completedWorkEstimate
 
 	// decision gets set to a `requestDecision` indicating what to do
 	// with this request.  It gets set exactly once, when the request
@@ -78,6 +78,11 @@ type request struct {
 	removeFromQueueFn removeFromFIFOFunc
 }
 
+type completedWorkEstimate struct {
+	fcrequest.WorkEstimate
+	totalWork SeatSeconds // initial plus final work
+}
+
 // queue is an array of requests with additional metadata required for
 // the FQScheduler
 type queue struct {
@@ -95,6 +100,36 @@ type queue struct {
 	// seatsInUse is the total number of "seats" currently occupied
 	// by all the requests that are currently executing in this queue.
 	seatsInUse int
+}
+
+// queueSum tracks the sum of initial seats, max seats, and
+// totalWork from all requests in a given queue
+type queueSum struct {
+	// InitialSeatsSum is the sum of InitialSeats
+	// associated with all requests in a given queue.
+	InitialSeatsSum int
+
+	// MaxSeatsSum is the sum of MaxSeats
+	// associated with all requests in a given queue.
+	MaxSeatsSum int
+
+	// TotalWorkSum is the sum of totalWork of the waiting requests
+	TotalWorkSum SeatSeconds
+}
+
+func (req *request) totalWork() SeatSeconds {
+	return req.workEstimate.totalWork
+}
+
+func (qs *queueSet) completeWorkEstimate(we *fcrequest.WorkEstimate) completedWorkEstimate {
+	return completedWorkEstimate{
+		WorkEstimate: *we,
+		totalWork:    qs.computeTotalWork(we),
+	}
+}
+
+func (qs *queueSet) computeTotalWork(we *fcrequest.WorkEstimate) SeatSeconds {
+	return SeatsTimesDuration(float64(we.InitialSeats), qs.estimatedServiceDuration) + SeatsTimesDuration(float64(we.FinalSeats), we.AdditionalLatency)
 }
 
 // Enqueue enqueues a request into the queue and
@@ -129,6 +164,8 @@ func (q *queue) dump(includeDetails bool) debug.QueueDump {
 		i++
 		return true
 	})
+
+	// TODO: change QueueDump to include queueSum stats
 	return debug.QueueDump{
 		VirtualStart:      q.nextDispatchR.ToFloat(), // TODO: change QueueDump to use SeatSeconds
 		Requests:          digest,
