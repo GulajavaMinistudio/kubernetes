@@ -94,6 +94,7 @@ const (
 
 	// owner: @verb
 	// alpha: v1.16
+	// beta: v1.23
 	//
 	// Allows running an ephemeral container in pod namespaces to troubleshoot a running pod.
 	EphemeralContainers featuregate.Feature = "EphemeralContainers"
@@ -223,6 +224,7 @@ const (
 
 	// owner: @alculquicondor
 	// alpha: v1.22
+	// beta: v1.23
 	//
 	// Track Job completion without relying on Pod remaining in the cluster
 	// indefinitely. Pod finalizers, in addition to a field in the Job status
@@ -791,7 +793,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	DevicePlugins:                                  {Default: true, PreRelease: featuregate.Beta},
 	RotateKubeletServerCertificate:                 {Default: true, PreRelease: featuregate.Beta},
 	LocalStorageCapacityIsolation:                  {Default: true, PreRelease: featuregate.Beta},
-	EphemeralContainers:                            {Default: false, PreRelease: featuregate.Alpha},
+	EphemeralContainers:                            {Default: true, PreRelease: featuregate.Beta},
 	QOSReserved:                                    {Default: false, PreRelease: featuregate.Alpha},
 	ExpandPersistentVolumes:                        {Default: true, PreRelease: featuregate.Beta},
 	ExpandInUsePersistentVolumes:                   {Default: true, PreRelease: featuregate.Beta},
@@ -800,7 +802,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	MemoryManager:                                  {Default: true, PreRelease: featuregate.Beta},
 	CPUCFSQuotaPeriod:                              {Default: false, PreRelease: featuregate.Alpha},
 	TopologyManager:                                {Default: true, PreRelease: featuregate.Beta},
-	StorageObjectInUseProtection:                   {Default: true, PreRelease: featuregate.GA},
+	StorageObjectInUseProtection:                   {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.25
 	CSIMigration:                                   {Default: true, PreRelease: featuregate.Beta},
 	CSIMigrationGCE:                                {Default: false, PreRelease: featuregate.Beta}, // Off by default (requires GCE PD CSI Driver)
 	InTreePluginGCEUnregister:                      {Default: false, PreRelease: featuregate.Alpha},
@@ -826,7 +828,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	ProcMountType:                                  {Default: false, PreRelease: featuregate.Alpha},
 	TTLAfterFinished:                               {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.25
 	IndexedJob:                                     {Default: true, PreRelease: featuregate.Beta},
-	JobTrackingWithFinalizers:                      {Default: false, PreRelease: featuregate.Alpha},
+	JobTrackingWithFinalizers:                      {Default: true, PreRelease: featuregate.Beta},
 	KubeletPodResources:                            {Default: true, PreRelease: featuregate.Beta},
 	LocalStorageCapacityIsolationFSQuotaMonitoring: {Default: false, PreRelease: featuregate.Alpha},
 	NonPreemptingPriority:                          {Default: true, PreRelease: featuregate.Beta},
