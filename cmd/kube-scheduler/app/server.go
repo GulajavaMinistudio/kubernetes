@@ -65,9 +65,11 @@ type Option func(runtime.Registry) error
 func NewSchedulerCommand(registryOptions ...Option) *cobra.Command {
 	opts, err := options.NewOptions()
 	if err != nil {
-		klog.Fatalf("unable to initialize command options: %v", err)
+		klog.ErrorS(err, "Unable to initialize command options")
+		os.Exit(1)
 	}
 
+	namedFlagSets := opts.Flags()
 	cmd := &cobra.Command{
 		Use: "kube-scheduler",
 		Long: `The Kubernetes scheduler is a control plane process which assigns
@@ -79,6 +81,9 @@ kube-scheduler is the reference implementation.
 See [scheduling](https://kubernetes.io/docs/concepts/scheduling-eviction/)
 for more information about scheduling and the kube-scheduler component.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Complete(&namedFlagSets); err != nil {
+				return err
+			}
 			return runCommand(cmd, opts, registryOptions...)
 		},
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -92,7 +97,6 @@ for more information about scheduling and the kube-scheduler component.`,
 	}
 
 	fs := cmd.Flags()
-	namedFlagSets := opts.Flags()
 	verflag.AddFlags(namedFlagSets.FlagSet("global"))
 	globalflag.AddGlobalFlags(namedFlagSets.FlagSet("global"), cmd.Name())
 	for _, f := range namedFlagSets.FlagSets {
@@ -100,7 +104,7 @@ for more information about scheduling and the kube-scheduler component.`,
 	}
 
 	cols, _, _ := term.TerminalSize(cmd.OutOrStdout())
-	cliflag.SetUsageAndHelpFunc(cmd, *namedFlagSets, cols)
+	cliflag.SetUsageAndHelpFunc(cmd, namedFlagSets, cols)
 
 	cmd.MarkFlagFilename("config", "yaml", "yml", "json")
 
@@ -196,7 +200,7 @@ func Run(ctx context.Context, cc *schedulerserverconfig.CompletedConfig, sched *
 				select {
 				case <-ctx.Done():
 					// We were asked to terminate. Exit 0.
-					klog.Info("Requested to terminate. Exiting.")
+					klog.InfoS("Requested to terminate, exiting")
 					os.Exit(0)
 				default:
 					// We lost the lock.

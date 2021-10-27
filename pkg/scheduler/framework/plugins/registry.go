@@ -25,10 +25,8 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/imagelocality"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
-	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodelabel"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodename"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports"
-	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodepreferavoidpods"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeunschedulable"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits"
@@ -62,7 +60,6 @@ func NewInTreeRegistry() runtime.Registry {
 		tainttoleration.Name:                       tainttoleration.New,
 		nodename.Name:                              nodename.New,
 		nodeports.Name:                             nodeports.New,
-		nodepreferavoidpods.Name:                   nodepreferavoidpods.New,
 		nodeaffinity.Name:                          nodeaffinity.New,
 		podtopologyspread.Name:                     podtopologyspread.New,
 		nodeunschedulable.Name:                     nodeunschedulable.New,
@@ -80,7 +77,6 @@ func NewInTreeRegistry() runtime.Registry {
 		nodevolumelimits.AzureDiskName:             runtime.FactoryAdapter(fts, nodevolumelimits.NewAzureDisk),
 		nodevolumelimits.CinderName:                runtime.FactoryAdapter(fts, nodevolumelimits.NewCinder),
 		interpodaffinity.Name:                      runtime.FactoryAdapter(fts, interpodaffinity.New),
-		nodelabel.Name:                             nodelabel.New,
 		queuesort.Name:                             queuesort.New,
 		defaultbinder.Name:                         defaultbinder.New,
 		defaultpreemption.Name:                     runtime.FactoryAdapter(fts, defaultpreemption.New),
