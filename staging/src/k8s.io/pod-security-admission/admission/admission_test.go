@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -174,9 +175,14 @@ func TestDefaultHasPodSpec(t *testing.T) {
 
 type testEvaluator struct {
 	lv api.LevelVersion
+
+	delay time.Duration
 }
 
 func (t *testEvaluator) EvaluatePod(lv api.LevelVersion, meta *metav1.ObjectMeta, spec *corev1.PodSpec) []policy.CheckResult {
+	if t.delay > 0 {
+		time.Sleep(t.delay)
+	}
 	t.lv = lv
 	if meta.Annotations["error"] != "" {
 		return []policy.CheckResult{{Allowed: false, ForbiddenReason: meta.Annotations["error"]}}
@@ -196,10 +202,17 @@ func (t *testNamespaceGetter) GetNamespace(ctx context.Context, name string) (*c
 type testPodLister struct {
 	called bool
 	pods   []*corev1.Pod
+	delay  time.Duration
 }
 
 func (t *testPodLister) ListPods(ctx context.Context, namespace string) ([]*corev1.Pod, error) {
 	t.called = true
+	if t.delay > 0 {
+		time.Sleep(t.delay)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return t.pods, nil
 }
 
@@ -218,6 +231,10 @@ func TestValidateNamespace(t *testing.T) {
 		oldLabels map[string]string
 		// list of pods to return
 		pods []*corev1.Pod
+		// time to sleep while listing
+		delayList time.Duration
+		// time to sleep while evaluating
+		delayEvaluation time.Duration
 
 		expectAllowed  bool
 		expectError    string
@@ -352,7 +369,11 @@ func TestValidateNamespace(t *testing.T) {
 			expectAllowed:  true,
 			expectListPods: true,
 			expectEvaluate: api.LevelVersion{Level: api.LevelRestricted, Version: api.LatestVersion()},
-			expectWarnings: []string{"noruntimeclasspod (and 2 other pods): message", "runtimeclass3pod: message, message2"},
+			expectWarnings: []string{
+				`existing pods in namespace "test" violate the new PodSecurity enforce level "restricted:latest"`,
+				"noruntimeclasspod (and 2 other pods): message",
+				"runtimeclass3pod: message, message2",
+			},
 		},
 		{
 			name:                 "update with runtimeclass exempt pods",
@@ -362,11 +383,57 @@ func TestValidateNamespace(t *testing.T) {
 			expectAllowed:        true,
 			expectListPods:       true,
 			expectEvaluate:       api.LevelVersion{Level: api.LevelRestricted, Version: api.LatestVersion()},
-			expectWarnings:       []string{"noruntimeclasspod (and 1 other pod): message", "runtimeclass3pod: message, message2"},
+			expectWarnings: []string{
+				`existing pods in namespace "test" violate the new PodSecurity enforce level "restricted:latest"`,
+				"noruntimeclasspod (and 1 other pod): message",
+				"runtimeclass3pod: message, message2",
+			},
 		},
-
-		// TODO: test for bounding evalution time with a warning
-		// TODO: test for bounding pod count with a warning
+		{
+			name:           "timeout on list",
+			newLabels:      map[string]string{api.EnforceLevelLabel: string(api.LevelRestricted)},
+			oldLabels:      map[string]string{api.EnforceLevelLabel: string(api.LevelBaseline)},
+			delayList:      time.Second + 100*time.Millisecond,
+			expectAllowed:  true,
+			expectListPods: true,
+			expectWarnings: []string{
+				`failed to list pods while checking new PodSecurity enforce level`,
+			},
+		},
+		{
+			name:            "timeout on evaluate",
+			newLabels:       map[string]string{api.EnforceLevelLabel: string(api.LevelRestricted)},
+			oldLabels:       map[string]string{api.EnforceLevelLabel: string(api.LevelBaseline)},
+			delayEvaluation: (time.Second + 100*time.Millisecond) / 2, // leave time for two evaluations
+			expectAllowed:   true,
+			expectListPods:  true,
+			expectEvaluate:  api.LevelVersion{Level: api.LevelRestricted, Version: api.LatestVersion()},
+			expectWarnings: []string{
+				`new PodSecurity enforce level only checked against the first 2 of 4 existing pods`,
+				`existing pods in namespace "test" violate the new PodSecurity enforce level "restricted:latest"`,
+				`noruntimeclasspod (and 1 other pod): message`,
+			},
+		},
+		{
+			name:      "bound number of pods",
+			newLabels: map[string]string{api.EnforceLevelLabel: string(api.LevelRestricted)},
+			oldLabels: map[string]string{api.EnforceLevelLabel: string(api.LevelBaseline)},
+			pods: []*corev1.Pod{
+				{ObjectMeta: metav1.ObjectMeta{Name: "pod1", Annotations: map[string]string{"error": "message"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "pod2", Annotations: map[string]string{"error": "message"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "pod3", Annotations: map[string]string{"error": "message"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "pod4", Annotations: map[string]string{"error": "message"}}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "pod5", Annotations: map[string]string{"error": "message"}}},
+			},
+			expectAllowed:  true,
+			expectListPods: true,
+			expectEvaluate: api.LevelVersion{Level: api.LevelRestricted, Version: api.LatestVersion()},
+			expectWarnings: []string{
+				`new PodSecurity enforce level only checked against the first 4 of 5 existing pods`,
+				`existing pods in namespace "test" violate the new PodSecurity enforce level "restricted:latest"`,
+				`pod1 (and 3 other pods): message`,
+			},
+		},
 		// TODO: test for prioritizing evaluating pods from unique controllers
 	}
 
@@ -393,7 +460,9 @@ func TestValidateNamespace(t *testing.T) {
 			attrs := &AttributesRecord{
 				Object:      newObject,
 				OldObject:   oldObject,
+				Name:        newObject.Name,
 				Namespace:   newObject.Name,
+				Kind:        schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Namespace"},
 				Resource:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"},
 				Subresource: tc.subresource,
 				Operation:   operation,
@@ -428,8 +497,8 @@ func TestValidateNamespace(t *testing.T) {
 					},
 				}
 			}
-			podLister := &testPodLister{pods: pods}
-			evaluator := &testEvaluator{}
+			podLister := &testPodLister{pods: pods, delay: tc.delayList}
+			evaluator := &testEvaluator{delay: tc.delayEvaluation}
 			a := &Admission{
 				PodLister: podLister,
 				Evaluator: evaluator,
@@ -441,6 +510,9 @@ func TestValidateNamespace(t *testing.T) {
 				},
 				Metrics:       NewMockRecorder(),
 				defaultPolicy: defaultPolicy,
+
+				namespacePodCheckTimeout: time.Second,
+				namespaceMaxPodsToCheck:  4,
 			}
 			result := a.ValidateNamespace(context.TODO(), attrs)
 			if result.Allowed != tc.expectAllowed {
@@ -522,6 +594,7 @@ func TestValidatePodController(t *testing.T) {
 		newObject runtime.Object
 		// for update
 		oldObject runtime.Object
+		gvk       schema.GroupVersionKind
 		gvr       schema.GroupVersionResource
 
 		expectWarnings         []string
@@ -532,51 +605,59 @@ func TestValidatePodController(t *testing.T) {
 			subresource: "status",
 			newObject:   &badDeploy,
 			oldObject:   &goodDeploy,
+			gvk:         schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"},
 			gvr:         schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"},
 		},
 		{
 			desc:             "namespace in exemptNamespaces will be exempted",
 			newObject:        &badDeploy,
+			gvk:              schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"},
 			gvr:              schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"},
 			exemptNamespaces: []string{testNamespace},
 		},
 		{
 			desc:                 "runtimeClass in exemptRuntimeClasses will be exempted",
 			newObject:            &badDeploy,
+			gvk:                  schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"},
 			gvr:                  schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"},
 			exemptRuntimeClasses: []string{"containerd"},
 		},
 		{
 			desc:        "user in exemptUsers will be exempted",
 			newObject:   &badDeploy,
+			gvk:         schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"},
 			gvr:         schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"},
 			exemptUsers: []string{"testuser"},
 		},
 		{
 			desc:      "podMetadata == nil && podSpec == nil will skip verification",
 			newObject: &corev1.ReplicationController{ObjectMeta: metav1.ObjectMeta{Name: "foo-rc"}},
+			gvk:       schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ReplicationController"},
 			gvr:       schema.GroupVersionResource{Group: "", Version: "v1", Resource: "replicationcontrollers"},
 		},
 		{
 			desc:                   "good deploy creates and produce nothing",
 			newObject:              &goodDeploy,
+			gvk:                    schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"},
 			gvr:                    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"},
 			expectAuditAnnotations: map[string]string{},
 		},
 		{
 			desc:                   "bad deploy creates produce correct user-visible warnings and correct auditAnnotations",
 			newObject:              &badDeploy,
+			gvk:                    schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"},
 			gvr:                    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"},
-			expectAuditAnnotations: map[string]string{"audit": "Would violate PodSecurity \"baseline:latest\": forbidden sysctls (unknown)"},
-			expectWarnings:         []string{"Would violate PodSecurity \"baseline:latest\": forbidden sysctls (unknown)"},
+			expectAuditAnnotations: map[string]string{"audit": "would violate PodSecurity \"baseline:latest\": forbidden sysctls (unknown)"},
+			expectWarnings:         []string{"would violate PodSecurity \"baseline:latest\": forbidden sysctls (unknown)"},
 		},
 		{
 			desc:                   "bad spec updates don't block on enforce failures and returns correct information",
 			newObject:              &badDeploy,
 			oldObject:              &goodDeploy,
+			gvk:                    schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"},
 			gvr:                    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"},
-			expectAuditAnnotations: map[string]string{"audit": "Would violate PodSecurity \"baseline:latest\": forbidden sysctls (unknown)"},
-			expectWarnings:         []string{"Would violate PodSecurity \"baseline:latest\": forbidden sysctls (unknown)"},
+			expectAuditAnnotations: map[string]string{"audit": "would violate PodSecurity \"baseline:latest\": forbidden sysctls (unknown)"},
+			expectWarnings:         []string{"would violate PodSecurity \"baseline:latest\": forbidden sysctls (unknown)"},
 		},
 	}
 
@@ -590,6 +671,7 @@ func TestValidatePodController(t *testing.T) {
 			attrs := &AttributesRecord{
 				testName,
 				testNamespace,
+				tc.gvk,
 				tc.gvr,
 				tc.subresource,
 				operation,

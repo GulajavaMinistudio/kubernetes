@@ -30,9 +30,11 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	admissionapi "k8s.io/pod-security-admission/admission/api"
 	"k8s.io/pod-security-admission/admission/api/validation"
 	"k8s.io/pod-security-admission/api"
@@ -41,8 +43,8 @@ import (
 )
 
 const (
-	namespaceMaxPodsToCheck  = 3000
-	namespacePodCheckTimeout = 1 * time.Second
+	defaultNamespaceMaxPodsToCheck  = 3000
+	defaultNamespacePodCheckTimeout = 1 * time.Second
 )
 
 // Admission implements the core admission logic for the Pod Security Admission controller.
@@ -64,6 +66,9 @@ type Admission struct {
 	PodLister       PodLister
 
 	defaultPolicy api.Policy
+
+	namespaceMaxPodsToCheck  int
+	namespacePodCheckTimeout time.Duration
 }
 
 type NamespaceGetter interface {
@@ -152,6 +157,8 @@ func (a *Admission) CompleteConfiguration() error {
 			a.defaultPolicy = p
 		}
 	}
+	a.namespaceMaxPodsToCheck = defaultNamespaceMaxPodsToCheck
+	a.namespacePodCheckTimeout = defaultNamespacePodCheckTimeout
 
 	if a.PodSpecExtractor == nil {
 		a.PodSpecExtractor = &DefaultPodSpecExtractor{}
@@ -172,6 +179,9 @@ func (a *Admission) ValidateConfiguration() error {
 		} else if !reflect.DeepEqual(p, a.defaultPolicy) {
 			return fmt.Errorf("default policy does not match; CompleteConfiguration() was not called before ValidateConfiguration()")
 		}
+	}
+	if a.namespaceMaxPodsToCheck == 0 || a.namespacePodCheckTimeout == 0 {
+		return fmt.Errorf("namespace configuration not set; CompleteConfiguration() was not called before ValidateConfiguration()")
 	}
 	if a.Metrics == nil {
 		return fmt.Errorf("Metrics recorder required")
@@ -231,13 +241,13 @@ func (a *Admission) ValidateNamespace(ctx context.Context, attrs api.Attributes)
 		return badRequestResponse("failed to decode namespace")
 	}
 
-	newPolicy, newErr := a.PolicyToEvaluate(namespace.Labels)
+	newPolicy, newErrs := a.PolicyToEvaluate(namespace.Labels)
 
 	switch attrs.GetOperation() {
 	case admissionv1.Create:
 		// require valid labels on create
-		if newErr != nil {
-			return invalidResponse(newErr.Error())
+		if len(newErrs) > 0 {
+			return invalidResponse(attrs, newErrs)
 		}
 		return sharedAllowedResponse()
 
@@ -253,11 +263,11 @@ func (a *Admission) ValidateNamespace(ctx context.Context, attrs api.Attributes)
 			klog.InfoS("failed to assert old namespace type", "type", reflect.TypeOf(oldObj))
 			return badRequestResponse("failed to decode old namespace")
 		}
-		oldPolicy, oldErr := a.PolicyToEvaluate(oldNamespace.Labels)
+		oldPolicy, oldErrs := a.PolicyToEvaluate(oldNamespace.Labels)
 
 		// require valid labels on update if they have changed
-		if newErr != nil && (oldErr == nil || newErr.Error() != oldErr.Error()) {
-			return invalidResponse(newErr.Error())
+		if len(newErrs) > 0 && (len(oldErrs) == 0 || !reflect.DeepEqual(newErrs, oldErrs)) {
+			return invalidResponse(attrs, newErrs)
 		}
 
 		// Skip dry-running pods:
@@ -319,8 +329,8 @@ func (a *Admission) ValidatePod(ctx context.Context, attrs api.Attributes) *admi
 		klog.ErrorS(err, "failed to fetch pod namespace", "namespace", attrs.GetNamespace())
 		return internalErrorResponse(fmt.Sprintf("failed to lookup namespace %s", attrs.GetNamespace()))
 	}
-	nsPolicy, nsPolicyErr := a.PolicyToEvaluate(namespace.Labels)
-	if nsPolicyErr == nil && nsPolicy.Enforce.Level == api.LevelPrivileged && nsPolicy.Warn.Level == api.LevelPrivileged && nsPolicy.Audit.Level == api.LevelPrivileged {
+	nsPolicy, nsPolicyErrs := a.PolicyToEvaluate(namespace.Labels)
+	if len(nsPolicyErrs) == 0 && nsPolicy.Enforce.Level == api.LevelPrivileged && nsPolicy.Warn.Level == api.LevelPrivileged && nsPolicy.Audit.Level == api.LevelPrivileged {
 		return sharedAllowedResponse()
 	}
 
@@ -350,7 +360,7 @@ func (a *Admission) ValidatePod(ctx context.Context, attrs api.Attributes) *admi
 			return sharedAllowedResponse()
 		}
 	}
-	return a.EvaluatePod(ctx, nsPolicy, nsPolicyErr, &pod.ObjectMeta, &pod.Spec, attrs, true)
+	return a.EvaluatePod(ctx, nsPolicy, nsPolicyErrs.ToAggregate(), &pod.ObjectMeta, &pod.Spec, attrs, true)
 }
 
 // ValidatePodController evaluates a pod controller create or update request against the effective policy for the namespace.
@@ -371,8 +381,8 @@ func (a *Admission) ValidatePodController(ctx context.Context, attrs api.Attribu
 		klog.ErrorS(err, "failed to fetch pod namespace", "namespace", attrs.GetNamespace())
 		return internalErrorResponse(fmt.Sprintf("failed to lookup namespace %s", attrs.GetNamespace()))
 	}
-	nsPolicy, nsPolicyErr := a.PolicyToEvaluate(namespace.Labels)
-	if nsPolicyErr == nil && nsPolicy.Warn.Level == api.LevelPrivileged && nsPolicy.Audit.Level == api.LevelPrivileged {
+	nsPolicy, nsPolicyErrs := a.PolicyToEvaluate(namespace.Labels)
+	if len(nsPolicyErrs) == 0 && nsPolicy.Warn.Level == api.LevelPrivileged && nsPolicy.Audit.Level == api.LevelPrivileged {
 		return sharedAllowedResponse()
 	}
 
@@ -390,7 +400,7 @@ func (a *Admission) ValidatePodController(ctx context.Context, attrs api.Attribu
 		// if a controller with an optional pod spec does not contain a pod spec, skip validation
 		return sharedAllowedResponse()
 	}
-	return a.EvaluatePod(ctx, nsPolicy, nsPolicyErr, podMetadata, podSpec, attrs, false)
+	return a.EvaluatePod(ctx, nsPolicy, nsPolicyErrs.ToAggregate(), podMetadata, podSpec, attrs, false)
 }
 
 // EvaluatePod evaluates the given policy against the given pod(-like) object.
@@ -409,14 +419,14 @@ func (a *Admission) EvaluatePod(ctx context.Context, nsPolicy api.Policy, nsPoli
 	}
 
 	if klog.V(5).Enabled() {
-		klog.InfoS("Pod Security evaluation", "policy", fmt.Sprintf("%v", nsPolicy), "op", attrs.GetOperation(), "resource", attrs.GetResource(), "namespace", attrs.GetNamespace(), "name", attrs.GetName())
+		klog.InfoS("PodSecurity evaluation", "policy", fmt.Sprintf("%v", nsPolicy), "op", attrs.GetOperation(), "resource", attrs.GetResource(), "namespace", attrs.GetNamespace(), "name", attrs.GetName())
 	}
 
 	response := allowedResponse()
 	if enforce {
 		if result := policy.AggregateCheckResults(a.Evaluator.EvaluatePod(nsPolicy.Enforce, podMetadata, podSpec)); !result.Allowed {
 			response = forbiddenResponse(fmt.Sprintf(
-				"Pod violates PodSecurity %q: %s",
+				"pod violates PodSecurity %q: %s",
 				nsPolicy.Enforce.String(),
 				result.ForbiddenDetail(),
 			))
@@ -429,7 +439,7 @@ func (a *Admission) EvaluatePod(ctx context.Context, nsPolicy api.Policy, nsPoli
 	// TODO: reuse previous evaluation if audit level+version is the same as enforce level+version
 	if result := policy.AggregateCheckResults(a.Evaluator.EvaluatePod(nsPolicy.Audit, podMetadata, podSpec)); !result.Allowed {
 		auditAnnotations["audit"] = fmt.Sprintf(
-			"Would violate PodSecurity %q: %s",
+			"would violate PodSecurity %q: %s",
 			nsPolicy.Audit.String(),
 			result.ForbiddenDetail(),
 		)
@@ -442,7 +452,7 @@ func (a *Admission) EvaluatePod(ctx context.Context, nsPolicy api.Policy, nsPoli
 		if result := policy.AggregateCheckResults(a.Evaluator.EvaluatePod(nsPolicy.Warn, podMetadata, podSpec)); !result.Allowed {
 			// TODO: Craft a better user-facing warning message
 			response.Warnings = append(response.Warnings, fmt.Sprintf(
-				"Would violate PodSecurity %q: %s",
+				"would violate PodSecurity %q: %s",
 				nsPolicy.Warn.String(),
 				result.ForbiddenDetail(),
 			))
@@ -464,9 +474,10 @@ type podCount struct {
 }
 
 func (a *Admission) EvaluatePodsInNamespace(ctx context.Context, namespace string, enforce api.LevelVersion) []string {
-	timeout := namespacePodCheckTimeout
+	// start with the default timeout
+	timeout := a.namespacePodCheckTimeout
 	if deadline, ok := ctx.Deadline(); ok {
-		timeRemaining := time.Duration(0.9 * float64(time.Until(deadline))) // Leave a little time to respond.
+		timeRemaining := time.Until(deadline) / 2 // don't take more than half the remaining time
 		if timeout > timeRemaining {
 			timeout = timeRemaining
 		}
@@ -477,8 +488,8 @@ func (a *Admission) EvaluatePodsInNamespace(ctx context.Context, namespace strin
 
 	pods, err := a.PodLister.ListPods(ctx, namespace)
 	if err != nil {
-		klog.ErrorS(err, "Failed to list pods", "namespace", namespace)
-		return []string{"Failed to list pods"}
+		klog.ErrorS(err, "failed to list pods", "namespace", namespace)
+		return []string{"failed to list pods while checking new PodSecurity enforce level"}
 	}
 
 	var (
@@ -487,11 +498,12 @@ func (a *Admission) EvaluatePodsInNamespace(ctx context.Context, namespace strin
 		podWarnings        []string
 		podWarningsToCount = make(map[string]podCount)
 	)
-	if len(pods) > namespaceMaxPodsToCheck {
-		warnings = append(warnings, fmt.Sprintf("Large namespace: only checking the first %d of %d pods", namespaceMaxPodsToCheck, len(pods)))
-		pods = pods[0:namespaceMaxPodsToCheck]
+	totalPods := len(pods)
+	if len(pods) > a.namespaceMaxPodsToCheck {
+		pods = pods[0:a.namespaceMaxPodsToCheck]
 	}
 
+	checkedPods := len(pods)
 	for i, pod := range pods {
 		// short-circuit on exempt runtimeclass
 		if a.exemptRuntimeClass(pod.Spec.RuntimeClassName) {
@@ -510,10 +522,18 @@ func (a *Admission) EvaluatePodsInNamespace(ctx context.Context, namespace strin
 			c.podCount++
 			podWarningsToCount[warning] = c
 		}
-		if time.Now().After(deadline) {
-			warnings = append(warnings, fmt.Sprintf("Timeout reached after checking %d pods", i+1))
+		if err := ctx.Err(); err != nil { // deadline exceeded or context was cancelled
+			checkedPods = i + 1
 			break
 		}
+	}
+
+	if checkedPods < totalPods {
+		warnings = append(warnings, fmt.Sprintf("new PodSecurity enforce level only checked against the first %d of %d existing pods", checkedPods, totalPods))
+	}
+
+	if len(podWarnings) > 0 {
+		warnings = append(warnings, fmt.Sprintf("existing pods in namespace %q violate the new PodSecurity enforce level %q", namespace, enforce.String()))
 	}
 
 	// prepend pod names to warnings
@@ -541,7 +561,7 @@ func decoratePodWarnings(podWarningsToCount map[string]podCount, warnings []stri
 	}
 }
 
-func (a *Admission) PolicyToEvaluate(labels map[string]string) (api.Policy, error) {
+func (a *Admission) PolicyToEvaluate(labels map[string]string) (api.Policy, field.ErrorList) {
 	return api.PolicyToEvaluate(labels, a.defaultPolicy)
 }
 
@@ -574,8 +594,11 @@ func forbiddenResponse(msg string) *admissionv1.AdmissionResponse {
 }
 
 // invalidResponse is the response used for namespace requests when namespace labels are invalid.
-func invalidResponse(msg string) *admissionv1.AdmissionResponse {
-	return failureResponse(msg, metav1.StatusReasonInvalid, 422)
+func invalidResponse(attrs api.Attributes, fieldErrors field.ErrorList) *admissionv1.AdmissionResponse {
+	return &admissionv1.AdmissionResponse{
+		Allowed: false,
+		Result:  &apierrors.NewInvalid(attrs.GetKind().GroupKind(), attrs.GetName(), fieldErrors).ErrStatus,
+	}
 }
 
 // badRequestResponse is the response used when a request cannot be processed.
