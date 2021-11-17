@@ -44,6 +44,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	utilnet "k8s.io/apimachinery/pkg/util/net"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -71,7 +72,6 @@ import (
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/kubernetes/cmd/kubelet/app/options"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/capabilities"
 	"k8s.io/kubernetes/pkg/credentialprovider"
 	"k8s.io/kubernetes/pkg/features"
@@ -936,9 +936,23 @@ func buildKubeletClientConfig(ctx context.Context, s *options.KubeletServer, nod
 	}
 
 	kubeClientConfigOverrides(s, clientConfig)
-	closeAllConns, err := updateDialer(clientConfig)
-	if err != nil {
-		return nil, nil, err
+	// Kubelet needs to be able to recover from stale http connections.
+	// HTTP2 has a mechanism to detect broken connections by sending periodical pings.
+	// HTTP1 only can have one persistent connection, and it will close all Idle connections
+	// once the Kubelet heartbeat fails. However, since there are many edge cases that we can't
+	// control, users can still opt-in to the previous behavior for closing the connections by
+	// setting the environment variable DISABLE_HTTP2.
+	var closeAllConns func()
+	if s := os.Getenv("DISABLE_HTTP2"); len(s) > 0 {
+		klog.InfoS("HTTP2 has been explicitly disabled, updating Kubelet client Dialer to forcefully close active connections on heartbeat failures")
+		closeAllConns, err = updateDialer(clientConfig)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		closeAllConns = func() {
+			utilnet.CloseIdleConnectionsFor(clientConfig.Transport)
+		}
 	}
 	return clientConfig, closeAllConns, nil
 }
@@ -1250,7 +1264,7 @@ func createAndInitKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	imageCredentialProviderConfigFile string,
 	imageCredentialProviderBinDir string,
 	registerNode bool,
-	registerWithTaints []api.Taint,
+	registerWithTaints []v1.Taint,
 	allowedUnsafeSysctls []string,
 	experimentalMounterPath string,
 	kernelMemcgNotification bool,
