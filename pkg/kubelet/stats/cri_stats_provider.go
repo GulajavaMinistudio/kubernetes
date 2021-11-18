@@ -32,7 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	internalapi "k8s.io/cri-api/pkg/apis"
-	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
+	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
 	"k8s.io/klog/v2"
 	statsapi "k8s.io/kubelet/pkg/apis/stats/v1alpha1"
 	"k8s.io/kubernetes/pkg/kubelet/cadvisor"
@@ -68,9 +68,8 @@ type criStatsProvider struct {
 	imageService internalapi.ImageManagerService
 	// hostStatsProvider is used to get the status of the host filesystem consumed by pods.
 	hostStatsProvider HostStatsProvider
-	//lint:ignore U1000 We can't import hcsshim due to Build constraints in hcsshim
 	// windowsNetworkStatsProvider is used by kubelet to gather networking stats on Windows
-	windowsNetworkStatsProvider interface{}
+	windowsNetworkStatsProvider interface{} //nolint:unused // U1000 We can't import hcsshim due to Build constraints in hcsshim
 	// clock is used report current time
 	clock clock.Clock
 
