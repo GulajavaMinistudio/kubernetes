@@ -25,15 +25,12 @@ require (
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/clusterhq/flocker-go v0.0.0-20160920122132-2b8b7259d313
 	github.com/container-storage-interface/spec v1.5.0
-	github.com/containernetworking/cni v0.8.1
 	github.com/coredns/corefile-migration v1.0.14
 	github.com/coreos/go-oidc v2.1.0+incompatible
 	github.com/coreos/go-systemd/v22 v22.3.2
 	github.com/cpuguy83/go-md2man/v2 v2.0.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/distribution v2.7.1+incompatible
-	github.com/docker/docker v20.10.7+incompatible
-	github.com/docker/go-connections v0.4.0
 	github.com/docker/go-units v0.4.0
 	github.com/elazarl/goproxy v0.0.0-20180725130230-947c36da3153
 	github.com/emicklei/go-restful v2.9.5+incompatible
@@ -63,7 +60,6 @@ require (
 	github.com/mvdan/xurls v1.1.0
 	github.com/onsi/ginkgo v1.14.0
 	github.com/onsi/gomega v1.10.1
-	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/runc v1.0.2
 	github.com/opencontainers/selinux v1.8.2
 	github.com/pkg/errors v0.9.1
@@ -88,13 +84,13 @@ require (
 	go.opentelemetry.io/proto/otlp v0.7.0
 	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5
 	golang.org/x/exp v0.0.0-20210220032938-85be41e4509f // indirect
-	golang.org/x/net v0.0.0-20210825183410-e898025ed96a
+	golang.org/x/net v0.0.0-20211015210444-4f30a5c0130f
 	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys v0.0.0-20210831042530-f4d43177bf5e
+	golang.org/x/sys v0.0.0-20211019181941-9d821ace8654
 	golang.org/x/term v0.0.0-20210615171337-6886f2dfbf5b
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
-	golang.org/x/tools v0.1.6-0.20210820212750-d4cc65f0b2ff
+	golang.org/x/tools v0.1.8
 	gonum.org/v1/gonum v0.6.2
 	gonum.org/v1/netlib v0.0.0-20190331212654-76723241ea4e // indirect
 	google.golang.org/api v0.46.0
@@ -104,6 +100,7 @@ require (
 	gopkg.in/gcfg.v1 v1.2.0
 	gopkg.in/square/go-jose.v2 v2.2.2
 	gopkg.in/yaml.v2 v2.4.0
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 	k8s.io/api v0.0.0
 	k8s.io/apiextensions-apiserver v0.0.0
 	k8s.io/apimachinery v0.0.0
@@ -133,7 +130,7 @@ require (
 	k8s.io/pod-security-admission v0.0.0
 	k8s.io/sample-apiserver v0.0.0
 	k8s.io/system-validators v1.6.0
-	k8s.io/utils v0.0.0-20210930125809-cb0fa318a74b
+	k8s.io/utils v0.0.0-20211208161948-7d6a63dca704
 	sigs.k8s.io/structured-merge-diff/v4 v4.1.2
 	sigs.k8s.io/yaml v1.2.0
 )
@@ -209,7 +206,6 @@ replace (
 	github.com/containerd/go-runc => github.com/containerd/go-runc v1.0.0
 	github.com/containerd/ttrpc => github.com/containerd/ttrpc v1.0.2
 	github.com/containerd/typeurl => github.com/containerd/typeurl v1.0.2
-	github.com/containernetworking/cni => github.com/containernetworking/cni v0.8.1
 	github.com/coredns/caddy => github.com/coredns/caddy v1.1.0
 	github.com/coredns/corefile-migration => github.com/coredns/corefile-migration v1.0.14
 	github.com/coreos/go-oidc => github.com/coreos/go-oidc v2.1.0+incompatible
@@ -423,7 +419,7 @@ replace (
 	github.com/vmware/govmomi => github.com/vmware/govmomi v0.20.3
 	github.com/xiang90/probing => github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2
 	github.com/xlab/treeprint => github.com/xlab/treeprint v0.0.0-20181112141820-a009c3971eca
-	github.com/yuin/goldmark => github.com/yuin/goldmark v1.4.0
+	github.com/yuin/goldmark => github.com/yuin/goldmark v1.4.1
 	go.etcd.io/bbolt => go.etcd.io/bbolt v1.3.6
 	go.etcd.io/etcd/api/v3 => go.etcd.io/etcd/api/v3 v3.5.0
 	go.etcd.io/etcd/client/pkg/v3 => go.etcd.io/etcd/client/pkg/v3 v3.5.0
@@ -455,15 +451,15 @@ replace (
 	golang.org/x/image => golang.org/x/image v0.0.0-20190802002840-cff245a6509b
 	golang.org/x/lint => golang.org/x/lint v0.0.0-20210508222113-6edffad5e616
 	golang.org/x/mobile => golang.org/x/mobile v0.0.0-20201217150744-e6ae53a27f4f
-	golang.org/x/mod => golang.org/x/mod v0.4.2
-	golang.org/x/net => golang.org/x/net v0.0.0-20210825183410-e898025ed96a
+	golang.org/x/mod => golang.org/x/mod v0.5.1
+	golang.org/x/net => golang.org/x/net v0.0.0-20211015210444-4f30a5c0130f
 	golang.org/x/oauth2 => golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f
 	golang.org/x/sync => golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys => golang.org/x/sys v0.0.0-20210831042530-f4d43177bf5e
+	golang.org/x/sys => golang.org/x/sys v0.0.0-20211019181941-9d821ace8654
 	golang.org/x/term => golang.org/x/term v0.0.0-20210615171337-6886f2dfbf5b
 	golang.org/x/text => golang.org/x/text v0.3.7
 	golang.org/x/time => golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
-	golang.org/x/tools => golang.org/x/tools v0.1.6-0.20210820212750-d4cc65f0b2ff
+	golang.org/x/tools => golang.org/x/tools v0.1.8
 	golang.org/x/xerrors => golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 	gonum.org/v1/gonum => gonum.org/v1/gonum v0.6.2
 	gonum.org/v1/netlib => gonum.org/v1/netlib v0.0.0-20190331212654-76723241ea4e
@@ -518,7 +514,7 @@ replace (
 	k8s.io/sample-cli-plugin => ./staging/src/k8s.io/sample-cli-plugin
 	k8s.io/sample-controller => ./staging/src/k8s.io/sample-controller
 	k8s.io/system-validators => k8s.io/system-validators v1.6.0
-	k8s.io/utils => k8s.io/utils v0.0.0-20210930125809-cb0fa318a74b
+	k8s.io/utils => k8s.io/utils v0.0.0-20211208161948-7d6a63dca704
 	modernc.org/cc => modernc.org/cc v1.0.0
 	modernc.org/golex => modernc.org/golex v1.0.0
 	modernc.org/mathutil => modernc.org/mathutil v1.0.0
