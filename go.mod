@@ -116,7 +116,7 @@ require (
 	k8s.io/cri-api v0.0.0
 	k8s.io/csi-translation-lib v0.0.0
 	k8s.io/gengo v0.0.0-20211129171323-c02415ce4185
-	k8s.io/klog/v2 v2.30.0
+	k8s.io/klog/v2 v2.40.1
 	k8s.io/kube-aggregator v0.0.0
 	k8s.io/kube-controller-manager v0.0.0
 	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
@@ -347,7 +347,7 @@ replace (
 	github.com/moby/ipvs => github.com/moby/ipvs v1.0.1
 	github.com/moby/spdystream => github.com/moby/spdystream v0.2.0
 	github.com/moby/sys/mountinfo => github.com/moby/sys/mountinfo v0.4.1
-	github.com/moby/term => github.com/moby/term v0.0.0-20210610120745-9d4ed1856297
+	github.com/moby/term => github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6
 	github.com/modern-go/concurrent => github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
 	github.com/modern-go/reflect2 => github.com/modern-go/reflect2 v1.0.2
 	github.com/mohae/deepcopy => github.com/mohae/deepcopy v0.0.0-20170603005431-491d3605edfb
@@ -498,7 +498,7 @@ replace (
 	k8s.io/cri-api => ./staging/src/k8s.io/cri-api
 	k8s.io/csi-translation-lib => ./staging/src/k8s.io/csi-translation-lib
 	k8s.io/gengo => k8s.io/gengo v0.0.0-20211129171323-c02415ce4185
-	k8s.io/klog/v2 => k8s.io/klog/v2 v2.30.0
+	k8s.io/klog/v2 => k8s.io/klog/v2 v2.40.1
 	k8s.io/kube-aggregator => ./staging/src/k8s.io/kube-aggregator
 	k8s.io/kube-controller-manager => ./staging/src/k8s.io/kube-controller-manager
 	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
