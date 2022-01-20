@@ -59,6 +59,7 @@ aliases:
     - wojtek-t
   sig-auth-encryption-at-rest-approvers:
     - smarterclayton
+    - enj
   sig-auth-encryption-at-rest-reviewers:
     - enj
     - lavalamp
@@ -424,7 +425,7 @@ aliases:
   # sig-cluster-lifecycle-api-reviewers:
   #   -
   #   -
-  sig-contribex-approvers:
+  sig-contributor-experience-approvers:
     - mrbobbytables
     - cblecker
     - nikhita
