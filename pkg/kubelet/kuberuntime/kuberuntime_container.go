@@ -34,6 +34,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opencontainers/selinux/go-selinux"
 	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/armon/circbuf"
@@ -51,7 +52,6 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/events"
 	"k8s.io/kubernetes/pkg/kubelet/types"
 	"k8s.io/kubernetes/pkg/kubelet/util/format"
-	"k8s.io/kubernetes/pkg/util/selinux"
 	"k8s.io/kubernetes/pkg/util/tail"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 )
@@ -378,7 +378,7 @@ func (m *kubeGenericRuntimeManager) makeMounts(opts *kubecontainer.RunContainerO
 
 	for idx := range opts.Mounts {
 		v := opts.Mounts[idx]
-		selinuxRelabel := v.SELinuxRelabel && selinux.SELinuxEnabled()
+		selinuxRelabel := v.SELinuxRelabel && selinux.GetEnabled()
 		mount := &runtimeapi.Mount{
 			HostPath:       v.HostPath,
 			ContainerPath:  v.ContainerPath,
@@ -393,9 +393,7 @@ func (m *kubeGenericRuntimeManager) makeMounts(opts *kubecontainer.RunContainerO
 	// The reason we create and mount the log file in here (not in kubelet) is because
 	// the file's location depends on the ID of the container, and we need to create and
 	// mount the file before actually starting the container.
-	// we can only mount individual files (e.g.: /etc/hosts, termination-log files) on Windows only if we're using Containerd.
-	supportsSingleFileMapping := m.SupportsSingleFileMapping()
-	if opts.PodContainerDir != "" && len(container.TerminationMessagePath) != 0 && supportsSingleFileMapping {
+	if opts.PodContainerDir != "" && len(container.TerminationMessagePath) != 0 {
 		// Because the PodContainerDir contains pod uid and container name which is unique enough,
 		// here we just add a random id to make the path unique for different instances
 		// of the same container.
@@ -418,7 +416,7 @@ func (m *kubeGenericRuntimeManager) makeMounts(opts *kubecontainer.RunContainerO
 			// Volume Mounts fail on Windows if it is not of the form C:/
 			containerLogPath = volumeutil.MakeAbsolutePath(goruntime.GOOS, containerLogPath)
 			terminationMessagePath := volumeutil.MakeAbsolutePath(goruntime.GOOS, container.TerminationMessagePath)
-			selinuxRelabel := selinux.SELinuxEnabled()
+			selinuxRelabel := selinux.GetEnabled()
 			volumeMounts = append(volumeMounts, &runtimeapi.Mount{
 				HostPath:       containerLogPath,
 				ContainerPath:  terminationMessagePath,
