@@ -614,6 +614,7 @@ const (
 	// owner: @ahg-g
 	// alpha: v1.21
 	// beta: v1.22
+	// GA: v1.24
 	//
 	// Allow specifying NamespaceSelector in PodAffinityTerm.
 	PodAffinityNamespaceSelector featuregate.Feature = "PodAffinityNamespaceSelector"
@@ -653,6 +654,7 @@ const (
 	// owner: @adtac
 	// alpha: v1.21
 	// beta: v1.22
+	// GA: v1.24
 	//
 	// Allows jobs to be created in the suspended state.
 	SuspendJob featuregate.Feature = "SuspendJob"
@@ -848,7 +850,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	InTreePluginAWSUnregister:                      {Default: false, PreRelease: featuregate.Alpha},
 	CSIMigrationAzureDisk:                          {Default: true, PreRelease: featuregate.Beta}, // On by default in 1.23 (requires Azure Disk CSI driver)
 	InTreePluginAzureDiskUnregister:                {Default: false, PreRelease: featuregate.Alpha},
-	CSIMigrationAzureFile:                          {Default: false, PreRelease: featuregate.Beta}, // Off by default (requires Azure File CSI driver)
+	CSIMigrationAzureFile:                          {Default: true, PreRelease: featuregate.Beta}, // On by default in 1.24 (requires Azure File CSI driver)
 	InTreePluginAzureFileUnregister:                {Default: false, PreRelease: featuregate.Alpha},
 	CSIMigrationvSphere:                            {Default: false, PreRelease: featuregate.Beta}, // Off by default (requires vSphere CSI driver)
 	InTreePluginvSphereUnregister:                  {Default: false, PreRelease: featuregate.Alpha},
@@ -905,12 +907,12 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	PodDeletionCost:                                {Default: true, PreRelease: featuregate.Beta},
 	StatefulSetAutoDeletePVC:                       {Default: false, PreRelease: featuregate.Alpha},
 	TopologyAwareHints:                             {Default: false, PreRelease: featuregate.Beta},
-	PodAffinityNamespaceSelector:                   {Default: true, PreRelease: featuregate.Beta},
+	PodAffinityNamespaceSelector:                   {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.26
 	ServiceLoadBalancerClass:                       {Default: true, PreRelease: featuregate.Beta},
 	IngressClassNamespacedParams:                   {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.24
 	ServiceInternalTrafficPolicy:                   {Default: true, PreRelease: featuregate.Beta},
 	LogarithmicScaleDown:                           {Default: true, PreRelease: featuregate.Beta},
-	SuspendJob:                                     {Default: true, PreRelease: featuregate.Beta},
+	SuspendJob:                                     {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.26
 	KubeletPodResourcesGetAllocatable:              {Default: true, PreRelease: featuregate.Beta},
 	CSIVolumeHealth:                                {Default: false, PreRelease: featuregate.Alpha},
 	WindowsHostProcessContainers:                   {Default: true, PreRelease: featuregate.Beta},

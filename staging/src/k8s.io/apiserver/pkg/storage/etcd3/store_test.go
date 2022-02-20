@@ -79,24 +79,24 @@ type prefixTransformer struct {
 	reads  uint64
 }
 
-func (p *prefixTransformer) TransformFromStorage(b []byte, ctx value.Context) ([]byte, bool, error) {
+func (p *prefixTransformer) TransformFromStorage(ctx context.Context, data []byte, dataCtx value.Context) ([]byte, bool, error) {
 	atomic.AddUint64(&p.reads, 1)
-	if ctx == nil {
+	if dataCtx == nil {
 		panic("no context provided")
 	}
-	if !bytes.HasPrefix(b, p.prefix) {
-		return nil, false, fmt.Errorf("value does not have expected prefix %q: %s,", p.prefix, string(b))
+	if !bytes.HasPrefix(data, p.prefix) {
+		return nil, false, fmt.Errorf("value does not have expected prefix %q: %s,", p.prefix, string(data))
 	}
-	return bytes.TrimPrefix(b, p.prefix), p.stale, p.err
+	return bytes.TrimPrefix(data, p.prefix), p.stale, p.err
 }
-func (p *prefixTransformer) TransformToStorage(b []byte, ctx value.Context) ([]byte, error) {
-	if ctx == nil {
+func (p *prefixTransformer) TransformToStorage(ctx context.Context, data []byte, dataCtx value.Context) ([]byte, error) {
+	if dataCtx == nil {
 		panic("no context provided")
 	}
-	if len(b) > 0 {
-		return append(append([]byte{}, p.prefix...), b...), p.err
+	if len(data) > 0 {
+		return append(append([]byte{}, p.prefix...), data...), p.err
 	}
-	return b, p.err
+	return data, p.err
 }
 
 func (p *prefixTransformer) resetReads() {
@@ -1164,6 +1164,13 @@ func TestList(t *testing.T) {
 		},
 	}
 
+	// we want to figure out the resourceVersion before we create anything
+	initialList := &example.PodList{}
+	if err := store.List(ctx, "/", storage.ListOptions{Predicate: storage.Everything}, initialList); err != nil {
+		t.Errorf("Unexpected List error: %v", err)
+	}
+	initialRV := initialList.ResourceVersion
+
 	for i, ps := range preset {
 		preset[i].storedObj = &example.Pod{}
 		err := store.Create(ctx, ps.key, ps.obj, preset[i].storedObj, 0)
@@ -1244,16 +1251,16 @@ func TestList(t *testing.T) {
 			rv:          "0",
 		},
 		{
-			name:        "test List on existing key with resource version set to 1, match=Exact",
+			name:        "test List on existing key with resource version set before first write, match=Exact",
 			prefix:      "/one-level/",
 			pred:        storage.Everything,
 			expectedOut: []*example.Pod{},
-			rv:          "1",
+			rv:          initialRV,
 			rvMatch:     metav1.ResourceVersionMatchExact,
-			expectRV:    "1",
+			expectRV:    initialRV,
 		},
 		{
-			name:        "test List on existing key with resource version set to 1, match=NotOlderThan",
+			name:        "test List on existing key with resource version set to 0, match=NotOlderThan",
 			prefix:      "/one-level/",
 			pred:        storage.Everything,
 			expectedOut: []*example.Pod{preset[0].storedObj},
@@ -1261,10 +1268,26 @@ func TestList(t *testing.T) {
 			rvMatch:     metav1.ResourceVersionMatchNotOlderThan,
 		},
 		{
-			name:        "test List on existing key with resource version set to 1, match=Invalid",
+			name:        "test List on existing key with resource version set to 0, match=Invalid",
 			prefix:      "/one-level/",
 			pred:        storage.Everything,
 			rv:          "0",
+			rvMatch:     "Invalid",
+			expectError: true,
+		},
+		{
+			name:        "test List on existing key with resource version set before first write, match=NotOlderThan",
+			prefix:      "/one-level/",
+			pred:        storage.Everything,
+			expectedOut: []*example.Pod{preset[0].storedObj},
+			rv:          initialRV,
+			rvMatch:     metav1.ResourceVersionMatchNotOlderThan,
+		},
+		{
+			name:        "test List on existing key with resource version set before first write, match=Invalid",
+			prefix:      "/one-level/",
+			pred:        storage.Everything,
+			rv:          initialRV,
 			rvMatch:     "Invalid",
 			expectError: true,
 		},
@@ -1378,7 +1401,7 @@ func TestList(t *testing.T) {
 			expectRV:                   list.ResourceVersion,
 		},
 		{
-			name:   "test List with limit at resource version 1 and match=Exact",
+			name:   "test List with limit at resource version before first write and match=Exact",
 			prefix: "/two-level/",
 			pred: storage.SelectionPredicate{
 				Label: labels.Everything(),
@@ -1387,9 +1410,9 @@ func TestList(t *testing.T) {
 			},
 			expectedOut:    []*example.Pod{},
 			expectContinue: false,
-			rv:             "1",
+			rv:             initialRV,
 			rvMatch:        metav1.ResourceVersionMatchExact,
-			expectRV:       "1",
+			expectRV:       initialRV,
 		},
 		{
 			name:          "test List with limit when paging disabled",
@@ -2231,18 +2254,18 @@ type fancyTransformer struct {
 	index int
 }
 
-func (t *fancyTransformer) TransformFromStorage(b []byte, ctx value.Context) ([]byte, bool, error) {
-	if err := t.createObject(); err != nil {
+func (t *fancyTransformer) TransformFromStorage(ctx context.Context, data []byte, dataCtx value.Context) ([]byte, bool, error) {
+	if err := t.createObject(ctx); err != nil {
 		return nil, false, err
 	}
-	return t.transformer.TransformFromStorage(b, ctx)
+	return t.transformer.TransformFromStorage(ctx, data, dataCtx)
 }
 
-func (t *fancyTransformer) TransformToStorage(b []byte, ctx value.Context) ([]byte, error) {
-	return t.transformer.TransformToStorage(b, ctx)
+func (t *fancyTransformer) TransformToStorage(ctx context.Context, data []byte, dataCtx value.Context) ([]byte, error) {
+	return t.transformer.TransformToStorage(ctx, data, dataCtx)
 }
 
-func (t *fancyTransformer) createObject() error {
+func (t *fancyTransformer) createObject(ctx context.Context) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
@@ -2257,12 +2280,13 @@ func (t *fancyTransformer) createObject() error {
 		},
 	}
 	out := &example.Pod{}
-	return t.store.Create(context.TODO(), key, obj, out, 0)
+	return t.store.Create(ctx, key, obj, out, 0)
 }
 
 func TestConsistentList(t *testing.T) {
 	client := testserver.RunEtcd(t, nil)
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
+	ctx := context.Background()
 
 	transformer := &fancyTransformer{
 		transformer: &prefixTransformer{prefix: []byte(defaultTestPrefix)},
@@ -2271,7 +2295,7 @@ func TestConsistentList(t *testing.T) {
 	transformer.store = store
 
 	for i := 0; i < 5; i++ {
-		if err := transformer.createObject(); err != nil {
+		if err := transformer.createObject(ctx); err != nil {
 			t.Fatalf("failed to create object: %v", err)
 		}
 	}
@@ -2293,7 +2317,7 @@ func TestConsistentList(t *testing.T) {
 	options := storage.ListOptions{
 		Predicate: predicate,
 	}
-	if err := store.List(context.TODO(), "/", options, &result1); err != nil {
+	if err := store.List(ctx, "/", options, &result1); err != nil {
 		t.Fatalf("failed to list objects: %v", err)
 	}
 
@@ -2305,7 +2329,7 @@ func TestConsistentList(t *testing.T) {
 	}
 
 	result2 := example.PodList{}
-	if err := store.List(context.TODO(), "/", options, &result2); err != nil {
+	if err := store.List(ctx, "/", options, &result2); err != nil {
 		t.Fatalf("failed to list objects: %v", err)
 	}
 
@@ -2317,7 +2341,7 @@ func TestConsistentList(t *testing.T) {
 	options.ResourceVersionMatch = metav1.ResourceVersionMatchNotOlderThan
 
 	result3 := example.PodList{}
-	if err := store.List(context.TODO(), "/", options, &result3); err != nil {
+	if err := store.List(ctx, "/", options, &result3); err != nil {
 		t.Fatalf("failed to list objects: %v", err)
 	}
 
@@ -2325,7 +2349,7 @@ func TestConsistentList(t *testing.T) {
 	options.ResourceVersionMatch = metav1.ResourceVersionMatchExact
 
 	result4 := example.PodList{}
-	if err := store.List(context.TODO(), "/", options, &result4); err != nil {
+	if err := store.List(ctx, "/", options, &result4); err != nil {
 		t.Fatalf("failed to list objects: %v", err)
 	}
 
