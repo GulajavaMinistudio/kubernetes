@@ -46,7 +46,6 @@ import (
 	flowcontrolv1alpha1 "k8s.io/api/flowcontrol/v1alpha1"
 	networkingapiv1 "k8s.io/api/networking/v1"
 	nodev1 "k8s.io/api/node/v1"
-	nodev1alpha1 "k8s.io/api/node/v1alpha1"
 	nodev1beta1 "k8s.io/api/node/v1beta1"
 	policyapiv1 "k8s.io/api/policy/v1"
 	policyapiv1beta1 "k8s.io/api/policy/v1beta1"
@@ -392,24 +391,9 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 	}
 
 	// install legacy rest storage
-	if c.ExtraConfig.APIResourceConfigSource.VersionEnabled(apiv1.SchemeGroupVersion) {
-		legacyRESTStorageProvider := corerest.LegacyRESTStorageProvider{
-			StorageFactory:              c.ExtraConfig.StorageFactory,
-			ProxyTransport:              c.ExtraConfig.ProxyTransport,
-			KubeletClientConfig:         c.ExtraConfig.KubeletClientConfig,
-			EventTTL:                    c.ExtraConfig.EventTTL,
-			ServiceIPRange:              c.ExtraConfig.ServiceIPRange,
-			SecondaryServiceIPRange:     c.ExtraConfig.SecondaryServiceIPRange,
-			ServiceNodePortRange:        c.ExtraConfig.ServiceNodePortRange,
-			LoopbackClientConfig:        c.GenericConfig.LoopbackClientConfig,
-			ServiceAccountIssuer:        c.ExtraConfig.ServiceAccountIssuer,
-			ExtendExpiration:            c.ExtraConfig.ExtendExpiration,
-			ServiceAccountMaxExpiration: c.ExtraConfig.ServiceAccountMaxExpiration,
-			APIAudiences:                c.GenericConfig.Authentication.APIAudiences,
-		}
-		if err := m.InstallLegacyAPI(&c, c.GenericConfig.RESTOptionsGetter, legacyRESTStorageProvider); err != nil {
-			return nil, err
-		}
+
+	if err := m.InstallLegacyAPI(&c, c.GenericConfig.RESTOptionsGetter); err != nil {
+		return nil, err
 	}
 
 	// The order here is preserved in discovery.
@@ -524,10 +508,27 @@ func labelAPIServerHeartbeat(lease *coordinationapiv1.Lease) error {
 }
 
 // InstallLegacyAPI will install the legacy APIs for the restStorageProviders if they are enabled.
-func (m *Instance) InstallLegacyAPI(c *completedConfig, restOptionsGetter generic.RESTOptionsGetter, legacyRESTStorageProvider corerest.LegacyRESTStorageProvider) error {
-	legacyRESTStorage, apiGroupInfo, err := legacyRESTStorageProvider.NewLegacyRESTStorage(restOptionsGetter)
+func (m *Instance) InstallLegacyAPI(c *completedConfig, restOptionsGetter generic.RESTOptionsGetter) error {
+	legacyRESTStorageProvider := corerest.LegacyRESTStorageProvider{
+		StorageFactory:              c.ExtraConfig.StorageFactory,
+		ProxyTransport:              c.ExtraConfig.ProxyTransport,
+		KubeletClientConfig:         c.ExtraConfig.KubeletClientConfig,
+		EventTTL:                    c.ExtraConfig.EventTTL,
+		ServiceIPRange:              c.ExtraConfig.ServiceIPRange,
+		SecondaryServiceIPRange:     c.ExtraConfig.SecondaryServiceIPRange,
+		ServiceNodePortRange:        c.ExtraConfig.ServiceNodePortRange,
+		LoopbackClientConfig:        c.GenericConfig.LoopbackClientConfig,
+		ServiceAccountIssuer:        c.ExtraConfig.ServiceAccountIssuer,
+		ExtendExpiration:            c.ExtraConfig.ExtendExpiration,
+		ServiceAccountMaxExpiration: c.ExtraConfig.ServiceAccountMaxExpiration,
+		APIAudiences:                c.GenericConfig.Authentication.APIAudiences,
+	}
+	legacyRESTStorage, apiGroupInfo, err := legacyRESTStorageProvider.NewLegacyRESTStorage(c.ExtraConfig.APIResourceConfigSource, restOptionsGetter)
 	if err != nil {
 		return fmt.Errorf("error building core storage: %v", err)
+	}
+	if len(apiGroupInfo.VersionedResourcesStorageMap) == 0 { // if all core storage is disabled, return.
+		return nil
 	}
 
 	controllerName := "bootstrap-controller"
@@ -663,7 +664,7 @@ func DefaultAPIResourceConfigSource() *serverstorage.ResourceConfig {
 		eventsv1beta1.SchemeGroupVersion,
 		networkingapiv1.SchemeGroupVersion,
 		nodev1.SchemeGroupVersion,
-		nodev1beta1.SchemeGroupVersion,
+		nodev1beta1.SchemeGroupVersion, // remove in 1.26
 		policyapiv1.SchemeGroupVersion,
 		policyapiv1beta1.SchemeGroupVersion,
 		rbacv1.SchemeGroupVersion,
@@ -676,7 +677,6 @@ func DefaultAPIResourceConfigSource() *serverstorage.ResourceConfig {
 	// disable alpha versions explicitly so we have a full list of what's possible to serve
 	ret.DisableVersions(
 		apiserverinternalv1alpha1.SchemeGroupVersion,
-		nodev1alpha1.SchemeGroupVersion,
 		storageapiv1alpha1.SchemeGroupVersion,
 		flowcontrolv1alpha1.SchemeGroupVersion,
 	)
