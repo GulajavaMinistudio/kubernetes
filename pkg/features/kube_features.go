@@ -162,7 +162,9 @@ const (
 	CSIStorageCapacity featuregate.Feature = "CSIStorageCapacity"
 
 	// owner: @alculquicondor
+	// alpha: v1.19
 	// beta: v1.20
+	// GA: v1.24
 	//
 	// Enables the use of PodTopologySpread scheduling plugin to do default
 	// spreading and disables legacy SelectorSpread plugin.
@@ -888,7 +890,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	DaemonSetUpdateSurge:                           {Default: true, PreRelease: featuregate.Beta},                    // on by default in 1.22
 	DownwardAPIHugePages:                           {Default: true, PreRelease: featuregate.Beta},                    // on by default in 1.22
 	AnyVolumeDataSource:                            {Default: false, PreRelease: featuregate.Alpha},
-	DefaultPodTopologySpread:                       {Default: true, PreRelease: featuregate.Beta},
+	DefaultPodTopologySpread:                       {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.26
 	WinOverlay:                                     {Default: true, PreRelease: featuregate.Beta},
 	WinDSR:                                         {Default: false, PreRelease: featuregate.Alpha},
 	DisableAcceleratorUsageMetrics:                 {Default: true, PreRelease: featuregate.Beta},
@@ -909,7 +911,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	TopologyAwareHints:                             {Default: false, PreRelease: featuregate.Beta},
 	PodAffinityNamespaceSelector:                   {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.26
 	ServiceLoadBalancerClass:                       {Default: true, PreRelease: featuregate.Beta},
-	IngressClassNamespacedParams:                   {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.24
+	IngressClassNamespacedParams:                   {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.25
 	ServiceInternalTrafficPolicy:                   {Default: true, PreRelease: featuregate.Beta},
 	LogarithmicScaleDown:                           {Default: true, PreRelease: featuregate.Beta},
 	SuspendJob:                                     {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.26
