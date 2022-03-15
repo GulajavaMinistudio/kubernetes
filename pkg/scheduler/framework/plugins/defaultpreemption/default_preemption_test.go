@@ -128,8 +128,8 @@ func (pl *TestPlugin) PreFilterExtensions() framework.PreFilterExtensions {
 	return pl
 }
 
-func (pl *TestPlugin) PreFilter(ctx context.Context, state *framework.CycleState, p *v1.Pod) *framework.Status {
-	return nil
+func (pl *TestPlugin) PreFilter(ctx context.Context, state *framework.CycleState, p *v1.Pod) (*framework.PreFilterResult, *framework.Status) {
+	return nil, nil
 }
 
 func (pl *TestPlugin) Filter(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodeInfo *framework.NodeInfo) *framework.Status {
@@ -368,7 +368,7 @@ func TestPostFilter(t *testing.T) {
 
 			state := framework.NewCycleState()
 			// Ensure <state> is populated.
-			if status := f.RunPreFilterPlugins(context.Background(), state, tt.pod); !status.IsSuccess() {
+			if _, status := f.RunPreFilterPlugins(context.Background(), state, tt.pod); !status.IsSuccess() {
 				t.Errorf("Unexpected PreFilter Status: %v", status)
 			}
 
@@ -641,8 +641,8 @@ func TestDryRunPreemption(t *testing.T) {
 			nodeNames: []string{"node-a/zone1", "node-b/zone1", "node-x/zone2"},
 			testPods: []*v1.Pod{
 				st.MakePod().Name("p").UID("p").Label("foo", "").Priority(highPriority).
-					SpreadConstraint(1, "zone", v1.DoNotSchedule, st.MakeLabelSelector().Exists("foo").Obj()).
-					SpreadConstraint(1, "hostname", v1.DoNotSchedule, st.MakeLabelSelector().Exists("foo").Obj()).
+					SpreadConstraint(1, "zone", v1.DoNotSchedule, st.MakeLabelSelector().Exists("foo").Obj(), nil).
+					SpreadConstraint(1, "hostname", v1.DoNotSchedule, st.MakeLabelSelector().Exists("foo").Obj(), nil).
 					Obj(),
 			},
 			initPods: []*v1.Pod{
@@ -670,7 +670,6 @@ func TestDryRunPreemption(t *testing.T) {
 			},
 			expectedNumFilterCalled: []int32{5}, // node-a (3), node-b (2), node-x (0)
 		},
-
 		{
 			name: "get Unschedulable in the preemption phase when the filter plugins filtering the nodes",
 			registerPlugins: []st.RegisterPluginFunc{
@@ -1123,7 +1122,7 @@ func TestDryRunPreemption(t *testing.T) {
 			for cycle, pod := range tt.testPods {
 				state := framework.NewCycleState()
 				// Some tests rely on PreFilter plugin to compute its CycleState.
-				if status := fwk.RunPreFilterPlugins(context.Background(), state, pod); !status.IsSuccess() {
+				if _, status := fwk.RunPreFilterPlugins(context.Background(), state, pod); !status.IsSuccess() {
 					t.Errorf("cycle %d: Unexpected PreFilter Status: %v", cycle, status)
 				}
 				pe := preemption.Evaluator{
@@ -1348,7 +1347,7 @@ func TestSelectBestCandidate(t *testing.T) {
 
 			state := framework.NewCycleState()
 			// Some tests rely on PreFilter plugin to compute its CycleState.
-			if status := fwk.RunPreFilterPlugins(context.Background(), state, tt.pod); !status.IsSuccess() {
+			if _, status := fwk.RunPreFilterPlugins(context.Background(), state, tt.pod); !status.IsSuccess() {
 				t.Errorf("Unexpected PreFilter Status: %v", status)
 			}
 			nodeInfos, err := snapshot.NodeInfos().List()
@@ -1484,8 +1483,8 @@ func TestPreempt(t *testing.T) {
 		{
 			name: "preemption for topology spread constraints",
 			pod: st.MakePod().Name("p").UID("p").Namespace(v1.NamespaceDefault).Label("foo", "").Priority(highPriority).
-				SpreadConstraint(1, "zone", v1.DoNotSchedule, st.MakeLabelSelector().Exists("foo").Obj()).
-				SpreadConstraint(1, "hostname", v1.DoNotSchedule, st.MakeLabelSelector().Exists("foo").Obj()).
+				SpreadConstraint(1, "zone", v1.DoNotSchedule, st.MakeLabelSelector().Exists("foo").Obj(), nil).
+				SpreadConstraint(1, "hostname", v1.DoNotSchedule, st.MakeLabelSelector().Exists("foo").Obj(), nil).
 				Obj(),
 			pods: []*v1.Pod{
 				st.MakePod().Name("p-a1").UID("p-a1").Namespace(v1.NamespaceDefault).Node("node-a").Label("foo", "").Priority(highPriority).Obj(),
@@ -1689,9 +1688,8 @@ func TestPreempt(t *testing.T) {
 
 			state := framework.NewCycleState()
 			// Some tests rely on PreFilter plugin to compute its CycleState.
-			preFilterStatus := fwk.RunPreFilterPlugins(context.Background(), state, test.pod)
-			if !preFilterStatus.IsSuccess() {
-				t.Errorf("Unexpected preFilterStatus: %v", preFilterStatus)
+			if _, s := fwk.RunPreFilterPlugins(context.Background(), state, test.pod); !s.IsSuccess() {
+				t.Errorf("Unexpected preFilterStatus: %v", s)
 			}
 			// Call preempt and check the expected results.
 			pl := DefaultPreemption{
