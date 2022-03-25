@@ -2243,7 +2243,7 @@ type ProbeHandler struct {
 	TCPSocket *TCPSocketAction
 
 	// GRPC specifies an action involving a GRPC port.
-	// This is an alpha field and requires enabling GRPCContainerProbe feature gate.
+	// This is a beta field and requires enabling GRPCContainerProbe feature gate.
 	// +featureGate=GRPCContainerProbe
 	// +optional
 	GRPC *GRPCAction
@@ -2984,7 +2984,7 @@ type PodSpec struct {
 	// - spec.containers[*].securityContext.runAsUser
 	// - spec.containers[*].securityContext.runAsGroup
 	// +optional
-	// This is an alpha field and requires the IdentifyPodOS feature
+	// This is a beta field and requires the IdentifyPodOS feature
 	OS *PodOS
 }
 

@@ -2461,7 +2461,7 @@ type ProbeHandler struct {
 	TCPSocket *TCPSocketAction `json:"tcpSocket,omitempty" protobuf:"bytes,3,opt,name=tcpSocket"`
 
 	// GRPC specifies an action involving a GRPC port.
-	// This is an alpha field and requires enabling GRPCContainerProbe feature gate.
+	// This is a beta field and requires enabling GRPCContainerProbe feature gate.
 	// +featureGate=GRPCContainerProbe
 	// +optional
 	GRPC *GRPCAction `json:"grpc,omitempty" protobuf:"bytes,4,opt,name=grpc"`
@@ -3297,7 +3297,7 @@ type PodSpec struct {
 	// - spec.containers[*].securityContext.runAsUser
 	// - spec.containers[*].securityContext.runAsGroup
 	// +optional
-	// This is an alpha field and requires the IdentifyPodOS feature
+	// This is a beta field and requires the IdentifyPodOS feature
 	OS *PodOS `json:"os,omitempty" protobuf:"bytes,36,opt,name=os"`
 }
 

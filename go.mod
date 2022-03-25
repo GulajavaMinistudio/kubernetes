@@ -78,9 +78,9 @@ require (
 	github.com/vishvananda/netlink v1.1.0
 	github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae // indirect
 	github.com/vmware/govmomi v0.20.3
-	go.etcd.io/etcd/api/v3 v3.5.0
-	go.etcd.io/etcd/client/pkg/v3 v3.5.0
-	go.etcd.io/etcd/client/v3 v3.5.0
+	go.etcd.io/etcd/api/v3 v3.5.1
+	go.etcd.io/etcd/client/pkg/v3 v3.5.1
+	go.etcd.io/etcd/client/v3 v3.5.1
 	go.opentelemetry.io/otel/sdk v0.20.0
 	go.opentelemetry.io/otel/trace v0.20.0
 	go.opentelemetry.io/proto/otlp v0.7.0
@@ -119,10 +119,10 @@ require (
 	k8s.io/cri-api v0.0.0
 	k8s.io/csi-translation-lib v0.0.0
 	k8s.io/gengo v0.0.0-20211129171323-c02415ce4185
-	k8s.io/klog/v2 v2.40.1
+	k8s.io/klog/v2 v2.60.1
 	k8s.io/kube-aggregator v0.0.0
 	k8s.io/kube-controller-manager v0.0.0
-	k8s.io/kube-openapi v0.0.0-20220316025549-ddc66922ab18
+	k8s.io/kube-openapi v0.0.0-20220323210520-29d726468e05
 	k8s.io/kube-proxy v0.0.0
 	k8s.io/kube-scheduler v0.0.0
 	k8s.io/kubectl v0.0.0
@@ -382,10 +382,10 @@ replace (
 	github.com/xlab/treeprint => github.com/xlab/treeprint v0.0.0-20181112141820-a009c3971eca
 	github.com/yuin/goldmark => github.com/yuin/goldmark v1.4.1
 	go.etcd.io/bbolt => go.etcd.io/bbolt v1.3.6
-	go.etcd.io/etcd/api/v3 => go.etcd.io/etcd/api/v3 v3.5.0
-	go.etcd.io/etcd/client/pkg/v3 => go.etcd.io/etcd/client/pkg/v3 v3.5.0
+	go.etcd.io/etcd/api/v3 => go.etcd.io/etcd/api/v3 v3.5.1
+	go.etcd.io/etcd/client/pkg/v3 => go.etcd.io/etcd/client/pkg/v3 v3.5.1
 	go.etcd.io/etcd/client/v2 => go.etcd.io/etcd/client/v2 v2.305.0
-	go.etcd.io/etcd/client/v3 => go.etcd.io/etcd/client/v3 v3.5.0
+	go.etcd.io/etcd/client/v3 => go.etcd.io/etcd/client/v3 v3.5.1
 	go.etcd.io/etcd/pkg/v3 => go.etcd.io/etcd/pkg/v3 v3.5.0
 	go.etcd.io/etcd/raft/v3 => go.etcd.io/etcd/raft/v3 v3.5.0
 	go.etcd.io/etcd/server/v3 => go.etcd.io/etcd/server/v3 v3.5.0
@@ -458,10 +458,10 @@ replace (
 	k8s.io/cri-api => ./staging/src/k8s.io/cri-api
 	k8s.io/csi-translation-lib => ./staging/src/k8s.io/csi-translation-lib
 	k8s.io/gengo => k8s.io/gengo v0.0.0-20211129171323-c02415ce4185
-	k8s.io/klog/v2 => k8s.io/klog/v2 v2.40.1
+	k8s.io/klog/v2 => k8s.io/klog/v2 v2.60.1
 	k8s.io/kube-aggregator => ./staging/src/k8s.io/kube-aggregator
 	k8s.io/kube-controller-manager => ./staging/src/k8s.io/kube-controller-manager
-	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20220316025549-ddc66922ab18
+	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20220323210520-29d726468e05
 	k8s.io/kube-proxy => ./staging/src/k8s.io/kube-proxy
 	k8s.io/kube-scheduler => ./staging/src/k8s.io/kube-scheduler
 	k8s.io/kubectl => ./staging/src/k8s.io/kubectl

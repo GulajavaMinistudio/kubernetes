@@ -753,7 +753,7 @@ github.com/xiang90/probing
 github.com/xlab/treeprint
 # go.etcd.io/bbolt v1.3.6 => go.etcd.io/bbolt v1.3.6
 go.etcd.io/bbolt
-# go.etcd.io/etcd/api/v3 v3.5.0 => go.etcd.io/etcd/api/v3 v3.5.0
+# go.etcd.io/etcd/api/v3 v3.5.1 => go.etcd.io/etcd/api/v3 v3.5.1
 ## explicit
 go.etcd.io/etcd/api/v3/authpb
 go.etcd.io/etcd/api/v3/etcdserverpb
@@ -762,7 +762,7 @@ go.etcd.io/etcd/api/v3/membershippb
 go.etcd.io/etcd/api/v3/mvccpb
 go.etcd.io/etcd/api/v3/v3rpc/rpctypes
 go.etcd.io/etcd/api/v3/version
-# go.etcd.io/etcd/client/pkg/v3 v3.5.0 => go.etcd.io/etcd/client/pkg/v3 v3.5.0
+# go.etcd.io/etcd/client/pkg/v3 v3.5.1 => go.etcd.io/etcd/client/pkg/v3 v3.5.1
 ## explicit
 go.etcd.io/etcd/client/pkg/v3/fileutil
 go.etcd.io/etcd/client/pkg/v3/logutil
@@ -774,7 +774,7 @@ go.etcd.io/etcd/client/pkg/v3/transport
 go.etcd.io/etcd/client/pkg/v3/types
 # go.etcd.io/etcd/client/v2 v2.305.0 => go.etcd.io/etcd/client/v2 v2.305.0
 go.etcd.io/etcd/client/v2
-# go.etcd.io/etcd/client/v3 v3.5.0 => go.etcd.io/etcd/client/v3 v3.5.0
+# go.etcd.io/etcd/client/v3 v3.5.1 => go.etcd.io/etcd/client/v3 v3.5.1
 ## explicit
 go.etcd.io/etcd/client/v3
 go.etcd.io/etcd/client/v3/concurrency
@@ -2010,9 +2010,13 @@ k8s.io/gengo/generator
 k8s.io/gengo/namer
 k8s.io/gengo/parser
 k8s.io/gengo/types
-# k8s.io/klog/v2 v2.40.1 => k8s.io/klog/v2 v2.40.1
+# k8s.io/klog/v2 v2.60.1 => k8s.io/klog/v2 v2.60.1
 ## explicit
 k8s.io/klog/v2
+k8s.io/klog/v2/internal/buffer
+k8s.io/klog/v2/internal/clock
+k8s.io/klog/v2/internal/serialize
+k8s.io/klog/v2/internal/severity
 # k8s.io/kube-aggregator v0.0.0 => ./staging/src/k8s.io/kube-aggregator
 ## explicit
 k8s.io/kube-aggregator/pkg/apis/apiregistration
@@ -2047,7 +2051,7 @@ k8s.io/kube-aggregator/pkg/registry/apiservice/rest
 # k8s.io/kube-controller-manager v0.0.0 => ./staging/src/k8s.io/kube-controller-manager
 ## explicit
 k8s.io/kube-controller-manager/config/v1alpha1
-# k8s.io/kube-openapi v0.0.0-20220316025549-ddc66922ab18 => k8s.io/kube-openapi v0.0.0-20220316025549-ddc66922ab18
+# k8s.io/kube-openapi v0.0.0-20220323210520-29d726468e05 => k8s.io/kube-openapi v0.0.0-20220323210520-29d726468e05
 ## explicit
 k8s.io/kube-openapi/cmd/openapi-gen
 k8s.io/kube-openapi/cmd/openapi-gen/args
@@ -2173,6 +2177,7 @@ k8s.io/kubelet/pkg/apis
 k8s.io/kubelet/pkg/apis/credentialprovider
 k8s.io/kubelet/pkg/apis/credentialprovider/install
 k8s.io/kubelet/pkg/apis/credentialprovider/v1alpha1
+k8s.io/kubelet/pkg/apis/credentialprovider/v1beta1
 k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1
 k8s.io/kubelet/pkg/apis/pluginregistration/v1
 k8s.io/kubelet/pkg/apis/podresources/v1
@@ -2653,10 +2658,10 @@ sigs.k8s.io/yaml
 # github.com/xlab/treeprint => github.com/xlab/treeprint v0.0.0-20181112141820-a009c3971eca
 # github.com/yuin/goldmark => github.com/yuin/goldmark v1.4.1
 # go.etcd.io/bbolt => go.etcd.io/bbolt v1.3.6
-# go.etcd.io/etcd/api/v3 => go.etcd.io/etcd/api/v3 v3.5.0
-# go.etcd.io/etcd/client/pkg/v3 => go.etcd.io/etcd/client/pkg/v3 v3.5.0
+# go.etcd.io/etcd/api/v3 => go.etcd.io/etcd/api/v3 v3.5.1
+# go.etcd.io/etcd/client/pkg/v3 => go.etcd.io/etcd/client/pkg/v3 v3.5.1
 # go.etcd.io/etcd/client/v2 => go.etcd.io/etcd/client/v2 v2.305.0
-# go.etcd.io/etcd/client/v3 => go.etcd.io/etcd/client/v3 v3.5.0
+# go.etcd.io/etcd/client/v3 => go.etcd.io/etcd/client/v3 v3.5.1
 # go.etcd.io/etcd/pkg/v3 => go.etcd.io/etcd/pkg/v3 v3.5.0
 # go.etcd.io/etcd/raft/v3 => go.etcd.io/etcd/raft/v3 v3.5.0
 # go.etcd.io/etcd/server/v3 => go.etcd.io/etcd/server/v3 v3.5.0
@@ -2729,10 +2734,10 @@ sigs.k8s.io/yaml
 # k8s.io/cri-api => ./staging/src/k8s.io/cri-api
 # k8s.io/csi-translation-lib => ./staging/src/k8s.io/csi-translation-lib
 # k8s.io/gengo => k8s.io/gengo v0.0.0-20211129171323-c02415ce4185
-# k8s.io/klog/v2 => k8s.io/klog/v2 v2.40.1
+# k8s.io/klog/v2 => k8s.io/klog/v2 v2.60.1
 # k8s.io/kube-aggregator => ./staging/src/k8s.io/kube-aggregator
 # k8s.io/kube-controller-manager => ./staging/src/k8s.io/kube-controller-manager
-# k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20220316025549-ddc66922ab18
+# k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20220323210520-29d726468e05
 # k8s.io/kube-proxy => ./staging/src/k8s.io/kube-proxy
 # k8s.io/kube-scheduler => ./staging/src/k8s.io/kube-scheduler
 # k8s.io/kubectl => ./staging/src/k8s.io/kubectl
