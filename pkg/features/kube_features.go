@@ -78,17 +78,20 @@ const (
 
 	// owner: @gnufied
 	// beta: v1.11
+	// GA: 1.24
 	// Ability to Expand persistent volumes
 	ExpandPersistentVolumes featuregate.Feature = "ExpandPersistentVolumes"
 
-	// owner: @mlmhl
+	// owner: @mlmhl @gnufied
 	// beta: v1.15
+	// GA: 1.24
 	// Ability to expand persistent volumes' file system without unmounting volumes.
 	ExpandInUsePersistentVolumes featuregate.Feature = "ExpandInUsePersistentVolumes"
 
 	// owner: @gnufied
 	// alpha: v1.14
 	// beta: v1.16
+	// GA: 1.24
 	// Ability to expand CSI volumes
 	ExpandCSIVolumes featuregate.Feature = "ExpandCSIVolumes"
 
@@ -841,12 +844,20 @@ const (
 	//
 	// Enable MinDomains in Pod Topology Spread.
 	MinDomainsInPodTopologySpread featuregate.Feature = "MinDomainsInPodTopologySpread"
+
 	// owner: @aojea
 	// kep: http://kep.k8s.io/3070
 	// alpha: v1.24
 	//
 	// Subdivide the ClusterIP range for dynamic and static IP allocation.
 	ServiceIPStaticSubrange featuregate.Feature = "ServiceIPStaticSubrange"
+
+	// owner: @xing-yang @sonasingh46
+	// kep: http://kep.k8s.io/2268
+	// alpha: v1.24
+	//
+	// Allow pods to failover to a different node in case of non graceful node shutdown
+	NodeOutOfServiceVolumeDetach featuregate.Feature = "NodeOutOfServiceVolumeDetach"
 )
 
 func init() {
@@ -865,9 +876,9 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	LocalStorageCapacityIsolation:                  {Default: true, PreRelease: featuregate.Beta},
 	EphemeralContainers:                            {Default: true, PreRelease: featuregate.Beta},
 	QOSReserved:                                    {Default: false, PreRelease: featuregate.Alpha},
-	ExpandPersistentVolumes:                        {Default: true, PreRelease: featuregate.Beta},
-	ExpandInUsePersistentVolumes:                   {Default: true, PreRelease: featuregate.Beta},
-	ExpandCSIVolumes:                               {Default: true, PreRelease: featuregate.Beta},
+	ExpandPersistentVolumes:                        {Default: true, PreRelease: featuregate.GA}, // remove in 1.25
+	ExpandInUsePersistentVolumes:                   {Default: true, PreRelease: featuregate.GA}, // remove in 1.25
+	ExpandCSIVolumes:                               {Default: true, PreRelease: featuregate.GA}, // remove in 1.25
 	CPUManager:                                     {Default: true, PreRelease: featuregate.Beta},
 	MemoryManager:                                  {Default: true, PreRelease: featuregate.Beta},
 	CPUCFSQuotaPeriod:                              {Default: false, PreRelease: featuregate.Alpha},
@@ -964,13 +975,13 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	JobMutableNodeSchedulingDirectives:             {Default: true, PreRelease: featuregate.Beta},
 	IdentifyPodOS:                                  {Default: true, PreRelease: featuregate.Beta},
 	PodAndContainerStatsFromCRI:                    {Default: false, PreRelease: featuregate.Alpha},
-	HonorPVReclaimPolicy:                           {Default: false, PreRelease: featuregate.Beta},
+	HonorPVReclaimPolicy:                           {Default: true, PreRelease: featuregate.Beta},
 	RecoverVolumeExpansionFailure:                  {Default: false, PreRelease: featuregate.Alpha},
 	GRPCContainerProbe:                             {Default: true, PreRelease: featuregate.Beta},
 	LegacyServiceAccountTokenNoAutoGeneration:      {Default: true, PreRelease: featuregate.Beta},
 	MinDomainsInPodTopologySpread:                  {Default: false, PreRelease: featuregate.Alpha},
 	ServiceIPStaticSubrange:                        {Default: false, PreRelease: featuregate.Alpha},
-
+	NodeOutOfServiceVolumeDetach:                   {Default: false, PreRelease: featuregate.Alpha},
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
 	genericfeatures.AdvancedAuditing:                    {Default: true, PreRelease: featuregate.GA},

@@ -53,11 +53,11 @@ var (
 		saved copy to include the latest resource version.`))
 
 	editExample = templates.Examples(i18n.T(`
-		# Edit the service named 'docker-registry'
-		kubectl edit svc/docker-registry
+		# Edit the service named 'registry'
+		kubectl edit svc/registry
 
 		# Use an alternative editor
-		KUBE_EDITOR="nano" kubectl edit svc/docker-registry
+		KUBE_EDITOR="nano" kubectl edit svc/registry
 
 		# Edit the job 'myjob' in JSON using the v1 API format
 		kubectl edit job.v1.batch/myjob -o json
@@ -72,8 +72,6 @@ var (
 // NewCmdEdit creates the `edit` command
 func NewCmdEdit(f cmdutil.Factory, ioStreams genericclioptions.IOStreams) *cobra.Command {
 	o := editor.NewEditOptions(editor.NormalEditMode, ioStreams)
-	o.ValidateOptions = cmdutil.ValidateOptions{EnableValidation: true}
-
 	cmd := &cobra.Command{
 		Use:                   "edit (RESOURCE/NAME | -f FILENAME)",
 		DisableFlagsInUseLine: true,
@@ -94,7 +92,7 @@ func NewCmdEdit(f cmdutil.Factory, ioStreams genericclioptions.IOStreams) *cobra
 
 	usage := "to use to edit the resource"
 	cmdutil.AddFilenameOptionFlags(cmd, &o.FilenameOptions, usage)
-	cmdutil.AddValidateOptionFlags(cmd, &o.ValidateOptions)
+	cmdutil.AddValidateFlags(cmd)
 	cmd.Flags().BoolVarP(&o.OutputPatch, "output-patch", "", o.OutputPatch, "Output the patch if the resource is edited.")
 	cmd.Flags().BoolVar(&o.WindowsLineEndings, "windows-line-endings", o.WindowsLineEndings,
 		"Defaults to the line ending native to your platform.")
