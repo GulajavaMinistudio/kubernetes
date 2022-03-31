@@ -245,8 +245,8 @@ type JobStatus struct {
 
 	// The number of active pods which have a Ready condition.
 	//
-	// This field is alpha-level. The job controller populates the field when
-	// the feature gate JobReadyPods is enabled (disabled by default).
+	// This field is beta-level. The job controller populates the field when
+	// the feature gate JobReadyPods is enabled (enabled by default).
 	// +optional
 	Ready *int32
 
@@ -375,6 +375,12 @@ type CronJobSpec struct {
 
 	// The schedule in Cron format, see https://en.wikipedia.org/wiki/Cron.
 	Schedule string
+
+	// The time zone for the given schedule, see https://en.wikipedia.org/wiki/List_of_tz_database_time_zones.
+	// If not specified, this will rely on the time zone of the kube-controller-manager process.
+	// ALPHA: This field is in alpha and must be enabled via the `CronJobTimeZone` feature gate.
+	// +optional
+	TimeZone *string
 
 	// Optional deadline in seconds for starting the job if it misses scheduled
 	// time for any reason.  Missed jobs executions will be counted as failed ones.
