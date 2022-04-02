@@ -369,7 +369,6 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"k8s.io/api/core/v1.HTTPGetAction":                                                                schema_k8sio_api_core_v1_HTTPGetAction(ref),
 		"k8s.io/api/core/v1.HTTPHeader":                                                                   schema_k8sio_api_core_v1_HTTPHeader(ref),
 		"k8s.io/api/core/v1.HostAlias":                                                                    schema_k8sio_api_core_v1_HostAlias(ref),
-		"k8s.io/api/core/v1.HostIP":                                                                       schema_k8sio_api_core_v1_HostIP(ref),
 		"k8s.io/api/core/v1.HostPathVolumeSource":                                                         schema_k8sio_api_core_v1_HostPathVolumeSource(ref),
 		"k8s.io/api/core/v1.ISCSIPersistentVolumeSource":                                                  schema_k8sio_api_core_v1_ISCSIPersistentVolumeSource(ref),
 		"k8s.io/api/core/v1.ISCSIVolumeSource":                                                            schema_k8sio_api_core_v1_ISCSIVolumeSource(ref),
@@ -4166,7 +4165,7 @@ func schema_k8sio_api_apps_v1_StatefulSetStatus(ref common.ReferenceCallback) co
 						},
 					},
 				},
-				Required: []string{"replicas", "availableReplicas"},
+				Required: []string{"replicas"},
 			},
 		},
 		Dependencies: []string{
@@ -5274,7 +5273,7 @@ func schema_k8sio_api_apps_v1beta1_StatefulSetStatus(ref common.ReferenceCallbac
 						},
 					},
 				},
-				Required: []string{"replicas", "availableReplicas"},
+				Required: []string{"replicas"},
 			},
 		},
 		Dependencies: []string{
@@ -6931,7 +6930,7 @@ func schema_k8sio_api_apps_v1beta2_StatefulSetStatus(ref common.ReferenceCallbac
 						},
 					},
 				},
-				Required: []string{"replicas", "availableReplicas"},
+				Required: []string{"replicas"},
 			},
 		},
 		Dependencies: []string{
@@ -13558,11 +13557,11 @@ func schema_k8sio_api_certificates_v1_CertificateSigningRequestCondition(ref com
 				Properties: map[string]spec.Schema{
 					"type": {
 						SchemaProps: spec.SchemaProps{
-							Description: "type of the condition. Known conditions are \"Approved\", \"Denied\", and \"Failed\".\n\nAn \"Approved\" condition is added via the /approval subresource, indicating the request was approved and should be issued by the signer.\n\nA \"Denied\" condition is added via the /approval subresource, indicating the request was denied and should not be issued by the signer.\n\nA \"Failed\" condition is added via the /status subresource, indicating the signer failed to issue the certificate.\n\nApproved and Denied conditions are mutually exclusive. Approved, Denied, and Failed conditions cannot be removed once added.\n\nOnly one condition of a given type is allowed.\n\nPossible enum values:\n - `\"Approved\"` Approved indicates the request was approved and should be issued by the signer.\n - `\"Denied\"` Denied indicates the request was denied and should not be issued by the signer.\n - `\"Failed\"` Failed indicates the signer failed to issue the certificate.",
+							Description: "type of the condition. Known conditions are \"Approved\", \"Denied\", and \"Failed\".\n\nAn \"Approved\" condition is added via the /approval subresource, indicating the request was approved and should be issued by the signer.\n\nA \"Denied\" condition is added via the /approval subresource, indicating the request was denied and should not be issued by the signer.\n\nA \"Failed\" condition is added via the /status subresource, indicating the signer failed to issue the certificate.\n\nApproved and Denied conditions are mutually exclusive. Approved, Denied, and Failed conditions cannot be removed once added.\n\nOnly one condition of a given type is allowed.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
-							Enum:        []interface{}{"Approved", "Denied", "Failed"}},
+						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
@@ -18066,26 +18065,6 @@ func schema_k8sio_api_core_v1_HostAlias(ref common.ReferenceCallback) common.Ope
 	}
 }
 
-func schema_k8sio_api_core_v1_HostIP(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Description: "HostIP address information for entries in the (plural) HostIPs field.",
-				Type:        []string{"object"},
-				Properties: map[string]spec.Schema{
-					"ip": {
-						SchemaProps: spec.SchemaProps{
-							Description: "IP is the IP address assigned to the host",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
-				},
-			},
-		},
-	}
-}
-
 func schema_k8sio_api_core_v1_HostPathVolumeSource(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -21416,12 +21395,12 @@ func schema_k8sio_api_core_v1_PodIP(ref common.ReferenceCallback) common.OpenAPI
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "PodIP address information for entries in the (plural) PodIPs field.",
+				Description: "IP address information for entries in the (plural) PodIPs field. Each entry includes:\n   IP: An IP address allocated to the pod. Routable at least within the cluster.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"ip": {
 						SchemaProps: spec.SchemaProps{
-							Description: "IP is the IP address assigned to the pod",
+							Description: "ip is an IP address (IPv4 or IPv6) assigned to the pod",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -22265,35 +22244,14 @@ func schema_k8sio_api_core_v1_PodStatus(ref common.ReferenceCallback) common.Ope
 					},
 					"hostIP": {
 						SchemaProps: spec.SchemaProps{
-							Description: "hostIP holds the IP address of the host to which the pod is assigned. Empty if the pod has not started yet. A pod can be assigned to a node that has a problem in kubelet which in turns mean that HostIP will not be updated even if there is node is assigned to pod",
+							Description: "IP address of the host to which the pod is assigned. Empty if not yet scheduled.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
-					"hostIPs": {
-						VendorExtensible: spec.VendorExtensible{
-							Extensions: spec.Extensions{
-								"x-kubernetes-list-type":       "set",
-								"x-kubernetes-patch-merge-key": "ip",
-								"x-kubernetes-patch-strategy":  "merge",
-							},
-						},
-						SchemaProps: spec.SchemaProps{
-							Description: "hostIPs holds the IP addresses allocated to the host. If this field is specified, the first entry must match the hostIP field. This list is empty if the pod has not started yet. A pod can be assigned to a node that has a problem in kubelet which in turns means that HostIPs will not be updated even if there is a node is assigned to this pod.",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref("k8s.io/api/core/v1.HostIP"),
-									},
-								},
-							},
-						},
-					},
 					"podIP": {
 						SchemaProps: spec.SchemaProps{
-							Description: "podIP address allocated to the pod. Routable at least within the cluster. Empty if not yet allocated.",
+							Description: "IP address allocated to the pod. Routable at least within the cluster. Empty if not yet allocated.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -22377,7 +22335,7 @@ func schema_k8sio_api_core_v1_PodStatus(ref common.ReferenceCallback) common.Ope
 			},
 		},
 		Dependencies: []string{
-			"k8s.io/api/core/v1.ContainerStatus", "k8s.io/api/core/v1.HostIP", "k8s.io/api/core/v1.PodCondition", "k8s.io/api/core/v1.PodIP", "k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
+			"k8s.io/api/core/v1.ContainerStatus", "k8s.io/api/core/v1.PodCondition", "k8s.io/api/core/v1.PodIP", "k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
 	}
 }
 
