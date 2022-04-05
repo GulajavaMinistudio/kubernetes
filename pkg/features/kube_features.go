@@ -875,6 +875,13 @@ const (
 	//
 	// Enables NetworkPolicy status subresource
 	NetworkPolicyStatus featuregate.Feature = "NetworkPolicyStatus"
+
+	// owner: @deejross
+	// kep: http://kep.k8s.io/3140
+	// alpha: v1.24
+	//
+	// Enables support for time zones in CronJobs.
+	CronJobTimeZone featuregate.Feature = "CronJobTimeZone"
 )
 
 func init() {
@@ -1001,6 +1008,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	NodeOutOfServiceVolumeDetach:                   {Default: false, PreRelease: featuregate.Alpha},
 	MaxUnavailableStatefulSet:                      {Default: false, PreRelease: featuregate.Alpha},
 	NetworkPolicyStatus:                            {Default: false, PreRelease: featuregate.Alpha},
+	CronJobTimeZone:                                {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
@@ -1013,7 +1021,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	genericfeatures.OpenAPIEnums:                        {Default: true, PreRelease: featuregate.Beta},
 	genericfeatures.CustomResourceValidationExpressions: {Default: false, PreRelease: featuregate.Alpha},
 	genericfeatures.OpenAPIV3:                           {Default: true, PreRelease: featuregate.Beta},
-	genericfeatures.ServerSideFieldValidation:           {Default: true, PreRelease: featuregate.Beta},
+	genericfeatures.ServerSideFieldValidation:           {Default: false, PreRelease: featuregate.Alpha},
 	// features that enable backwards compatibility but are scheduled to be removed
 	// ...
 	HPAScaleToZero: {Default: false, PreRelease: featuregate.Alpha},
