@@ -763,6 +763,15 @@
     pod. Modify the labels of one of the Job's Pods. The Job MUST release the Pod.
   release: v1.16
   file: test/e2e/apps/job.go
+- testname: Jobs, apply changes to status
+  codename: '[sig-apps] Job should apply changes to a job status [Conformance]'
+  description: Attempt to create a running Job which MUST succeed. Attempt to patch
+    the Job status to include a new start time which MUST succeed. An annotation for
+    the job that was patched MUST be found. Attempt to replace the job status with
+    a new start time which MUST succeed. Attempt to read its status sub-resource which
+    MUST succeed
+  release: v1.24
+  file: test/e2e/apps/job.go
 - testname: Ensure Pods of an Indexed Job get a unique index.
   codename: '[sig-apps] Job should create pods for an Indexed job with completion
     indexes and specified hostname [Conformance]'
@@ -1363,7 +1372,7 @@
   file: test/e2e/common/network/networking.go
 - testname: Networking, intra pod http, from node
   codename: '[sig-network] Networking Granular Checks: Pods should function for node-pod
-    communication: http [NodeConformance] [Conformance]'
+    communication: http [LinuxOnly] [NodeConformance] [Conformance]'
   description: Create a hostexec pod that is capable of curl to netcat commands. Create
     a test Pod that will act as a webserver front end exposing ports 8080 for tcp
     and 8081 for udp. The netserver service proxies are created on specified number
@@ -1371,12 +1380,13 @@
     the each of service proxy endpoints in the cluster using a http post(protocol=tcp)  and
     the request MUST be successful. Container will execute curl command to reach the
     service port within specified max retry limit and MUST result in reporting unique
-    hostnames.
+    hostnames. This test is marked LinuxOnly it breaks when using Overlay networking
+    with Windows.
   release: v1.9
   file: test/e2e/common/network/networking.go
 - testname: Networking, intra pod http, from node
   codename: '[sig-network] Networking Granular Checks: Pods should function for node-pod
-    communication: udp [NodeConformance] [Conformance]'
+    communication: udp [LinuxOnly] [NodeConformance] [Conformance]'
   description: Create a hostexec pod that is capable of curl to netcat commands. Create
     a test Pod that will act as a webserver front end exposing ports 8080 for tcp
     and 8081 for udp. The netserver service proxies are created on specified number
@@ -1384,7 +1394,8 @@
     the each of service proxy endpoints in the cluster using a http post(protocol=udp)  and
     the request MUST be successful. Container will execute curl command to reach the
     service port within specified max retry limit and MUST result in reporting unique
-    hostnames.
+    hostnames. This test is marked LinuxOnly it breaks when using Overlay networking
+    with Windows.
   release: v1.9
   file: test/e2e/common/network/networking.go
 - testname: Proxy, validate Proxy responses
@@ -2378,6 +2389,16 @@
     pod.
   release: v1.19
   file: test/e2e/scheduling/preemption.go
+- testname: CSIStorageCapacity API
+  codename: '[sig-storage] CSIStorageCapacity  should support CSIStorageCapacities
+    API operations [Conformance]'
+  description: ' The storage.k8s.io API group MUST exist in the /apis discovery document.
+    The storage.k8s.io/v1 API group/version MUST exist in the /apis/mode.k8s.io discovery
+    document. The csistoragecapacities resource MUST exist in the /apis/storage.k8s.io/v1
+    discovery document. The csistoragecapacities resource must support create, get,
+    list, watch, update, patch, delete, and deletecollection.'
+  release: v1.24
+  file: test/e2e/storage/csistoragecapacity.go
 - testname: ConfigMap Volume, text data, binary data
   codename: '[sig-storage] ConfigMap binary data should be reflected in volume [NodeConformance]
     [Conformance]'
