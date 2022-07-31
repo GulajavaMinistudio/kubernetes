@@ -12171,8 +12171,6 @@ func makeValidService() core.Service {
 }
 
 func TestValidatePodEphemeralContainersUpdate(t *testing.T) {
-	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.EphemeralContainers, true)()
-
 	makePod := func(ephemeralContainers []core.EphemeralContainer) *core.Pod {
 		return &core.Pod{
 			ObjectMeta: metav1.ObjectMeta{
@@ -19541,6 +19539,7 @@ func TestValidateTopologySpreadConstraints(t *testing.T) {
 	fieldPathTopologyKey := subFldPath0.Child("topologyKey")
 	fieldPathWhenUnsatisfiable := subFldPath0.Child("whenUnsatisfiable")
 	fieldPathTopologyKeyAndWhenUnsatisfiable := subFldPath0.Child("{topologyKey, whenUnsatisfiable}")
+	fieldPathMatchLabelKeys := subFldPath0.Child("matchLabelKeys")
 	nodeAffinityField := subFldPath0.Child("nodeAffinityPolicy")
 	nodeTaintsField := subFldPath0.Child("nodeTaintsPolicy")
 	unknown := core.NodeInclusionPolicy("Unknown")
@@ -19718,6 +19717,39 @@ func TestValidateTopologySpreadConstraints(t *testing.T) {
 			wantFieldErrors: []*field.Error{
 				field.NotSupported(nodeTaintsField, &unknown, supportedPodTopologySpreadNodePolicies.List()),
 			},
+		},
+		{
+			name: "key in MatchLabelKeys isn't correctly defined",
+			constraints: []core.TopologySpreadConstraint{
+				{
+					MaxSkew:           1,
+					TopologyKey:       "k8s.io/zone",
+					WhenUnsatisfiable: core.DoNotSchedule,
+					MatchLabelKeys:    []string{"/simple"},
+				},
+			},
+			wantFieldErrors: []*field.Error{field.Invalid(fieldPathMatchLabelKeys.Index(0), "/simple", "prefix part must be non-empty")},
+		},
+		{
+			name: "key exists in both matchLabelKeys and labelSelector",
+			constraints: []core.TopologySpreadConstraint{
+				{
+					MaxSkew:           1,
+					TopologyKey:       "k8s.io/zone",
+					WhenUnsatisfiable: core.DoNotSchedule,
+					MatchLabelKeys:    []string{"foo"},
+					LabelSelector: &metav1.LabelSelector{
+						MatchExpressions: []metav1.LabelSelectorRequirement{
+							{
+								Key:      "foo",
+								Operator: metav1.LabelSelectorOpNotIn,
+								Values:   []string{"value1", "value2"},
+							},
+						},
+					},
+				},
+			},
+			wantFieldErrors: []*field.Error{field.Invalid(fieldPathMatchLabelKeys.Index(0), "foo", "exists in both matchLabelKeys and labelSelector")},
 		},
 	}
 
@@ -20998,7 +21030,6 @@ func TestValidateWindowsHostProcessPod(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.WindowsHostProcessContainers, testCase.featureEnabled)()
-			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.EphemeralContainers, true)()
 
 			opts := PodValidationOptions{AllowWindowsHostProcessField: testCase.featureEnabled}
 
