@@ -448,6 +448,14 @@ const (
 	// Causes kubelet to no longer create legacy IPTables rules
 	IPTablesOwnershipCleanup featuregate.Feature = "IPTablesOwnershipCleanup"
 
+	// owner: @mimowo
+	// kep: http://kep.k8s.io/3329
+	// alpha: v1.25
+	//
+	// Allow users to specify handling of pod failures based on container exit codes
+	// and pod conditions.
+	JobPodFailurePolicy featuregate.Feature = "JobPodFailurePolicy"
+
 	// owner: @ahg
 	// beta: v1.23
 	//
@@ -517,8 +525,9 @@ const (
 
 	// owner: @jinxu
 	// beta: v1.10
+	// stable: v1.25
 	//
-	// New local storage types to support local storage capacity isolation
+	// Support local ephemeral storage types for local storage capacity isolation feature.
 	LocalStorageCapacityIsolation featuregate.Feature = "LocalStorageCapacityIsolation"
 
 	// owner: @RobertKrawitz
@@ -821,6 +830,13 @@ const (
 	// Enable resource managers to make NUMA aligned decisions
 	TopologyManager featuregate.Feature = "TopologyManager"
 
+	// owner: @rata, @giuseppe
+	// kep: http://kep.k8s.io/127
+	// alpha: v1.25
+	//
+	// Enables user namespace support for stateless pods.
+	UserNamespacesStatelessPodsSupport featuregate.Feature = "UserNamespacesStatelessPodsSupport"
+
 	// owner: @cofyc
 	// alpha: v1.21
 	VolumeCapacityPriority featuregate.Feature = "VolumeCapacityPriority"
@@ -852,6 +868,14 @@ const (
 	// Allow users to specify whether to take nodeAffinity/nodeTaint into consideration when
 	// calculating pod topology spread skew.
 	NodeInclusionPolicyInPodTopologySpread featuregate.Feature = "NodeInclusionPolicyInPodTopologySpread"
+
+	// owner: @jsafrane
+	// kep: http://kep.k8s.io/1710
+	// alpha: v1.25
+	// Speed up container startup by mounting volumes with the correct SELinux label
+	// instead of changing each file on the volumes recursively.
+	// Initial implementation focused on ReadWriteOncePod volumes.
+	SELinuxMountReadWriteOncePod featuregate.Feature = "SELinuxMountReadWriteOncePod"
 )
 
 func init() {
@@ -979,6 +1003,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	IPTablesOwnershipCleanup: {Default: false, PreRelease: featuregate.Alpha},
 
+	JobPodFailurePolicy: {Default: false, PreRelease: featuregate.Alpha},
+
 	JobMutableNodeSchedulingDirectives: {Default: true, PreRelease: featuregate.Beta},
 
 	JobReadyPods: {Default: true, PreRelease: featuregate.Beta},
@@ -997,7 +1023,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	LegacyServiceAccountTokenNoAutoGeneration: {Default: true, PreRelease: featuregate.Beta},
 
-	LocalStorageCapacityIsolation: {Default: true, PreRelease: featuregate.Beta},
+	LocalStorageCapacityIsolation: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.27
 
 	LocalStorageCapacityIsolationFSQuotaMonitoring: {Default: true, PreRelease: featuregate.Beta},
 
@@ -1081,6 +1107,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	VolumeCapacityPriority: {Default: false, PreRelease: featuregate.Alpha},
 
+	UserNamespacesStatelessPodsSupport: {Default: false, PreRelease: featuregate.Alpha},
+
 	WinDSR: {Default: false, PreRelease: featuregate.Alpha},
 
 	WinOverlay: {Default: true, PreRelease: featuregate.Beta},
@@ -1088,6 +1116,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	WindowsHostProcessContainers: {Default: true, PreRelease: featuregate.Beta},
 
 	NodeInclusionPolicyInPodTopologySpread: {Default: false, PreRelease: featuregate.Alpha},
+
+	SELinuxMountReadWriteOncePod: {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
