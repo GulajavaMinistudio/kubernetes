@@ -570,9 +570,6 @@ github.com/mrunalp/fileutils
 # github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 => github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 ## explicit
 github.com/munnerz/goautoneg
-# github.com/mvdan/xurls v1.1.0 => github.com/mvdan/xurls v1.1.0
-## explicit
-github.com/mvdan/xurls
 # github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f => github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f
 ## explicit
 github.com/mxk/go-flowrate/flowrate
@@ -1557,8 +1554,6 @@ k8s.io/apiserver/pkg/storage/value/encrypt/envelope/metrics
 k8s.io/apiserver/pkg/storage/value/encrypt/envelope/testing/v1beta1
 k8s.io/apiserver/pkg/storage/value/encrypt/envelope/testing/v2alpha1
 k8s.io/apiserver/pkg/storage/value/encrypt/envelope/util
-k8s.io/apiserver/pkg/storage/value/encrypt/envelope/v1beta1
-k8s.io/apiserver/pkg/storage/value/encrypt/envelope/v2alpha1
 k8s.io/apiserver/pkg/storage/value/encrypt/identity
 k8s.io/apiserver/pkg/storage/value/encrypt/secretbox
 k8s.io/apiserver/pkg/storageversion
@@ -1980,6 +1975,7 @@ k8s.io/component-base/metrics/legacyregistry
 k8s.io/component-base/metrics/prometheus/clientgo
 k8s.io/component-base/metrics/prometheus/clientgo/leaderelection
 k8s.io/component-base/metrics/prometheus/controllers
+k8s.io/component-base/metrics/prometheus/feature
 k8s.io/component-base/metrics/prometheus/ratelimiter
 k8s.io/component-base/metrics/prometheus/restclient
 k8s.io/component-base/metrics/prometheus/version
@@ -2057,6 +2053,10 @@ k8s.io/klog/v2/internal/verbosity
 k8s.io/klog/v2/ktesting
 k8s.io/klog/v2/ktesting/init
 k8s.io/klog/v2/test
+# k8s.io/kms v0.0.0 => ./staging/src/k8s.io/kms
+## explicit; go 1.19
+k8s.io/kms/apis/v1beta1
+k8s.io/kms/apis/v2alpha1
 # k8s.io/kube-aggregator v0.0.0 => ./staging/src/k8s.io/kube-aggregator
 ## explicit; go 1.19
 k8s.io/kube-aggregator/pkg/apis/apiregistration
@@ -2640,7 +2640,6 @@ sigs.k8s.io/yaml
 # github.com/morikuni/aec => github.com/morikuni/aec v1.0.0
 # github.com/mrunalp/fileutils => github.com/mrunalp/fileutils v0.5.0
 # github.com/munnerz/goautoneg => github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
-# github.com/mvdan/xurls => github.com/mvdan/xurls v1.1.0
 # github.com/mwitkow/go-conntrack => github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 # github.com/mxk/go-flowrate => github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f
 # github.com/niemeyer/pretty => github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e
@@ -2757,6 +2756,7 @@ sigs.k8s.io/yaml
 # k8s.io/csi-translation-lib => ./staging/src/k8s.io/csi-translation-lib
 # k8s.io/gengo => k8s.io/gengo v0.0.0-20220902162205-c0856e24416d
 # k8s.io/klog/v2 => k8s.io/klog/v2 v2.80.1
+# k8s.io/kms => ./staging/src/k8s.io/kms
 # k8s.io/kube-aggregator => ./staging/src/k8s.io/kube-aggregator
 # k8s.io/kube-controller-manager => ./staging/src/k8s.io/kube-controller-manager
 # k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20220803162953-67bda5d908f1
