@@ -1046,7 +1046,7 @@ golang.org/x/sys/windows/svc/mgr
 # golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 => golang.org/x/term v0.0.0-20210927222741-03fcf44c2211
 ## explicit; go 1.17
 golang.org/x/term
-# golang.org/x/text v0.3.7 => golang.org/x/text v0.3.7
+# golang.org/x/text v0.3.8 => golang.org/x/text v0.3.8
 ## explicit; go 1.17
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
@@ -1321,8 +1321,6 @@ k8s.io/apiextensions-apiserver/pkg/apiserver
 k8s.io/apiextensions-apiserver/pkg/apiserver/conversion
 k8s.io/apiextensions-apiserver/pkg/apiserver/schema
 k8s.io/apiextensions-apiserver/pkg/apiserver/schema/cel
-k8s.io/apiextensions-apiserver/pkg/apiserver/schema/cel/library
-k8s.io/apiextensions-apiserver/pkg/apiserver/schema/cel/metrics
 k8s.io/apiextensions-apiserver/pkg/apiserver/schema/cel/model
 k8s.io/apiextensions-apiserver/pkg/apiserver/schema/defaulting
 k8s.io/apiextensions-apiserver/pkg/apiserver/schema/listtype
@@ -1492,6 +1490,9 @@ k8s.io/apiserver/pkg/authorization/authorizer
 k8s.io/apiserver/pkg/authorization/authorizerfactory
 k8s.io/apiserver/pkg/authorization/path
 k8s.io/apiserver/pkg/authorization/union
+k8s.io/apiserver/pkg/cel
+k8s.io/apiserver/pkg/cel/library
+k8s.io/apiserver/pkg/cel/metrics
 k8s.io/apiserver/pkg/endpoints
 k8s.io/apiserver/pkg/endpoints/deprecation
 k8s.io/apiserver/pkg/endpoints/discovery
@@ -2721,7 +2722,7 @@ sigs.k8s.io/yaml
 # golang.org/x/sync => golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
 # golang.org/x/sys => golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
 # golang.org/x/term => golang.org/x/term v0.0.0-20210927222741-03fcf44c2211
-# golang.org/x/text => golang.org/x/text v0.3.7
+# golang.org/x/text => golang.org/x/text v0.3.8
 # golang.org/x/time => golang.org/x/time v0.0.0-20220210224613-90d013bbcef8
 # golang.org/x/tools => golang.org/x/tools v0.1.12
 # golang.org/x/xerrors => golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
