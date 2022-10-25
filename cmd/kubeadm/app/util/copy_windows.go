@@ -1,5 +1,8 @@
+//go:build windows
+// +build windows
+
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +25,8 @@ import (
 
 // CopyDir copies the content of a folder
 func CopyDir(src string, dst string) error {
-	cmd := exec.Command("cp", "-r", src, dst)
+	// /E Copies directories and subdirectories, including empty ones.
+	// /H Copies hidden and system files also.
+	cmd := exec.Command("xcopy", "/E", "/H", src, dst)
 	return cmd.Run()
 }
