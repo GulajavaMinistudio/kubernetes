@@ -557,6 +557,13 @@ const (
 	// Enable MinDomains in Pod Topology Spread.
 	MinDomainsInPodTopologySpread featuregate.Feature = "MinDomainsInPodTopologySpread"
 
+	// owner: @danwinship
+	// kep: http://kep.k8s.io/3453
+	// alpha: v1.26
+	//
+	// Enables new performance-improving code in kube-proxy iptables mode
+	MinimizeIPTablesRestore featuregate.Feature = "MinimizeIPTablesRestore"
+
 	// owner: @janosi @bridgetkromhout
 	// kep: https://kep.k8s.io/1435
 	// alpha: v1.20
@@ -783,6 +790,7 @@ const (
 	// owner: @marosset
 	// alpha: v1.22
 	// beta: v1.23
+	// GA: v1.26
 	//
 	// Enables support for 'HostProcess' containers on Windows nodes.
 	WindowsHostProcessContainers featuregate.Feature = "WindowsHostProcessContainers"
@@ -959,6 +967,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	MinDomainsInPodTopologySpread: {Default: false, PreRelease: featuregate.Beta},
 
+	MinimizeIPTablesRestore: {Default: false, PreRelease: featuregate.Alpha},
+
 	MixedProtocolLBService: {Default: true, PreRelease: featuregate.Beta},
 
 	MultiCIDRRangeAllocator: {Default: false, PreRelease: featuregate.Alpha},
@@ -1021,7 +1031,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	WinOverlay: {Default: true, PreRelease: featuregate.Beta},
 
-	WindowsHostProcessContainers: {Default: true, PreRelease: featuregate.Beta},
+	WindowsHostProcessContainers: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
 
 	NodeInclusionPolicyInPodTopologySpread: {Default: false, PreRelease: featuregate.Alpha},
 

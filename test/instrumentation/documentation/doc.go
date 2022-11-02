@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,23 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package scheme
-
-import (
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
-
-	"k8s.io/kube-aggregator/pkg/apis/apiregistration/install"
-)
-
-var (
-	// Scheme defines methods for serializing and deserializing API objects.
-	Scheme = runtime.NewScheme()
-	// Codecs provides methods for retrieving codecs and serializers for specific
-	// versions and content types.
-	Codecs = serializer.NewCodecFactory(Scheme)
-)
-
-func init() {
-	install.Install(Scheme)
-}
+/*
+This stand-alone package is utilized for dynamically generating/maintaining
+documentation on all parseable metrics in the Kubernetes code base.
+*/
+package main
