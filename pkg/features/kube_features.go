@@ -59,9 +59,10 @@ const (
 	// Enable nodes to change CPUCFSQuotaPeriod
 	CPUCFSQuotaPeriod featuregate.Feature = "CustomCPUCFSQuotaPeriod"
 
-	// owner: @ConnorDoyle
+	// owner: @ConnorDoyle, @fromanirh (only for GA graduation)
 	// alpha: v1.8
 	// beta: v1.10
+	// GA: v1.26
 	//
 	// Alternative container-level CPU affinity policies.
 	CPUManager featuregate.Feature = "CPUManager"
@@ -229,8 +230,10 @@ const (
 	// NodePublishVolume calls.
 	DelegateFSGroupToCSIDriver featuregate.Feature = "DelegateFSGroupToCSIDriver"
 
-	// owner: @jiayingz
+	// owner: @jiayingz, @swatisehgal (for GA graduation)
+	// alpha: v1.8
 	// beta: v1.10
+	// GA: v1.26
 	//
 	// Enables support for Device Plugins
 	DevicePlugins featuregate.Feature = "DevicePlugins"
@@ -662,6 +665,7 @@ const (
 	// owner: @andrewsykim
 	// kep: https://kep.k8s.io/1669
 	// alpha: v1.22
+	// beta: v1.26
 	//
 	// Enable kube-proxy to handle terminating ednpoints when externalTrafficPolicy=Local
 	ProxyTerminatingEndpoints featuregate.Feature = "ProxyTerminatingEndpoints"
@@ -831,7 +835,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	CPUCFSQuotaPeriod: {Default: false, PreRelease: featuregate.Alpha},
 
-	CPUManager: {Default: true, PreRelease: featuregate.Beta},
+	CPUManager: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // GA in 1.26
 
 	CPUManagerPolicyAlphaOptions: {Default: false, PreRelease: featuregate.Alpha},
 
@@ -875,7 +879,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	DelegateFSGroupToCSIDriver: {Default: true, PreRelease: featuregate.Beta},
 
-	DevicePlugins: {Default: true, PreRelease: featuregate.Beta},
+	DevicePlugins: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // GA in 1.26
 
 	DisableAcceleratorUsageMetrics: {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
 
@@ -947,7 +951,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	KubeletTracing: {Default: false, PreRelease: featuregate.Alpha},
 
-	LegacyServiceAccountTokenNoAutoGeneration: {Default: true, PreRelease: featuregate.Beta},
+	LegacyServiceAccountTokenNoAutoGeneration: {Default: true, PreRelease: featuregate.GA},
 
 	LegacyServiceAccountTokenTracking: {Default: false, PreRelease: featuregate.Alpha},
 
@@ -995,7 +999,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	ProcMountType: {Default: false, PreRelease: featuregate.Alpha},
 
-	ProxyTerminatingEndpoints: {Default: false, PreRelease: featuregate.Alpha},
+	ProxyTerminatingEndpoints: {Default: true, PreRelease: featuregate.Beta},
 
 	QOSReserved: {Default: false, PreRelease: featuregate.Alpha},
 
@@ -1003,7 +1007,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	RecoverVolumeExpansionFailure: {Default: false, PreRelease: featuregate.Alpha},
 
-	RetroactiveDefaultStorageClass: {Default: false, PreRelease: featuregate.Alpha},
+	RetroactiveDefaultStorageClass: {Default: true, PreRelease: featuregate.Beta},
 
 	RotateKubeletServerCertificate: {Default: true, PreRelease: featuregate.Beta},
 
