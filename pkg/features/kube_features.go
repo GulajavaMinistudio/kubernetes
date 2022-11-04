@@ -571,6 +571,7 @@ const (
 	// kep: https://kep.k8s.io/1435
 	// alpha: v1.20
 	// beta: v1.24
+	// ga: v1.26
 	//
 	// Enables the usage of different protocols in the same Service with type=LoadBalancer
 	MixedProtocolLBService featuregate.Feature = "MixedProtocolLBService"
@@ -601,6 +602,7 @@ const (
 	// owner: @xing-yang @sonasingh46
 	// kep: https://kep.k8s.io/2268
 	// alpha: v1.24
+	// beta: v1.26
 	//
 	// Allow pods to failover to a different node in case of non graceful node shutdown
 	NodeOutOfServiceVolumeDetach featuregate.Feature = "NodeOutOfServiceVolumeDetach"
@@ -718,6 +720,7 @@ const (
 	// kep: https://kep.k8s.io/2086
 	// alpha: v1.21
 	// beta: v1.22
+	// GA: v1.26
 	//
 	// Enables node-local routing for Service internal traffic
 	ServiceInternalTrafficPolicy featuregate.Feature = "ServiceInternalTrafficPolicy"
@@ -973,7 +976,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	MinimizeIPTablesRestore: {Default: false, PreRelease: featuregate.Alpha},
 
-	MixedProtocolLBService: {Default: true, PreRelease: featuregate.Beta},
+	MixedProtocolLBService: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
 
 	MultiCIDRRangeAllocator: {Default: false, PreRelease: featuregate.Alpha},
 
@@ -981,7 +984,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	NetworkPolicyStatus: {Default: false, PreRelease: featuregate.Alpha},
 
-	NodeOutOfServiceVolumeDetach: {Default: false, PreRelease: featuregate.Alpha},
+	NodeOutOfServiceVolumeDetach: {Default: true, PreRelease: featuregate.Beta},
 
 	NodeSwap: {Default: false, PreRelease: featuregate.Alpha},
 
@@ -1015,7 +1018,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	ServiceIPStaticSubrange: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
 
-	ServiceInternalTrafficPolicy: {Default: true, PreRelease: featuregate.Beta},
+	ServiceInternalTrafficPolicy: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
 
 	SizeMemoryBackedVolumes: {Default: true, PreRelease: featuregate.Beta},
 
