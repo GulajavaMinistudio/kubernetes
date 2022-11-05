@@ -161,7 +161,7 @@ const (
 
 	// owner: @divyenpatel
 	// beta: v1.19 (requires: vSphere vCenter/ESXi Version: 7.0u2, HW Version: VM version 15)
-	//
+	// GA: 1.26
 	// Enables the vSphere in-tree driver to vSphere CSI Driver migration feature.
 	CSIMigrationvSphere featuregate.Feature = "CSIMigrationvSphere"
 
@@ -222,9 +222,10 @@ const (
 	// DaemonSets allow workloads to maintain availability during update per node
 	DaemonSetUpdateSurge featuregate.Feature = "DaemonSetUpdateSurge"
 
-	// owner: @gnufied, @verult
+	// owner: @gnufied, @verult, @bertinatto
 	// alpha: v1.22
 	// beta: v1.23
+	// GA: v1.26
 	// If supported by the CSI driver, delegates the role of applying FSGroup to
 	// the driver by passing FSGroup through the NodeStageVolume and
 	// NodePublishVolume calls.
@@ -269,6 +270,7 @@ const (
 	// kep: https://kep.k8s.io/1672
 	// alpha: v1.20
 	// beta: v1.22
+	// GA: v1.26
 	//
 	// Enable Terminating condition in Endpoint Slices.
 	EndpointSliceTerminatingCondition featuregate.Feature = "EndpointSliceTerminatingCondition"
@@ -643,6 +645,13 @@ const (
 	// sandbox creation and network configuration completes successfully
 	PodHasNetworkCondition featuregate.Feature = "PodHasNetworkCondition"
 
+	// owner: @Huang-Wei
+	// kep: https://kep.k8s.io/3521
+	// alpha: v1.26
+	//
+	// Enable users to specify when a Pod is ready for scheduling.
+	PodSchedulingReadiness featuregate.Feature = "PodSchedulingReadiness"
+
 	// owner: @liggitt, @tallclair, sig-auth
 	// alpha: v1.22
 	// beta: v1.23
@@ -862,7 +871,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	CSIMigrationRBD: {Default: false, PreRelease: featuregate.Alpha}, // Off by default (requires RBD CSI driver)
 
-	CSIMigrationvSphere: {Default: true, PreRelease: featuregate.Beta},
+	CSIMigrationvSphere: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
 
 	CSINodeExpandSecret: {Default: false, PreRelease: featuregate.Alpha},
 
@@ -880,7 +889,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	DaemonSetUpdateSurge: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.27
 
-	DelegateFSGroupToCSIDriver: {Default: true, PreRelease: featuregate.Beta},
+	DelegateFSGroupToCSIDriver: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
 
 	DevicePlugins: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // GA in 1.26
 
@@ -892,7 +901,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	DownwardAPIHugePages: {Default: true, PreRelease: featuregate.Beta}, // on by default in 1.22
 
-	EndpointSliceTerminatingCondition: {Default: true, PreRelease: featuregate.Beta},
+	EndpointSliceTerminatingCondition: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in v1.28
 
 	EphemeralContainers: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.27
 
@@ -995,6 +1004,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	PodDisruptionConditions: {Default: false, PreRelease: featuregate.Alpha},
 
 	PodHasNetworkCondition: {Default: false, PreRelease: featuregate.Alpha},
+
+	PodSchedulingReadiness: {Default: false, PreRelease: featuregate.Alpha},
 
 	PodSecurity: {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
 
