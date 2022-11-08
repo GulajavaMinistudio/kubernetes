@@ -1261,6 +1261,7 @@ gopkg.in/yaml.v3
 k8s.io/api/admission/v1
 k8s.io/api/admission/v1beta1
 k8s.io/api/admissionregistration/v1
+k8s.io/api/admissionregistration/v1alpha1
 k8s.io/api/admissionregistration/v1beta1
 k8s.io/api/apidiscovery/v2beta1
 k8s.io/api/apiserverinternal/v1alpha1
@@ -1434,6 +1435,9 @@ k8s.io/apiserver/pkg/admission
 k8s.io/apiserver/pkg/admission/configuration
 k8s.io/apiserver/pkg/admission/initializer
 k8s.io/apiserver/pkg/admission/metrics
+k8s.io/apiserver/pkg/admission/plugin/cel
+k8s.io/apiserver/pkg/admission/plugin/cel/internal/generic
+k8s.io/apiserver/pkg/admission/plugin/cel/matching
 k8s.io/apiserver/pkg/admission/plugin/namespace/lifecycle
 k8s.io/apiserver/pkg/admission/plugin/resourcequota
 k8s.io/apiserver/pkg/admission/plugin/resourcequota/apis/resourcequota
@@ -1595,6 +1599,7 @@ k8s.io/cli-runtime/pkg/resource
 ## explicit; go 1.19
 k8s.io/client-go/applyconfigurations
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
+k8s.io/client-go/applyconfigurations/admissionregistration/v1alpha1
 k8s.io/client-go/applyconfigurations/admissionregistration/v1beta1
 k8s.io/client-go/applyconfigurations/apiserverinternal/v1alpha1
 k8s.io/client-go/applyconfigurations/apps/v1
@@ -1652,6 +1657,7 @@ k8s.io/client-go/dynamic/fake
 k8s.io/client-go/informers
 k8s.io/client-go/informers/admissionregistration
 k8s.io/client-go/informers/admissionregistration/v1
+k8s.io/client-go/informers/admissionregistration/v1alpha1
 k8s.io/client-go/informers/admissionregistration/v1beta1
 k8s.io/client-go/informers/apiserverinternal
 k8s.io/client-go/informers/apiserverinternal/v1alpha1
@@ -1717,6 +1723,8 @@ k8s.io/client-go/kubernetes/fake
 k8s.io/client-go/kubernetes/scheme
 k8s.io/client-go/kubernetes/typed/admissionregistration/v1
 k8s.io/client-go/kubernetes/typed/admissionregistration/v1/fake
+k8s.io/client-go/kubernetes/typed/admissionregistration/v1alpha1
+k8s.io/client-go/kubernetes/typed/admissionregistration/v1alpha1/fake
 k8s.io/client-go/kubernetes/typed/admissionregistration/v1beta1
 k8s.io/client-go/kubernetes/typed/admissionregistration/v1beta1/fake
 k8s.io/client-go/kubernetes/typed/apiserverinternal/v1alpha1
@@ -1812,6 +1820,7 @@ k8s.io/client-go/kubernetes/typed/storage/v1alpha1/fake
 k8s.io/client-go/kubernetes/typed/storage/v1beta1
 k8s.io/client-go/kubernetes/typed/storage/v1beta1/fake
 k8s.io/client-go/listers/admissionregistration/v1
+k8s.io/client-go/listers/admissionregistration/v1alpha1
 k8s.io/client-go/listers/admissionregistration/v1beta1
 k8s.io/client-go/listers/apiserverinternal/v1alpha1
 k8s.io/client-go/listers/apps/v1
@@ -1908,6 +1917,7 @@ k8s.io/client-go/util/cert
 k8s.io/client-go/util/certificate
 k8s.io/client-go/util/certificate/csr
 k8s.io/client-go/util/connrotation
+k8s.io/client-go/util/csaupgrade
 k8s.io/client-go/util/exec
 k8s.io/client-go/util/flowcontrol
 k8s.io/client-go/util/homedir
@@ -2350,7 +2360,7 @@ k8s.io/sample-apiserver/pkg/registry/wardle/flunder
 # k8s.io/system-validators v1.8.0
 ## explicit; go 1.16
 k8s.io/system-validators/validators
-# k8s.io/utils v0.0.0-20220922133306-665eaaec4324
+# k8s.io/utils v0.0.0-20221107191617-1a15be271d1d
 ## explicit; go 1.18
 k8s.io/utils/buffer
 k8s.io/utils/clock

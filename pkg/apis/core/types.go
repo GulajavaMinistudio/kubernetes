@@ -2433,7 +2433,7 @@ const (
 	PodReasonSchedulingGated = "SchedulingGated"
 	// ContainersReady indicates whether all containers in the pod are ready.
 	ContainersReady PodConditionType = "ContainersReady"
-	// AlphaNoCompatGuaranteeDisruptionTarget indicates the pod is about to be deleted due to a
+	// AlphaNoCompatGuaranteeDisruptionTarget indicates the pod is about to be terminated due to a
 	// disruption (such as preemption, eviction API or garbage-collection).
 	// The constant is to be renamed once the name is accepted within the KEP-3329.
 	AlphaNoCompatGuaranteeDisruptionTarget PodConditionType = "DisruptionTarget"
@@ -3147,8 +3147,11 @@ type PodSecurityContext struct {
 	// +optional
 	RunAsNonRoot *bool
 	// A list of groups applied to the first process run in each container, in addition
-	// to the container's primary GID.  If unspecified, no groups will be added to
-	// any container.
+	// to the container's primary GID, the fsGroup (if specified), and group memberships
+	// defined in the container image for the uid of the container process. If unspecified,
+	// no additional groups are added to any container. Note that group memberships
+	// defined in the container image for the uid of the container process are still effective,
+	// even if they are not included in this list.
 	// Note that this field cannot be set when spec.os.name is windows.
 	// +optional
 	SupplementalGroups []int64
@@ -5751,7 +5754,7 @@ type TopologySpreadConstraint struct {
 	// - Ignore: nodeAffinity/nodeSelector are ignored. All nodes are included in the calculations.
 	//
 	// If this value is nil, the behavior is equivalent to the Honor policy.
-	// This is a alpha-level feature enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
+	// This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
 	// +optional
 	NodeAffinityPolicy *NodeInclusionPolicy
 	// NodeTaintsPolicy indicates how we will treat node taints when calculating
@@ -5761,7 +5764,7 @@ type TopologySpreadConstraint struct {
 	// - Ignore: node taints are ignored. All nodes are included.
 	//
 	// If this value is nil, the behavior is equivalent to the Ignore policy.
-	// This is a alpha-level feature enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
+	// This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
 	// +optional
 	NodeTaintsPolicy *NodeInclusionPolicy
 	// MatchLabelKeys is a set of pod label keys to select the pods over which

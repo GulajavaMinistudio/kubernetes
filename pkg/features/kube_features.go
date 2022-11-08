@@ -135,6 +135,7 @@ const (
 	// owner: @andyzhangx
 	// alpha: v1.15
 	// beta: v1.21
+	// GA: v1.26
 	//
 	// Enables the Azure File in-tree driver to Azure File Driver migration feature.
 	CSIMigrationAzureFile featuregate.Feature = "CSIMigrationAzureFile"
@@ -450,6 +451,7 @@ const (
 	// owner: @alculquicondor
 	// alpha: v1.22
 	// beta: v1.23
+	// stable: v1.26
 	//
 	// Track Job completion without relying on Pod remaining in the cluster
 	// indefinitely. Pod finalizers, in addition to a field in the Job status
@@ -779,6 +781,34 @@ const (
 	// Enable resource managers to make NUMA aligned decisions
 	TopologyManager featuregate.Feature = "TopologyManager"
 
+	// owner: @PiotrProkop
+	// kep: https://kep.k8s.io/3545
+	// alpha: v1.26
+	//
+	// Allow fine-tuning of topology manager policies with alpha options.
+	// This feature gate:
+	// - will guard *a group* of topology manager options whose quality level is alpha.
+	// - will never graduate to beta or stable.
+	TopologyManagerPolicyAlphaOptions featuregate.Feature = "TopologyManagerPolicyAlphaOptions"
+
+	// owner: @PiotrProkop
+	// kep: https://kep.k8s.io/3545
+	// alpha: v1.26
+	//
+	// Allow fine-tuning of topology manager policies with beta options.
+	// This feature gate:
+	// - will guard *a group* of topology manager options whose quality level is beta.
+	// - is thus *introduced* as beta
+	// - will never graduate to stable.
+	TopologyManagerPolicyBetaOptions featuregate.Feature = "TopologyManagerPolicyBetaOptions"
+
+	// owner: @PiotrProkop
+	// kep: https://kep.k8s.io/3545
+	// alpha: v1.26
+	//
+	// Allow the usage of options to fine-tune the topology manager policies.
+	TopologyManagerPolicyOptions featuregate.Feature = "TopologyManagerPolicyOptions"
+
 	// owner: @rata, @giuseppe
 	// kep: https://kep.k8s.io/127
 	// alpha: v1.25
@@ -804,6 +834,13 @@ const (
 	WinOverlay featuregate.Feature = "WinOverlay"
 
 	// owner: @marosset
+	// kep: https://kep.k8s.io/3503
+	// alpha: v1.26
+	//
+	// Enables support for joining Windows containers to a hosts' network namespace.
+	WindowsHostNetwork featuregate.Feature = "WindowsHostNetwork"
+
+	// owner: @marosset
 	// alpha: v1.22
 	// beta: v1.23
 	// GA: v1.26
@@ -814,6 +851,7 @@ const (
 	// owner: @kerthcet
 	// kep: https://kep.k8s.io/3094
 	// alpha: v1.25
+	// beta: v1.26
 	//
 	// Allow users to specify whether to take nodeAffinity/nodeTaint into consideration when
 	// calculating pod topology spread skew.
@@ -863,7 +901,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	CSIMigrationAzureDisk: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // On by default in 1.23 (requires Azure Disk CSI driver)
 
-	CSIMigrationAzureFile: {Default: true, PreRelease: featuregate.Beta}, // On by default in 1.24 (requires Azure File CSI driver)
+	CSIMigrationAzureFile: {Default: true, PreRelease: featuregate.GA}, // On by default in 1.24 (requires Azure File CSI driver)
 
 	CSIMigrationGCE: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // GA in 1.25 (requires GCE PD CSI Driver)
 
@@ -951,7 +989,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	JobReadyPods: {Default: true, PreRelease: featuregate.Beta},
 
-	JobTrackingWithFinalizers: {Default: true, PreRelease: featuregate.Beta},
+	JobTrackingWithFinalizers: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
 
 	KubeletCredentialProviders: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
 
@@ -1041,6 +1079,12 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	TopologyManager: {Default: true, PreRelease: featuregate.Beta},
 
+	TopologyManagerPolicyAlphaOptions: {Default: false, PreRelease: featuregate.Alpha},
+
+	TopologyManagerPolicyBetaOptions: {Default: false, PreRelease: featuregate.Beta},
+
+	TopologyManagerPolicyOptions: {Default: false, PreRelease: featuregate.Alpha},
+
 	VolumeCapacityPriority: {Default: false, PreRelease: featuregate.Alpha},
 
 	UserNamespacesStatelessPodsSupport: {Default: false, PreRelease: featuregate.Alpha},
@@ -1049,9 +1093,11 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	WinOverlay: {Default: true, PreRelease: featuregate.Beta},
 
+	WindowsHostNetwork: {Default: true, PreRelease: featuregate.Alpha},
+
 	WindowsHostProcessContainers: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
 
-	NodeInclusionPolicyInPodTopologySpread: {Default: false, PreRelease: featuregate.Alpha},
+	NodeInclusionPolicyInPodTopologySpread: {Default: true, PreRelease: featuregate.Beta},
 
 	SELinuxMountReadWriteOncePod: {Default: false, PreRelease: featuregate.Alpha},
 

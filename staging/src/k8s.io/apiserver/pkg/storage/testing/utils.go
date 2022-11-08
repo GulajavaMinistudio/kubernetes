@@ -28,7 +28,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
@@ -36,6 +36,9 @@ import (
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/value"
 )
+
+// basePath for storage keys used across tests
+const basePath = "/keybase"
 
 // CreateObjList will create a list from the array of objects.
 func CreateObjList(prefix string, helper storage.Interface, items []runtime.Object) error {
@@ -77,11 +80,15 @@ func DeepEqualSafePodSpec() example.PodSpec {
 	}
 }
 
+func computePodKey(obj *example.Pod) string {
+	return fmt.Sprintf("/pods/%s/%s", obj.Namespace, obj.Name)
+}
+
 // testPropagateStore helps propagates store with objects, automates key generation, and returns
 // keys and stored objects.
 func testPropagateStore(ctx context.Context, t *testing.T, store storage.Interface, obj *example.Pod) (string, *example.Pod) {
 	// Setup store with a key and grab the output for returning.
-	key := fmt.Sprintf("/%s/%s", obj.Namespace, obj.Name)
+	key := computePodKey(obj)
 
 	// Setup store with the specified key and grab the output for returning.
 	err := store.Delete(ctx, key, &example.Pod{}, nil, storage.ValidateAllObjectFunc, nil)
