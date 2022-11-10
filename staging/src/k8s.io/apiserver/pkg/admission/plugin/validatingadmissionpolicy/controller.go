@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cel
+package validatingadmissionpolicy
 
 import (
 	"context"
@@ -25,7 +25,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"k8s.io/apiserver/pkg/admission/plugin/cel/matching"
+	"k8s.io/apiserver/pkg/admission/plugin/validatingadmissionpolicy/matching"
 
 	"k8s.io/api/admissionregistration/v1alpha1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -34,7 +34,8 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/admission"
-	"k8s.io/apiserver/pkg/admission/plugin/cel/internal/generic"
+	celmetrics "k8s.io/apiserver/pkg/admission/cel"
+	"k8s.io/apiserver/pkg/admission/plugin/validatingadmissionpolicy/internal/generic"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -227,7 +228,7 @@ func (c *celAdmissionController) Validate(
 			}
 			deniedDecisions = append(deniedDecisions, policyDecisionWithMetadata{
 				policyDecision: policyDecision{
-					kind:    deny,
+					action:  actionDeny,
 					message: message,
 				},
 				definition: definition,
@@ -236,7 +237,7 @@ func (c *celAdmissionController) Validate(
 		default:
 			deniedDecisions = append(deniedDecisions, policyDecisionWithMetadata{
 				policyDecision: policyDecision{
-					kind:    deny,
+					action:  actionDeny,
 					message: fmt.Errorf("unrecognized failure policy: '%v'", policy).Error(),
 				},
 				definition: definition,
@@ -353,18 +354,21 @@ func (c *celAdmissionController) Validate(
 			}
 
 			for _, decision := range decisions {
-				switch decision.kind {
-				case admit:
-					// TODO: add metrics for ignored error here
-				case deny:
+				switch decision.action {
+				case actionAdmit:
+					if decision.evaluation == evalError {
+						celmetrics.Metrics.ObserveAdmissionWithError(ctx, decision.elapsed, definition.Name, binding.Name, "active")
+					}
+				case actionDeny:
 					deniedDecisions = append(deniedDecisions, policyDecisionWithMetadata{
 						definition:     definition,
 						binding:        binding,
 						policyDecision: decision,
 					})
+					celmetrics.Metrics.ObserveRejection(ctx, decision.elapsed, definition.Name, binding.Name, "active")
 				default:
 					return fmt.Errorf("unrecognized evaluation decision '%s' for ValidatingAdmissionPolicyBinding '%s' with ValidatingAdmissionPolicy '%s'",
-						decision.kind, binding.Name, definition.Name)
+						decision.action, binding.Name, definition.Name)
 				}
 			}
 		}
@@ -389,7 +393,6 @@ func (c *celAdmissionController) Validate(
 		err.ErrStatus.Details.Causes = append(err.ErrStatus.Details.Causes, metav1.StatusCause{Message: message})
 		return err
 	}
-
 	return nil
 }
 

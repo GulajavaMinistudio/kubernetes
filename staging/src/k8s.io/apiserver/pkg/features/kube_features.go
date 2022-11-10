@@ -73,7 +73,7 @@ const (
 	APIServerIdentity featuregate.Feature = "APIServerIdentity"
 
 	// owner: @dashpole
-	// alpha: v1.22
+	// beta: v1.26
 	//
 	// Add support for distributed tracing in the API Server
 	APIServerTracing featuregate.Feature = "APIServerTracing"
@@ -93,7 +93,7 @@ const (
 	// alpha: v1.26
 	//
 	// Enables expression validation in Admission Control
-	CELValidatingAdmission featuregate.Feature = "CELValidatingAdmission"
+	ValidatingAdmissionPolicy featuregate.Feature = "ValidatingAdmissionPolicy"
 
 	// owner: @cici37
 	// kep: https://kep.k8s.io/2876
@@ -218,11 +218,11 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	APIServerIdentity: {Default: true, PreRelease: featuregate.Beta},
 
-	APIServerTracing: {Default: false, PreRelease: featuregate.Alpha},
+	APIServerTracing: {Default: true, PreRelease: featuregate.Beta},
 
 	AdvancedAuditing: {Default: true, PreRelease: featuregate.GA},
 
-	CELValidatingAdmission: {Default: false, PreRelease: featuregate.Alpha},
+	ValidatingAdmissionPolicy: {Default: false, PreRelease: featuregate.Alpha},
 
 	CustomResourceValidationExpressions: {Default: true, PreRelease: featuregate.Beta},
 

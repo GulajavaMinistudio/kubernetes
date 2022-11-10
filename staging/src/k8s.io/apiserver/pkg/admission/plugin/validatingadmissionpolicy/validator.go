@@ -14,12 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cel
+package validatingadmissionpolicy
 
 import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	celtypes "github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/interpreter"
@@ -33,7 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/admission"
-	"k8s.io/apiserver/pkg/admission/plugin/cel/matching"
+	"k8s.io/apiserver/pkg/admission/plugin/validatingadmissionpolicy/matching"
 	"k8s.io/apiserver/pkg/admission/plugin/webhook/generic"
 )
 
@@ -156,11 +157,11 @@ func objectToResolveVal(r runtime.Object) (interface{}, error) {
 	return v.Object, nil
 }
 
-func policyDecisionKindForError(f v1alpha1.FailurePolicyType) policyDecisionKind {
+func policyDecisionActionForError(f v1alpha1.FailurePolicyType) policyDecisionAction {
 	if f == v1alpha1.Ignore {
-		return admit
+		return actionAdmit
 	}
-	return deny
+	return actionDeny
 }
 
 // Validate validates all cel expressions in Validator and returns a PolicyDecision for each CEL expression or returns an error.
@@ -213,21 +214,27 @@ func (v *CELValidator) Validate(a admission.Attributes, o admission.ObjectInterf
 		var policyDecision = &decisions[i]
 
 		if compilationResult.Error != nil {
-			policyDecision.kind = policyDecisionKindForError(f)
+			policyDecision.action = policyDecisionActionForError(f)
+			policyDecision.evaluation = evalError
 			policyDecision.message = fmt.Sprintf("compilation error: %v", compilationResult.Error)
 			continue
 		}
 		if compilationResult.Program == nil {
-			policyDecision.kind = policyDecisionKindForError(f)
+			policyDecision.action = policyDecisionActionForError(f)
+			policyDecision.evaluation = evalError
 			policyDecision.message = "unexpected internal error compiling expression"
 			continue
 		}
+		t1 := time.Now()
 		evalResult, _, err := compilationResult.Program.Eval(va)
+		elapsed := time.Since(t1)
+		policyDecision.elapsed = elapsed
 		if err != nil {
-			policyDecision.kind = policyDecisionKindForError(f)
+			policyDecision.action = policyDecisionActionForError(f)
+			policyDecision.evaluation = evalError
 			policyDecision.message = fmt.Sprintf("expression '%v' resulted in error: %v", v.policy.Spec.Validations[i].Expression, err)
 		} else if evalResult != celtypes.True {
-			policyDecision.kind = deny
+			policyDecision.action = actionDeny
 			if validation.Reason == nil {
 				policyDecision.reason = metav1.StatusReasonInvalid
 			} else {
@@ -240,7 +247,8 @@ func (v *CELValidator) Validate(a admission.Attributes, o admission.ObjectInterf
 			}
 
 		} else {
-			policyDecision.kind = admit
+			policyDecision.action = actionAdmit
+			policyDecision.evaluation = evalAdmit
 		}
 	}
 

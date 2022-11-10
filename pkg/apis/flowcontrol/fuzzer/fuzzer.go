@@ -14,17 +14,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cel
+package fuzzer
 
 import (
-	"context"
-	"k8s.io/apiserver/pkg/admission"
+	fuzz "github.com/google/gofuzz"
+
+	runtimeserializer "k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/kubernetes/pkg/apis/flowcontrol"
 )
 
-type CELPolicyEvaluator interface {
-	admission.InitializationValidator
-
-	Validate(ctx context.Context, a admission.Attributes, o admission.ObjectInterfaces) error
-	HasSynced() bool
-	Run(stopCh <-chan struct{})
+// Funcs returns the fuzzer functions for the flowcontrol api group.
+var Funcs = func(codecs runtimeserializer.CodecFactory) []interface{} {
+	return []interface{}{
+		func(obj *flowcontrol.LimitedPriorityLevelConfiguration, c fuzz.Continue) {
+			c.FuzzNoCustom(obj) // fuzz self without calling this function again
+			if obj.LendablePercent == nil {
+				i := int32(0)
+				obj.LendablePercent = &i
+			}
+		},
+	}
 }

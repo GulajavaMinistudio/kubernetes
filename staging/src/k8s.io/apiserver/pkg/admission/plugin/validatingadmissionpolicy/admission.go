@@ -14,24 +14,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cel
+package validatingadmissionpolicy
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"io"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/component-base/featuregate"
-	"time"
 
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/admission/initializer"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/cache"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -60,6 +59,7 @@ func Register(plugins *admission.Plugins) {
 ////////////////////////////////////////////////////////////////////////////////
 
 type celAdmissionPlugin struct {
+	*admission.Handler
 	evaluator CELPolicyEvaluator
 
 	inspectedFeatureGates bool
@@ -83,8 +83,9 @@ var _ admission.InitializationValidator = &celAdmissionPlugin{}
 var _ admission.ValidationInterface = &celAdmissionPlugin{}
 
 func NewPlugin() (admission.Interface, error) {
-	result := &celAdmissionPlugin{}
-	return result, nil
+	return &celAdmissionPlugin{
+		Handler: admission.NewHandler(admission.Connect, admission.Create, admission.Delete, admission.Update),
+	}, nil
 }
 
 func (c *celAdmissionPlugin) SetExternalKubeInformerFactory(f informers.SharedInformerFactory) {
@@ -108,7 +109,7 @@ func (c *celAdmissionPlugin) SetDrainedNotification(stopCh <-chan struct{}) {
 }
 
 func (c *celAdmissionPlugin) InspectFeatureGates(featureGates featuregate.FeatureGate) {
-	if featureGates.Enabled(features.CELValidatingAdmission) {
+	if featureGates.Enabled(features.ValidatingAdmissionPolicy) {
 		c.enabled = true
 	}
 	c.inspectedFeatureGates = true
@@ -142,6 +143,7 @@ func (c *celAdmissionPlugin) ValidateInitialization() error {
 		return err
 	}
 
+	c.SetReadyFunc(c.evaluator.HasSynced)
 	go c.evaluator.Run(c.stopCh)
 	return nil
 }
@@ -163,16 +165,13 @@ func (c *celAdmissionPlugin) Validate(
 		return nil
 	}
 
-	deadlined, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
 	// isPolicyResource determines if an admission.Attributes object is describing
 	// the admission of a ValidatingAdmissionPolicy or a ValidatingAdmissionPolicyBinding
 	if isPolicyResource(a) {
 		return
 	}
 
-	if !cache.WaitForNamedCacheSync("cel-admission-plugin", deadlined.Done(), c.evaluator.HasSynced) {
+	if !c.WaitForReady() {
 		return admission.NewForbidden(a, fmt.Errorf("not yet ready to handle request"))
 	}
 

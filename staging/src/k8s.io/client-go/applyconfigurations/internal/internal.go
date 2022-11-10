@@ -1039,6 +1039,13 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         scalar: string
       default: ""
+- name: io.k8s.api.apps.v1.StatefulSetOrdinals
+  map:
+    fields:
+    - name: start
+      type:
+        scalar: numeric
+      default: 0
 - name: io.k8s.api.apps.v1.StatefulSetPersistentVolumeClaimRetentionPolicy
   map:
     fields:
@@ -1054,6 +1061,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: minReadySeconds
       type:
         scalar: numeric
+    - name: ordinals
+      type:
+        namedType: io.k8s.api.apps.v1.StatefulSetOrdinals
     - name: persistentVolumeClaimRetentionPolicy
       type:
         namedType: io.k8s.api.apps.v1.StatefulSetPersistentVolumeClaimRetentionPolicy
@@ -1342,6 +1352,13 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         scalar: string
       default: ""
+- name: io.k8s.api.apps.v1beta1.StatefulSetOrdinals
+  map:
+    fields:
+    - name: start
+      type:
+        scalar: numeric
+      default: 0
 - name: io.k8s.api.apps.v1beta1.StatefulSetPersistentVolumeClaimRetentionPolicy
   map:
     fields:
@@ -1357,6 +1374,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: minReadySeconds
       type:
         scalar: numeric
+    - name: ordinals
+      type:
+        namedType: io.k8s.api.apps.v1beta1.StatefulSetOrdinals
     - name: persistentVolumeClaimRetentionPolicy
       type:
         namedType: io.k8s.api.apps.v1beta1.StatefulSetPersistentVolumeClaimRetentionPolicy
@@ -1843,6 +1863,13 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         scalar: string
       default: ""
+- name: io.k8s.api.apps.v1beta2.StatefulSetOrdinals
+  map:
+    fields:
+    - name: start
+      type:
+        scalar: numeric
+      default: 0
 - name: io.k8s.api.apps.v1beta2.StatefulSetPersistentVolumeClaimRetentionPolicy
   map:
     fields:
@@ -1858,6 +1885,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: minReadySeconds
       type:
         scalar: numeric
+    - name: ordinals
+      type:
+        namedType: io.k8s.api.apps.v1beta2.StatefulSetOrdinals
     - name: persistentVolumeClaimRetentionPolicy
       type:
         namedType: io.k8s.api.apps.v1beta2.StatefulSetPersistentVolumeClaimRetentionPolicy
@@ -8608,6 +8638,12 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         scalar: numeric
       default: 0
+    - name: borrowingLimitPercent
+      type:
+        scalar: numeric
+    - name: lendablePercent
+      type:
+        scalar: numeric
     - name: limitResponse
       type:
         namedType: io.k8s.api.flowcontrol.v1alpha1.LimitResponse
@@ -8916,6 +8952,12 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         scalar: numeric
       default: 0
+    - name: borrowingLimitPercent
+      type:
+        scalar: numeric
+    - name: lendablePercent
+      type:
+        scalar: numeric
     - name: limitResponse
       type:
         namedType: io.k8s.api.flowcontrol.v1beta1.LimitResponse
@@ -9224,6 +9266,12 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         scalar: numeric
       default: 0
+    - name: borrowingLimitPercent
+      type:
+        scalar: numeric
+    - name: lendablePercent
+      type:
+        scalar: numeric
     - name: limitResponse
       type:
         namedType: io.k8s.api.flowcontrol.v1beta2.LimitResponse
@@ -9528,6 +9576,12 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: io.k8s.api.flowcontrol.v1beta3.LimitedPriorityLevelConfiguration
   map:
     fields:
+    - name: borrowingLimitPercent
+      type:
+        scalar: numeric
+    - name: lendablePercent
+      type:
+        scalar: numeric
     - name: limitResponse
       type:
         namedType: io.k8s.api.flowcontrol.v1beta3.LimitResponse

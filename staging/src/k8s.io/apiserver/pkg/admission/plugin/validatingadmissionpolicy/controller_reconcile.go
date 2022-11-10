@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cel
+package validatingadmissionpolicy
 
 import (
 	"context"
@@ -26,7 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apiserver/pkg/admission/plugin/cel/internal/generic"
+	celmetrics "k8s.io/apiserver/pkg/admission/cel"
+	"k8s.io/apiserver/pkg/admission/plugin/validatingadmissionpolicy/internal/generic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/tools/cache"
 )
@@ -41,6 +42,8 @@ func (c *celAdmissionController) reconcilePolicyDefinition(namespace, name strin
 	if !ok {
 		info = &definitionInfo{}
 		c.definitionInfo[nn] = info
+		// TODO(DangerOnTheRanger): add support for "warn" being a valid enforcementAction
+		celmetrics.Metrics.ObserveDefinition(context.TODO(), "active", "deny")
 	}
 
 	var paramSource *v1alpha1.ParamKind
