@@ -137,7 +137,7 @@ func createAggregatorServer(aggregatorConfig *aggregatorapiserver.Config, delega
 	// Imbue all builtin group-priorities onto the aggregated discovery
 	if aggregatorConfig.GenericConfig.AggregatedDiscoveryGroupManager != nil {
 		for gv, entry := range apiVersionPriorities {
-			aggregatorConfig.GenericConfig.AggregatedDiscoveryGroupManager.SetGroupPriority(gv.Group, int(entry.group))
+			aggregatorConfig.GenericConfig.AggregatedDiscoveryGroupManager.SetGroupVersionPriority(metav1.GroupVersion(gv), int(entry.group), int(entry.version))
 		}
 	}
 
@@ -283,6 +283,7 @@ var apiVersionPriorities = map[schema.GroupVersion]priority{
 	{Group: "flowcontrol.apiserver.k8s.io", Version: "v1beta1"}:  {group: 16100, version: 12},
 	{Group: "flowcontrol.apiserver.k8s.io", Version: "v1alpha1"}: {group: 16100, version: 9},
 	{Group: "internal.apiserver.k8s.io", Version: "v1alpha1"}:    {group: 16000, version: 9},
+	{Group: "resource.k8s.io", Version: "v1alpha1"}:              {group: 15900, version: 9},
 	// Append a new group to the end of the list if unsure.
 	// You can use min(existing group)-100 as the initial value for a group.
 	// Version can be set to 9 (to have space around) for a new group.

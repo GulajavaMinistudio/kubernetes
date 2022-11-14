@@ -274,6 +274,14 @@ const (
 	// Enables usage of hugepages-<size> in downward API.
 	DownwardAPIHugePages featuregate.Feature = "DownwardAPIHugePages"
 
+	// owner: @pohly
+	// kep: http://kep.k8s.io/3063
+	// alpha: v1.26
+	//
+	// Enables support for resources with custom parameters and a lifecycle
+	// that is independent of a Pod.
+	DynamicResourceAllocation featuregate.Feature = "DynamicResourceAllocation"
+
 	// owner: @andrewsykim
 	// kep: https://kep.k8s.io/1672
 	// alpha: v1.20
@@ -414,6 +422,12 @@ const (
 	//
 	// Disables the GCE PD in-tree driver.
 	InTreePluginGCEUnregister featuregate.Feature = "InTreePluginGCEUnregister"
+
+	// owner: @adisky
+	// alpha: v1.21
+	//
+	// Disables the OpenStack Cinder in-tree driver.
+	InTreePluginOpenStackUnregister featuregate.Feature = "InTreePluginOpenStackUnregister"
 
 	// owner: @trierra
 	// alpha: v1.23
@@ -632,6 +646,13 @@ const (
 	//
 	// Permits kubelet to run with swap enabled
 	NodeSwap featuregate.Feature = "NodeSwap"
+
+	// owner: @mortent, @atiratree, @ravig
+	// kep: http://kep.k8s.io/3018
+	// alpha: v1.26
+	//
+	// Enables PDBUnhealthyPodEvictionPolicy for PodDisruptionBudgets
+	PDBUnhealthyPodEvictionPolicy featuregate.Feature = "PDBUnhealthyPodEvictionPolicy"
 
 	// owner: @haircommander
 	// kep: https://kep.k8s.io/2364
@@ -966,6 +987,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	EndpointSliceTerminatingCondition: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in v1.28
 
+	DynamicResourceAllocation: {Default: false, PreRelease: featuregate.Alpha},
+
 	EphemeralContainers: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.27
 
 	EventedPLEG: {Default: false, PreRelease: featuregate.Alpha},
@@ -1001,6 +1024,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	InTreePluginAzureFileUnregister: {Default: false, PreRelease: featuregate.Alpha},
 
 	InTreePluginGCEUnregister: {Default: false, PreRelease: featuregate.Alpha},
+
+	InTreePluginOpenStackUnregister: {Default: false, PreRelease: featuregate.Alpha},
 
 	InTreePluginPortworxUnregister: {Default: false, PreRelease: featuregate.Alpha},
 
@@ -1061,6 +1086,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	NodeOutOfServiceVolumeDetach: {Default: true, PreRelease: featuregate.Beta},
 
 	NodeSwap: {Default: false, PreRelease: featuregate.Alpha},
+
+	PDBUnhealthyPodEvictionPolicy: {Default: false, PreRelease: featuregate.Alpha},
 
 	PodAndContainerStatsFromCRI: {Default: false, PreRelease: featuregate.Alpha},
 
