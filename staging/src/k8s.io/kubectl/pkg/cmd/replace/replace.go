@@ -18,7 +18,6 @@ package replace
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -78,7 +77,6 @@ type ReplaceOptions struct {
 	DeleteOptions *delete.DeleteOptions
 
 	DryRunStrategy          cmdutil.DryRunStrategy
-	DryRunVerifier          *resource.QueryParamVerifier
 	FieldValidationVerifier *resource.QueryParamVerifier
 	validationDirective     string
 
@@ -166,7 +164,6 @@ func (o *ReplaceOptions) Complete(f cmdutil.Factory, cmd *cobra.Command, args []
 	if err != nil {
 		return err
 	}
-	o.DryRunVerifier = resource.NewQueryParamVerifier(dynamicClient, f.OpenAPIGetter(), resource.QueryParamDryRun)
 	o.FieldValidationVerifier = resource.NewQueryParamVerifier(dynamicClient, f.OpenAPIGetter(), resource.QueryParamFieldValidation)
 	cmdutil.PrintFlagsWithDryRunStrategy(o.PrintFlags, o.DryRunStrategy)
 
@@ -304,11 +301,6 @@ func (o *ReplaceOptions) Run(f cmdutil.Factory) error {
 		if o.DryRunStrategy == cmdutil.DryRunClient {
 			return o.PrintObj(info.Object)
 		}
-		if o.DryRunStrategy == cmdutil.DryRunServer {
-			if err := o.DryRunVerifier.HasSupport(info.Mapping.GroupVersionKind); err != nil {
-				return err
-			}
-		}
 
 		// Serialize the object with the annotation applied.
 		obj, err := resource.
@@ -331,7 +323,7 @@ func (o *ReplaceOptions) forceReplace() error {
 	stdinInUse := false
 	for i, filename := range o.DeleteOptions.FilenameOptions.Filenames {
 		if filename == "-" {
-			tempDir, err := ioutil.TempDir("", "kubectl_replace_")
+			tempDir, err := os.MkdirTemp("", "kubectl_replace_")
 			if err != nil {
 				return err
 			}
