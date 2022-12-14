@@ -70,7 +70,6 @@ import (
 	e2eservice "k8s.io/kubernetes/test/e2e/framework/service"
 	e2eskipper "k8s.io/kubernetes/test/e2e/framework/skipper"
 	"k8s.io/kubernetes/test/e2e/network/common"
-	"k8s.io/kubernetes/test/e2e/storage/utils"
 	testutils "k8s.io/kubernetes/test/utils"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 
@@ -401,7 +400,6 @@ func verifyServeHostnameServiceUp(c clientset.Interface, ns string, expectedPods
 func verifyServeHostnameServiceDown(c clientset.Interface, ns string, serviceIP string, servicePort int) error {
 	// verify from host network
 	hostExecPod := launchHostExecPod(c, ns, "verify-service-down-host-exec-pod")
-
 	defer func() {
 		e2epod.DeletePodOrFail(c, ns, hostExecPod.Name)
 	}()
@@ -790,22 +788,22 @@ var _ = common.SIGDescribe("Services", func() {
 		jig := e2eservice.NewTestJig(cs, ns, serviceName)
 
 		ginkgo.By("creating service " + serviceName + " in namespace " + ns)
-		defer func() {
-			err := cs.CoreV1().Services(ns).Delete(context.TODO(), serviceName, metav1.DeleteOptions{})
+		ginkgo.DeferCleanup(func(ctx context.Context) {
+			err := cs.CoreV1().Services(ns).Delete(ctx, serviceName, metav1.DeleteOptions{})
 			framework.ExpectNoError(err, "failed to delete service: %s in namespace: %s", serviceName, ns)
-		}()
+		})
 		svc, err := jig.CreateTCPServiceWithPort(nil, 80)
 		framework.ExpectNoError(err)
 
 		validateEndpointsPortsOrFail(cs, ns, serviceName, portsByPodName{})
 
 		names := map[string]bool{}
-		defer func() {
+		ginkgo.DeferCleanup(func(ctx context.Context) {
 			for name := range names {
-				err := cs.CoreV1().Pods(ns).Delete(context.TODO(), name, metav1.DeleteOptions{})
+				err := cs.CoreV1().Pods(ns).Delete(ctx, name, metav1.DeleteOptions{})
 				framework.ExpectNoError(err, "failed to delete pod: %s in namespace: %s", name, ns)
 			}
-		}()
+		})
 
 		name1 := "pod1"
 		name2 := "pod2"
@@ -851,10 +849,10 @@ var _ = common.SIGDescribe("Services", func() {
 		ns := f.Namespace.Name
 		jig := e2eservice.NewTestJig(cs, ns, serviceName)
 
-		defer func() {
-			err := cs.CoreV1().Services(ns).Delete(context.TODO(), serviceName, metav1.DeleteOptions{})
+		ginkgo.DeferCleanup(func(ctx context.Context) {
+			err := cs.CoreV1().Services(ns).Delete(ctx, serviceName, metav1.DeleteOptions{})
 			framework.ExpectNoError(err, "failed to delete service: %s in namespace: %s", serviceName, ns)
-		}()
+		})
 
 		svc1port := "svc1"
 		svc2port := "svc2"
@@ -881,12 +879,12 @@ var _ = common.SIGDescribe("Services", func() {
 		validateEndpointsPortsOrFail(cs, ns, serviceName, portsByPodName{})
 
 		names := map[string]bool{}
-		defer func() {
+		ginkgo.DeferCleanup(func(ctx context.Context) {
 			for name := range names {
-				err := cs.CoreV1().Pods(ns).Delete(context.TODO(), name, metav1.DeleteOptions{})
+				err := cs.CoreV1().Pods(ns).Delete(ctx, name, metav1.DeleteOptions{})
 				framework.ExpectNoError(err, "failed to delete pod: %s in namespace: %s", name, ns)
 			}
-		}()
+		})
 
 		containerPorts1 := []v1.ContainerPort{
 			{
@@ -1036,11 +1034,11 @@ var _ = common.SIGDescribe("Services", func() {
 		servicePort := 8080
 		tcpService, err := jig.CreateTCPServiceWithPort(nil, int32(servicePort))
 		framework.ExpectNoError(err)
-		defer func() {
+		ginkgo.DeferCleanup(func(ctx context.Context) {
 			framework.Logf("Cleaning up the sourceip test service")
-			err := cs.CoreV1().Services(ns).Delete(context.TODO(), serviceName, metav1.DeleteOptions{})
+			err := cs.CoreV1().Services(ns).Delete(ctx, serviceName, metav1.DeleteOptions{})
 			framework.ExpectNoError(err, "failed to delete service: %s in namespace: %s", serviceName, ns)
-		}()
+		})
 		serviceIP := tcpService.Spec.ClusterIP
 		framework.Logf("sourceip-test cluster ip: %s", serviceIP)
 
@@ -1059,22 +1057,22 @@ var _ = common.SIGDescribe("Services", func() {
 		_, err = cs.CoreV1().Pods(ns).Create(context.TODO(), pod, metav1.CreateOptions{})
 		framework.ExpectNoError(err)
 		framework.ExpectNoError(e2epod.WaitTimeoutForPodReadyInNamespace(f.ClientSet, pod.Name, f.Namespace.Name, framework.PodStartTimeout))
-		defer func() {
+		ginkgo.DeferCleanup(func(ctx context.Context) {
 			framework.Logf("Cleaning up the echo server pod")
-			err := cs.CoreV1().Pods(ns).Delete(context.TODO(), serverPodName, metav1.DeleteOptions{})
+			err := cs.CoreV1().Pods(ns).Delete(ctx, serverPodName, metav1.DeleteOptions{})
 			framework.ExpectNoError(err, "failed to delete pod: %s on node", serverPodName)
-		}()
+		})
 
 		validateEndpointsPortsOrFail(cs, ns, serviceName, portsByPodName{serverPodName: {servicePort}})
 
 		ginkgo.By("Creating pause pod deployment")
 		deployment := createPausePodDeployment(cs, "pause-pod", ns, nodeCounts)
 
-		defer func() {
+		ginkgo.DeferCleanup(func(ctx context.Context) {
 			framework.Logf("Deleting deployment")
-			err = cs.AppsV1().Deployments(ns).Delete(context.TODO(), deployment.Name, metav1.DeleteOptions{})
+			err = cs.AppsV1().Deployments(ns).Delete(ctx, deployment.Name, metav1.DeleteOptions{})
 			framework.ExpectNoError(err, "Failed to delete deployment %s", deployment.Name)
-		}()
+		})
 
 		framework.ExpectNoError(e2edeployment.WaitForDeploymentComplete(cs, deployment), "Failed to complete pause pod deployment")
 
@@ -1177,9 +1175,7 @@ var _ = common.SIGDescribe("Services", func() {
 		numPods, servicePort := 1, defaultServeHostnameServicePort
 
 		ginkgo.By("creating the service " + serviceName + " in namespace " + ns)
-		defer func() {
-			framework.ExpectNoError(StopServeHostnameService(f.ClientSet, ns, serviceName))
-		}()
+		ginkgo.DeferCleanup(StopServeHostnameService, f.ClientSet, ns, serviceName)
 		podNames, svcIP, _ := StartServeHostnameService(cs, getServeHostnameService(serviceName), ns, numPods)
 		framework.ExpectNoError(verifyServeHostnameServiceUp(cs, ns, podNames, svcIP, servicePort))
 
@@ -1220,15 +1216,11 @@ var _ = common.SIGDescribe("Services", func() {
 		svc1 := "restart-proxy-1"
 		svc2 := "restart-proxy-2"
 
-		defer func() {
-			framework.ExpectNoError(StopServeHostnameService(f.ClientSet, ns, svc1))
-		}()
+		ginkgo.DeferCleanup(StopServeHostnameService, f.ClientSet, ns, svc1)
 		podNames1, svc1IP, err := StartServeHostnameService(cs, getServeHostnameService(svc1), ns, numPods)
 		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc1, ns)
 
-		defer func() {
-			framework.ExpectNoError(StopServeHostnameService(f.ClientSet, ns, svc2))
-		}()
+		ginkgo.DeferCleanup(StopServeHostnameService, f.ClientSet, ns, svc2)
 		podNames2, svc2IP, err := StartServeHostnameService(cs, getServeHostnameService(svc2), ns, numPods)
 		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc2, ns)
 
@@ -1259,9 +1251,7 @@ var _ = common.SIGDescribe("Services", func() {
 		svc1 := "restart-apiserver-1"
 		svc2 := "restart-apiserver-2"
 
-		defer func() {
-			framework.ExpectNoError(StopServeHostnameService(f.ClientSet, ns, svc1))
-		}()
+		ginkgo.DeferCleanup(StopServeHostnameService, f.ClientSet, ns, svc1)
 		podNames1, svc1IP, err := StartServeHostnameService(cs, getServeHostnameService(svc1), ns, numPods)
 		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc1, ns)
 
@@ -1279,9 +1269,7 @@ var _ = common.SIGDescribe("Services", func() {
 		framework.ExpectNoError(verifyServeHostnameServiceUp(cs, ns, podNames1, svc1IP, servicePort))
 
 		// Create a new service and check if it's not reusing IP.
-		defer func() {
-			framework.ExpectNoError(StopServeHostnameService(f.ClientSet, ns, svc2))
-		}()
+		ginkgo.DeferCleanup(StopServeHostnameService, f.ClientSet, ns, svc2)
 		podNames2, svc2IP, err := StartServeHostnameService(cs, getServeHostnameService(svc2), ns, numPods)
 		framework.ExpectNoError(err, "failed to create replication controller with service: %s in the namespace: %s", svc2, ns)
 
@@ -1371,11 +1359,11 @@ var _ = common.SIGDescribe("Services", func() {
 		ginkgo.By("creating a TCP service " + serviceName + " with type=ClusterIP in namespace " + ns)
 		tcpService, err := jig.CreateTCPService(nil)
 		framework.ExpectNoError(err)
-		defer func() {
+		ginkgo.DeferCleanup(func(ctx context.Context) {
 			framework.Logf("Cleaning up the updating NodePorts test service")
-			err := cs.CoreV1().Services(ns).Delete(context.TODO(), serviceName, metav1.DeleteOptions{})
+			err := cs.CoreV1().Services(ns).Delete(ctx, serviceName, metav1.DeleteOptions{})
 			framework.ExpectNoError(err, "failed to delete service: %s in namespace: %s", serviceName, ns)
-		}()
+		})
 		framework.Logf("Service Port TCP: %v", tcpService.Spec.Ports[0].Port)
 
 		ginkgo.By("changing the TCP service to type=NodePort")
@@ -1443,11 +1431,11 @@ var _ = common.SIGDescribe("Services", func() {
 		ginkgo.By("creating a service " + serviceName + " with the type=ExternalName in namespace " + ns)
 		_, err := jig.CreateExternalNameService(nil)
 		framework.ExpectNoError(err)
-		defer func() {
+		ginkgo.DeferCleanup(func(ctx context.Context) {
 			framework.Logf("Cleaning up the ExternalName to ClusterIP test service")
-			err := cs.CoreV1().Services(ns).Delete(context.TODO(), serviceName, metav1.DeleteOptions{})
+			err := cs.CoreV1().Services(ns).Delete(ctx, serviceName, metav1.DeleteOptions{})
 			framework.ExpectNoError(err, "failed to delete service %s in namespace %s", serviceName, ns)
-		}()
+		})
 
 		ginkgo.By("changing the ExternalName service to type=ClusterIP")
 		clusterIPService, err := jig.UpdateService(func(s *v1.Service) {
@@ -1482,11 +1470,11 @@ var _ = common.SIGDescribe("Services", func() {
 		ginkgo.By("creating a service " + serviceName + " with the type=ExternalName in namespace " + ns)
 		_, err := jig.CreateExternalNameService(nil)
 		framework.ExpectNoError(err)
-		defer func() {
+		ginkgo.DeferCleanup(func(ctx context.Context) {
 			framework.Logf("Cleaning up the ExternalName to NodePort test service")
-			err := cs.CoreV1().Services(ns).Delete(context.TODO(), serviceName, metav1.DeleteOptions{})
+			err := cs.CoreV1().Services(ns).Delete(ctx, serviceName, metav1.DeleteOptions{})
 			framework.ExpectNoError(err, "failed to delete service %s in namespace %s", serviceName, ns)
-		}()
+		})
 
 		ginkgo.By("changing the ExternalName service to type=NodePort")
 		nodePortService, err := jig.UpdateService(func(s *v1.Service) {
@@ -1520,18 +1508,16 @@ var _ = common.SIGDescribe("Services", func() {
 		ginkgo.By("creating a service " + serviceName + " with the type=ClusterIP in namespace " + ns)
 		_, err := jig.CreateTCPService(nil)
 		framework.ExpectNoError(err)
-		defer func() {
+		ginkgo.DeferCleanup(func(ctx context.Context) {
 			framework.Logf("Cleaning up the ClusterIP to ExternalName test service")
-			err := cs.CoreV1().Services(ns).Delete(context.TODO(), serviceName, metav1.DeleteOptions{})
+			err := cs.CoreV1().Services(ns).Delete(ctx, serviceName, metav1.DeleteOptions{})
 			framework.ExpectNoError(err, "failed to delete service %s in namespace %s", serviceName, ns)
-		}()
+		})
 
 		ginkgo.By("Creating active service to test reachability when its FQDN is referred as externalName for another service")
 		externalServiceName := "externalsvc"
 		externalServiceFQDN := createAndGetExternalServiceFQDN(cs, ns, externalServiceName)
-		defer func() {
-			framework.ExpectNoError(StopServeHostnameService(f.ClientSet, ns, externalServiceName))
-		}()
+		ginkgo.DeferCleanup(StopServeHostnameService, f.ClientSet, ns, externalServiceName)
 
 		ginkgo.By("changing the ClusterIP service to type=ExternalName")
 		externalNameService, err := jig.UpdateService(func(s *v1.Service) {
@@ -1564,18 +1550,16 @@ var _ = common.SIGDescribe("Services", func() {
 			svc.Spec.Type = v1.ServiceTypeNodePort
 		})
 		framework.ExpectNoError(err)
-		defer func() {
+		ginkgo.DeferCleanup(func(ctx context.Context) {
 			framework.Logf("Cleaning up the NodePort to ExternalName test service")
-			err := cs.CoreV1().Services(ns).Delete(context.TODO(), serviceName, metav1.DeleteOptions{})
+			err := cs.CoreV1().Services(ns).Delete(ctx, serviceName, metav1.DeleteOptions{})
 			framework.ExpectNoError(err, "failed to delete service %s in namespace %s", serviceName, ns)
-		}()
+		})
 
 		ginkgo.By("Creating active service to test reachability when its FQDN is referred as externalName for another service")
 		externalServiceName := "externalsvc"
 		externalServiceFQDN := createAndGetExternalServiceFQDN(cs, ns, externalServiceName)
-		defer func() {
-			framework.ExpectNoError(StopServeHostnameService(f.ClientSet, ns, externalServiceName))
-		}()
+		ginkgo.DeferCleanup(StopServeHostnameService, f.ClientSet, ns, externalServiceName)
 
 		ginkgo.By("changing the NodePort service to type=ExternalName")
 		externalNameService, err := jig.UpdateService(func(s *v1.Service) {
@@ -3734,10 +3718,10 @@ var _ = common.SIGDescribe("Services", func() {
 		ns := f.Namespace.Name
 		jig := e2eservice.NewTestJig(cs, ns, serviceName)
 
-		defer func() {
-			err := cs.CoreV1().Services(ns).Delete(context.TODO(), serviceName, metav1.DeleteOptions{})
+		ginkgo.DeferCleanup(func(ctx context.Context) {
+			err := cs.CoreV1().Services(ns).Delete(ctx, serviceName, metav1.DeleteOptions{})
 			framework.ExpectNoError(err, "failed to delete service: %s in namespace: %s", serviceName, ns)
-		}()
+		})
 
 		svc1port := "svc1"
 		svc2port := "svc2"
@@ -3764,12 +3748,12 @@ var _ = common.SIGDescribe("Services", func() {
 		containerPort := 100
 
 		names := map[string]bool{}
-		defer func() {
+		ginkgo.DeferCleanup(func(ctx context.Context) {
 			for name := range names {
-				err := cs.CoreV1().Pods(ns).Delete(context.TODO(), name, metav1.DeleteOptions{})
+				err := cs.CoreV1().Pods(ns).Delete(ctx, name, metav1.DeleteOptions{})
 				framework.ExpectNoError(err, "failed to delete pod: %s in namespace: %s", name, ns)
 			}
-		}()
+		})
 
 		containerPorts := []v1.ContainerPort{
 			{
@@ -3796,6 +3780,61 @@ var _ = common.SIGDescribe("Services", func() {
 		e2epod.DeletePodOrFail(cs, ns, podname1)
 	})
 
+	// These is [Serial] because it can't run at the same time as the
+	// [Feature:SCTPConnectivity] tests, since they may cause sctp.ko to be loaded.
+	ginkgo.It("should allow creating a basic SCTP service with pod and endpoints [LinuxOnly] [Serial]", func(ctx context.Context) {
+		serviceName := "sctp-endpoint-test"
+		ns := f.Namespace.Name
+		jig := e2eservice.NewTestJig(cs, ns, serviceName)
+
+		ginkgo.By("getting the state of the sctp module on nodes")
+		nodes, err := e2enode.GetBoundedReadySchedulableNodes(cs, 2)
+		framework.ExpectNoError(err)
+		sctpLoadedAtStart := CheckSCTPModuleLoadedOnNodes(f, nodes)
+
+		ginkgo.By("creating service " + serviceName + " in namespace " + ns)
+		_, err = jig.CreateSCTPServiceWithPort(nil, 5060)
+		framework.ExpectNoError(err)
+		ginkgo.DeferCleanup(func(ctx context.Context) {
+			err := cs.CoreV1().Services(ns).Delete(ctx, serviceName, metav1.DeleteOptions{})
+			framework.ExpectNoError(err, "failed to delete service: %s in namespace: %s", serviceName, ns)
+		})
+
+		err = e2enetwork.WaitForService(f.ClientSet, ns, serviceName, true, 5*time.Second, e2eservice.TestTimeout)
+		framework.ExpectNoError(err, fmt.Sprintf("error while waiting for service:%s err: %v", serviceName, err))
+
+		ginkgo.By("validating endpoints do not exist yet")
+		validateEndpointsPortsOrFail(cs, ns, serviceName, portsByPodName{})
+
+		ginkgo.By("creating a pod for the service")
+		names := map[string]bool{}
+
+		name1 := "pod1"
+
+		createPodOrFail(f, ns, name1, jig.Labels, []v1.ContainerPort{{ContainerPort: 5060, Protocol: v1.ProtocolSCTP}})
+		names[name1] = true
+		ginkgo.DeferCleanup(func(ctx context.Context) {
+			for name := range names {
+				err := cs.CoreV1().Pods(ns).Delete(ctx, name, metav1.DeleteOptions{})
+				framework.ExpectNoError(err, "failed to delete pod: %s in namespace: %s", name, ns)
+			}
+		})
+
+		ginkgo.By("validating endpoints exists")
+		validateEndpointsPortsOrFail(cs, ns, serviceName, portsByPodName{name1: {5060}})
+
+		ginkgo.By("deleting the pod")
+		e2epod.DeletePodOrFail(cs, ns, name1)
+		delete(names, name1)
+		ginkgo.By("validating endpoints do not exist anymore")
+		validateEndpointsPortsOrFail(cs, ns, serviceName, portsByPodName{})
+
+		ginkgo.By("validating sctp module is still not loaded")
+		sctpLoadedAtEnd := CheckSCTPModuleLoadedOnNodes(f, nodes)
+		if !sctpLoadedAtStart && sctpLoadedAtEnd {
+			framework.Failf("The state of the sctp module has changed due to the test case")
+		}
+	})
 })
 
 // execAffinityTestForSessionAffinityTimeout is a helper function that wrap the logic of
@@ -3827,9 +3866,7 @@ func execAffinityTestForSessionAffinityTimeout(f *framework.Framework, cs client
 	}
 	_, _, err := StartServeHostnameService(cs, svc, ns, numPods)
 	framework.ExpectNoError(err, "failed to create replication controller with service in the namespace: %s", ns)
-	defer func() {
-		StopServeHostnameService(cs, ns, serviceName)
-	}()
+	ginkgo.DeferCleanup(StopServeHostnameService, cs, ns, serviceName)
 	jig := e2eservice.NewTestJig(cs, ns, serviceName)
 	svc, err = jig.Client.CoreV1().Services(ns).Get(context.TODO(), serviceName, metav1.GetOptions{})
 	framework.ExpectNoError(err, "failed to fetch service: %s in namespace: %s", serviceName, ns)
@@ -3850,11 +3887,11 @@ func execAffinityTestForSessionAffinityTimeout(f *framework.Framework, cs client
 	}
 
 	execPod := e2epod.CreateExecPodOrFail(cs, ns, "execpod-affinity", nil)
-	defer func() {
+	ginkgo.DeferCleanup(func(ctx context.Context) {
 		framework.Logf("Cleaning up the exec pod")
-		err := cs.CoreV1().Pods(ns).Delete(context.TODO(), execPod.Name, metav1.DeleteOptions{})
+		err := cs.CoreV1().Pods(ns).Delete(ctx, execPod.Name, metav1.DeleteOptions{})
 		framework.ExpectNoError(err, "failed to delete pod: %s in namespace: %s", execPod.Name, ns)
-	}()
+	})
 	err = jig.CheckServiceReachability(svc, execPod)
 	framework.ExpectNoError(err)
 
@@ -3910,9 +3947,7 @@ func execAffinityTestForNonLBServiceWithOptionalTransition(f *framework.Framewor
 	svc.Spec.SessionAffinity = v1.ServiceAffinityClientIP
 	_, _, err := StartServeHostnameService(cs, svc, ns, numPods)
 	framework.ExpectNoError(err, "failed to create replication controller with service in the namespace: %s", ns)
-	defer func() {
-		StopServeHostnameService(cs, ns, serviceName)
-	}()
+	ginkgo.DeferCleanup(StopServeHostnameService, cs, ns, serviceName)
 	jig := e2eservice.NewTestJig(cs, ns, serviceName)
 	svc, err = jig.Client.CoreV1().Services(ns).Get(context.TODO(), serviceName, metav1.GetOptions{})
 	framework.ExpectNoError(err, "failed to fetch service: %s in namespace: %s", serviceName, ns)
@@ -3933,11 +3968,11 @@ func execAffinityTestForNonLBServiceWithOptionalTransition(f *framework.Framewor
 	}
 
 	execPod := e2epod.CreateExecPodOrFail(cs, ns, "execpod-affinity", nil)
-	defer func() {
+	ginkgo.DeferCleanup(func(ctx context.Context) {
 		framework.Logf("Cleaning up the exec pod")
-		err := cs.CoreV1().Pods(ns).Delete(context.TODO(), execPod.Name, metav1.DeleteOptions{})
+		err := cs.CoreV1().Pods(ns).Delete(ctx, execPod.Name, metav1.DeleteOptions{})
 		framework.ExpectNoError(err, "failed to delete pod: %s in namespace: %s", execPod.Name, ns)
-	}()
+	})
 	err = jig.CheckServiceReachability(svc, execPod)
 	framework.ExpectNoError(err)
 
@@ -3980,14 +4015,14 @@ func execAffinityTestForLBServiceWithOptionalTransition(f *framework.Framework, 
 	ginkgo.By("waiting for loadbalancer for service " + ns + "/" + serviceName)
 	svc, err = jig.WaitForLoadBalancer(e2eservice.GetServiceLoadBalancerCreationTimeout(cs))
 	framework.ExpectNoError(err)
-	defer func() {
+	ginkgo.DeferCleanup(func(ctx context.Context) {
 		podNodePairs, err := e2enode.PodNodePairs(cs, ns)
 		framework.Logf("[pod,node] pairs: %+v; err: %v", podNodePairs, err)
 		StopServeHostnameService(cs, ns, serviceName)
 		lb := cloudprovider.DefaultLoadBalancerName(svc)
 		framework.Logf("cleaning load balancer resource for %s", lb)
 		e2eservice.CleanupServiceResources(cs, lb, framework.TestContext.CloudConfig.Region, framework.TestContext.CloudConfig.Zone)
-	}()
+	})
 	ingressIP := e2eservice.GetIngressPoint(&svc.Status.LoadBalancer.Ingress[0])
 	port := int(svc.Spec.Ports[0].Port)
 
@@ -4083,7 +4118,7 @@ func proxyMode(f *framework.Framework) (string, error) {
 	pod := e2epod.NewAgnhostPod(f.Namespace.Name, "kube-proxy-mode-detector", nil, nil, nil)
 	pod.Spec.HostNetwork = true
 	e2epod.NewPodClient(f).CreateSync(pod)
-	defer e2epod.NewPodClient(f).DeleteSync(pod.Name, metav1.DeleteOptions{}, e2epod.DefaultPodDeletionTimeout)
+	ginkgo.DeferCleanup(e2epod.NewPodClient(f).DeleteSync, pod.Name, metav1.DeleteOptions{}, e2epod.DefaultPodDeletionTimeout)
 
 	cmd := "curl -q -s --connect-timeout 1 http://localhost:10249/proxyMode"
 	stdout, err := e2eoutput.RunHostCmd(pod.Namespace, pod.Name, cmd)
@@ -4329,185 +4364,3 @@ func validatePortsAndProtocols(ep, expectedEndpoints fullPortsByPodUID) error {
 	}
 	return nil
 }
-
-var _ = common.SIGDescribe("SCTP [LinuxOnly]", func() {
-	f := framework.NewDefaultFramework("sctp")
-	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
-
-	var cs clientset.Interface
-
-	ginkgo.BeforeEach(func() {
-		cs = f.ClientSet
-	})
-
-	ginkgo.It("should allow creating a basic SCTP service with pod and endpoints", func(ctx context.Context) {
-		serviceName := "sctp-endpoint-test"
-		ns := f.Namespace.Name
-		jig := e2eservice.NewTestJig(cs, ns, serviceName)
-
-		ginkgo.By("getting the state of the sctp module on nodes")
-		nodes, err := e2enode.GetBoundedReadySchedulableNodes(cs, 2)
-		framework.ExpectNoError(err)
-		sctpLoadedAtStart := CheckSCTPModuleLoadedOnNodes(f, nodes)
-
-		ginkgo.By("creating service " + serviceName + " in namespace " + ns)
-		_, err = jig.CreateSCTPServiceWithPort(nil, 5060)
-		framework.ExpectNoError(err)
-		defer func() {
-			err := cs.CoreV1().Services(ns).Delete(context.TODO(), serviceName, metav1.DeleteOptions{})
-			framework.ExpectNoError(err, "failed to delete service: %s in namespace: %s", serviceName, ns)
-		}()
-
-		err = e2enetwork.WaitForService(f.ClientSet, ns, serviceName, true, 5*time.Second, e2eservice.TestTimeout)
-		framework.ExpectNoError(err, fmt.Sprintf("error while waiting for service:%s err: %v", serviceName, err))
-
-		ginkgo.By("validating endpoints do not exist yet")
-		validateEndpointsPortsOrFail(cs, ns, serviceName, portsByPodName{})
-
-		ginkgo.By("creating a pod for the service")
-		names := map[string]bool{}
-
-		name1 := "pod1"
-
-		createPodOrFail(f, ns, name1, jig.Labels, []v1.ContainerPort{{ContainerPort: 5060, Protocol: v1.ProtocolSCTP}})
-		names[name1] = true
-		defer func() {
-			for name := range names {
-				err := cs.CoreV1().Pods(ns).Delete(context.TODO(), name, metav1.DeleteOptions{})
-				framework.ExpectNoError(err, "failed to delete pod: %s in namespace: %s", name, ns)
-			}
-		}()
-
-		ginkgo.By("validating endpoints exists")
-		validateEndpointsPortsOrFail(cs, ns, serviceName, portsByPodName{name1: {5060}})
-
-		ginkgo.By("deleting the pod")
-		e2epod.DeletePodOrFail(cs, ns, name1)
-		delete(names, name1)
-		ginkgo.By("validating endpoints do not exist anymore")
-		validateEndpointsPortsOrFail(cs, ns, serviceName, portsByPodName{})
-
-		ginkgo.By("validating sctp module is still not loaded")
-		sctpLoadedAtEnd := CheckSCTPModuleLoadedOnNodes(f, nodes)
-		if !sctpLoadedAtStart && sctpLoadedAtEnd {
-			framework.Failf("The state of the sctp module has changed due to the test case")
-		}
-	})
-
-	ginkgo.It("should create a Pod with SCTP HostPort", func(ctx context.Context) {
-		node, err := e2enode.GetRandomReadySchedulableNode(cs)
-		framework.ExpectNoError(err)
-		hostExec := utils.NewHostExec(f)
-		defer hostExec.Cleanup()
-
-		ginkgo.By("getting the state of the sctp module on the selected node")
-		nodes := &v1.NodeList{}
-		nodes.Items = append(nodes.Items, *node)
-		sctpLoadedAtStart := CheckSCTPModuleLoadedOnNodes(f, nodes)
-
-		ginkgo.By("creating a pod with hostport on the selected node")
-		podName := "hostport"
-		ports := []v1.ContainerPort{{Protocol: v1.ProtocolSCTP, ContainerPort: 5060, HostPort: 5060}}
-		podSpec := e2epod.NewAgnhostPod(f.Namespace.Name, podName, nil, nil, ports)
-		nodeSelection := e2epod.NodeSelection{Name: node.Name}
-		e2epod.SetNodeSelection(&podSpec.Spec, nodeSelection)
-
-		ginkgo.By(fmt.Sprintf("Launching the pod on node %v", node.Name))
-		e2epod.NewPodClient(f).CreateSync(podSpec)
-		defer func() {
-			err := cs.CoreV1().Pods(f.Namespace.Name).Delete(context.TODO(), podName, metav1.DeleteOptions{})
-			framework.ExpectNoError(err, "failed to delete pod: %s in namespace: %s", podName, f.Namespace.Name)
-		}()
-		// wait until host port manager syncs rules
-		cmd := "iptables-save"
-		if framework.TestContext.ClusterIsIPv6() {
-			cmd = "ip6tables-save"
-		}
-		err = wait.PollImmediate(framework.Poll, framework.PollShortTimeout, func() (bool, error) {
-			framework.Logf("Executing cmd %q on node %v", cmd, node.Name)
-			result, err := hostExec.IssueCommandWithResult(cmd, node)
-			if err != nil {
-				framework.Logf("Interrogation of iptables rules failed on node %v", node.Name)
-				return false, nil
-			}
-
-			for _, line := range strings.Split(result, "\n") {
-				if strings.Contains(line, "-p sctp") && strings.Contains(line, "--dport 5060") {
-					return true, nil
-				}
-			}
-			framework.Logf("retrying ... not hostport sctp iptables rules found on node %v", node.Name)
-			return false, nil
-		})
-		if err != nil {
-			framework.Failf("iptables rules are not set for a pod with sctp hostport")
-		}
-		ginkgo.By("validating sctp module is still not loaded")
-		sctpLoadedAtEnd := CheckSCTPModuleLoadedOnNodes(f, nodes)
-		if !sctpLoadedAtStart && sctpLoadedAtEnd {
-			framework.Failf("The state of the sctp module has changed due to the test case")
-		}
-	})
-	ginkgo.It("should create a ClusterIP Service with SCTP ports", func(ctx context.Context) {
-		ginkgo.By("checking that kube-proxy is in iptables mode")
-		if proxyMode, err := proxyMode(f); err != nil {
-			e2eskipper.Skipf("Couldn't detect KubeProxy mode - skip, %v", err)
-		} else if proxyMode != "iptables" {
-			e2eskipper.Skipf("The test doesn't work if kube-proxy is not in iptables mode")
-		}
-
-		serviceName := "sctp-clusterip"
-		ns := f.Namespace.Name
-		jig := e2eservice.NewTestJig(cs, ns, serviceName)
-
-		ginkgo.By("getting the state of the sctp module on nodes")
-		nodes, err := e2enode.GetBoundedReadySchedulableNodes(cs, 2)
-		framework.ExpectNoError(err)
-		sctpLoadedAtStart := CheckSCTPModuleLoadedOnNodes(f, nodes)
-
-		ginkgo.By("creating service " + serviceName + " in namespace " + ns)
-		_, err = jig.CreateSCTPServiceWithPort(func(svc *v1.Service) {
-			svc.Spec.Type = v1.ServiceTypeClusterIP
-			svc.Spec.Ports = []v1.ServicePort{{Protocol: v1.ProtocolSCTP, Port: 5060}}
-		}, 5060)
-		framework.ExpectNoError(err)
-		defer func() {
-			err := cs.CoreV1().Services(ns).Delete(context.TODO(), serviceName, metav1.DeleteOptions{})
-			framework.ExpectNoError(err, "failed to delete service: %s in namespace: %s", serviceName, ns)
-		}()
-
-		err = e2enetwork.WaitForService(f.ClientSet, ns, serviceName, true, 5*time.Second, e2eservice.TestTimeout)
-		framework.ExpectNoError(err, fmt.Sprintf("error while waiting for service:%s err: %v", serviceName, err))
-		hostExec := utils.NewHostExec(f)
-		defer hostExec.Cleanup()
-		node := &nodes.Items[0]
-		cmd := "iptables-save"
-		if framework.TestContext.ClusterIsIPv6() {
-			cmd = "ip6tables-save"
-		}
-		err = wait.PollImmediate(framework.Poll, e2eservice.KubeProxyLagTimeout, func() (bool, error) {
-			framework.Logf("Executing cmd %q on node %v", cmd, node.Name)
-			result, err := hostExec.IssueCommandWithResult(cmd, node)
-			if err != nil {
-				framework.Logf("Interrogation of iptables rules failed on node %v", node.Name)
-				return false, nil
-			}
-
-			for _, line := range strings.Split(result, "\n") {
-				if strings.Contains(line, "-A KUBE-SERVICES") && strings.Contains(line, "-p sctp") {
-					return true, nil
-				}
-			}
-			framework.Logf("retrying ... no iptables rules found for service with sctp ports on node %v", node.Name)
-			return false, nil
-		})
-		if err != nil {
-			framework.Failf("iptables rules are not set for a clusterip service with sctp ports")
-		}
-		ginkgo.By("validating sctp module is still not loaded")
-		sctpLoadedAtEnd := CheckSCTPModuleLoadedOnNodes(f, nodes)
-		if !sctpLoadedAtStart && sctpLoadedAtEnd {
-			framework.Failf("The state of the sctp module has changed due to the test case")
-		}
-	})
-})
