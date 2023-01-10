@@ -1664,6 +1664,7 @@ func TestTrackJobStatusAndRemoveFinalizers(t *testing.T) {
 	}
 }
 
+// TestSyncJobPastDeadline verifies tracking of active deadline in a single syncJob call.
 func TestSyncJobPastDeadline(t *testing.T) {
 	testCases := map[string]struct {
 		// job setup
@@ -1829,7 +1830,9 @@ func hasTrueCondition(job *batch.Job) *batch.JobConditionType {
 	return nil
 }
 
-func TestSyncPastDeadlineJobFinished(t *testing.T) {
+// TestPastDeadlineJobFinished ensures that a Job is correctly tracked until
+// reaching the active deadline, at which point it is marked as Failed.
+func TestPastDeadlineJobFinished(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
 	fakeClock := clocktesting.NewFakeClock(time.Now().Truncate(time.Second))
 	manager, sharedInformerFactory := newControllerFromClientWithClock(clientset, controller.NoResyncPeriodFunc, fakeClock)
@@ -1863,8 +1866,11 @@ func TestSyncPastDeadlineJobFinished(t *testing.T) {
 			job := newJobWithName(tc.jobName, 1, 1, 6, batch.NonIndexedCompletion)
 			job.Spec.ActiveDeadlineSeconds = pointer.Int64(1)
 			if tc.setStartTime {
-				start := metav1.NewTime(fakeClock.Now().Add(-time.Second))
+				start := metav1.NewTime(fakeClock.Now())
 				job.Status.StartTime = &start
+			}
+			job.Annotations = map[string]string{
+				batch.JobTrackingFinalizer: "",
 			}
 
 			_, err := clientset.BatchV1().Jobs(job.GetNamespace()).Create(ctx, job, metav1.CreateOptions{})
@@ -1875,6 +1881,10 @@ func TestSyncPastDeadlineJobFinished(t *testing.T) {
 			if err := sharedInformerFactory.Batch().V1().Jobs().Informer().GetIndexer().Add(job); err != nil {
 				t.Fatalf("Failed to insert job in index: %v", err)
 			}
+			// This is needed because the fake clientset doesn't report created pods
+			// to the informer, leading to unsatisfied expectations in syncJob that prevent the controller from setting the final condition.
+			podIndexer := sharedInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+			setPodsStatuses(podIndexer, job, 0, 1, 0, 0, 0)
 
 			var j *batch.Job
 			err = wait.PollImmediate(200*time.Microsecond, 3*time.Second, func() (done bool, err error) {
@@ -1892,6 +1902,10 @@ func TestSyncPastDeadlineJobFinished(t *testing.T) {
 					t.Errorf("Job contains DeadlineExceeded condition earlier than expected")
 					break
 				}
+			}
+			// Make sure the start time is in the informer cache.
+			if err := sharedInformerFactory.Batch().V1().Jobs().Informer().GetIndexer().Add(j); err != nil {
+				t.Fatalf("Failed to update job in cache: %v", err)
 			}
 			manager.clock.Sleep(time.Second)
 			err = wait.Poll(200*time.Millisecond, 3*time.Second, func() (done bool, err error) {
