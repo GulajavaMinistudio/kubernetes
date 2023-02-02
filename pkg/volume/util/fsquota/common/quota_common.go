@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Kubernetes Authors.
+Copyright 2023 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,15 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package leadermigration
+package common
 
-import (
-	"k8s.io/apiserver/pkg/util/feature"
-	"k8s.io/controller-manager/pkg/features"
-	_ "k8s.io/controller-manager/pkg/features/register"
+// QuotaID is generic quota identifier.
+// Data type based on quotactl(2).
+type QuotaID int32
+
+const (
+	// UnknownQuotaID -- cannot determine whether a quota is in force
+	UnknownQuotaID QuotaID = -1
+	// BadQuotaID -- Invalid quota
+	BadQuotaID QuotaID = 0
 )
-
-// FeatureEnabled tells if leader migration is enabled through the feature gate.
-func FeatureEnabled() bool {
-	return feature.DefaultMutableFeatureGate.Enabled(features.ControllerManagerLeaderMigration)
-}
