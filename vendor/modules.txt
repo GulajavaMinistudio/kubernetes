@@ -973,6 +973,10 @@ go.starlark.net/syntax
 # go.uber.org/atomic v1.7.0
 ## explicit; go 1.13
 go.uber.org/atomic
+# go.uber.org/goleak v1.2.1
+## explicit; go 1.18
+go.uber.org/goleak
+go.uber.org/goleak/internal/stack
 # go.uber.org/multierr v1.6.0
 ## explicit; go 1.12
 go.uber.org/multierr
@@ -2372,6 +2376,8 @@ k8s.io/sample-apiserver/pkg/apis/wardle/v1beta1
 k8s.io/sample-apiserver/pkg/apis/wardle/validation
 k8s.io/sample-apiserver/pkg/apiserver
 k8s.io/sample-apiserver/pkg/cmd/server
+k8s.io/sample-apiserver/pkg/generated/applyconfiguration/wardle/v1alpha1
+k8s.io/sample-apiserver/pkg/generated/applyconfiguration/wardle/v1beta1
 k8s.io/sample-apiserver/pkg/generated/clientset/versioned
 k8s.io/sample-apiserver/pkg/generated/clientset/versioned/scheme
 k8s.io/sample-apiserver/pkg/generated/clientset/versioned/typed/wardle/v1alpha1
