@@ -240,6 +240,7 @@ const (
 	// owner: @derekwaynecarr
 	// alpha: v1.20
 	// beta: v1.21 (off by default until 1.22)
+	// ga: v1.27
 	//
 	// Enables usage of hugepages-<size> in downward API.
 	DownwardAPIHugePages featuregate.Feature = "DownwardAPIHugePages"
@@ -612,6 +613,7 @@ const (
 	// owner: @Huang-Wei
 	// kep: https://kep.k8s.io/3521
 	// alpha: v1.26
+	// beta: v1.27
 	//
 	// Enable users to specify when a Pod is ready for scheduling.
 	PodSchedulingReadiness featuregate.Feature = "PodSchedulingReadiness"
@@ -901,7 +903,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	DisableKubeletCloudCredentialProviders: {Default: false, PreRelease: featuregate.Alpha},
 
-	DownwardAPIHugePages: {Default: true, PreRelease: featuregate.Beta}, // on by default in 1.22
+	DownwardAPIHugePages: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in v1.29
 
 	EndpointSliceTerminatingCondition: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in v1.28
 
@@ -1001,7 +1003,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	PodHasNetworkCondition: {Default: false, PreRelease: featuregate.Alpha},
 
-	PodSchedulingReadiness: {Default: false, PreRelease: featuregate.Alpha},
+	PodSchedulingReadiness: {Default: true, PreRelease: featuregate.Beta},
 
 	PodSecurity: {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
 
