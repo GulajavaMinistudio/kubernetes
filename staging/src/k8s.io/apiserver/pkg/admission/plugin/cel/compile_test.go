@@ -19,6 +19,8 @@ package cel
 import (
 	"strings"
 	"testing"
+
+	celconfig "k8s.io/apiserver/pkg/apis/cel"
 )
 
 func TestCompileValidatingPolicyExpression(t *testing.T) {
@@ -26,6 +28,7 @@ func TestCompileValidatingPolicyExpression(t *testing.T) {
 		name             string
 		expressions      []string
 		hasParams        bool
+		hasAuthorizer    bool
 		errorExpressions map[string]string
 	}{
 		{
@@ -99,6 +102,19 @@ func TestCompileValidatingPolicyExpression(t *testing.T) {
 				"request.userInfo.foo5 == 'nope'":        "undefined field 'foo5'",
 			},
 		},
+		{
+			name:          "with authorizer",
+			hasAuthorizer: true,
+			expressions: []string{
+				"authorizer.group('') != null",
+			},
+		},
+		{
+			name: "without authorizer",
+			errorExpressions: map[string]string{
+				"authorizer.group('') != null": "undeclared reference to 'authorizer'",
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -106,7 +122,7 @@ func TestCompileValidatingPolicyExpression(t *testing.T) {
 			for _, expr := range tc.expressions {
 				result := CompileCELExpression(&fakeExpressionAccessor{
 					expr,
-				}, tc.hasParams)
+				}, OptionalVariableDeclarations{HasParams: tc.hasParams, HasAuthorizer: true}, celconfig.PerCallLimit)
 				if result.Error != nil {
 					t.Errorf("Unexpected error: %v", result.Error)
 				}
@@ -114,7 +130,7 @@ func TestCompileValidatingPolicyExpression(t *testing.T) {
 			for expr, expectErr := range tc.errorExpressions {
 				result := CompileCELExpression(&fakeExpressionAccessor{
 					expr,
-				}, tc.hasParams)
+				}, OptionalVariableDeclarations{HasParams: tc.hasParams, HasAuthorizer: tc.hasAuthorizer}, celconfig.PerCallLimit)
 				if result.Error == nil {
 					t.Errorf("Expected expression '%s' to contain '%v' but got no error", expr, expectErr)
 					continue

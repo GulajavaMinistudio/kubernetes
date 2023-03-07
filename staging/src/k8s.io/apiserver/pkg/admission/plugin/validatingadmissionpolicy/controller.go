@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	celconfig "k8s.io/apiserver/pkg/apis/cel"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,6 +39,7 @@ import (
 	"k8s.io/apiserver/pkg/admission/plugin/validatingadmissionpolicy/internal/generic"
 	"k8s.io/apiserver/pkg/admission/plugin/validatingadmissionpolicy/matching"
 	whgeneric "k8s.io/apiserver/pkg/admission/plugin/webhook/generic"
+	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -119,6 +121,7 @@ func NewAdmissionController(
 	client kubernetes.Interface,
 	restMapper meta.RESTMapper,
 	dynamicClient dynamic.Interface,
+	authz authorizer.Authorizer,
 ) CELPolicyEvaluator {
 	return &celAdmissionController{
 		definitions: atomic.Value{},
@@ -132,6 +135,7 @@ func NewAdmissionController(
 				informerFactory.Admissionregistration().V1alpha1().ValidatingAdmissionPolicies().Informer()),
 			generic.NewInformer[*v1alpha1.ValidatingAdmissionPolicyBinding](
 				informerFactory.Admissionregistration().V1alpha1().ValidatingAdmissionPolicyBindings().Informer()),
+			authz,
 		),
 	}
 }
@@ -317,7 +321,7 @@ func (c *celAdmissionController) Validate(
 				versionedAttr = va
 			}
 
-			decisions := bindingInfo.validator.Validate(versionedAttr, param)
+			decisions := bindingInfo.validator.Validate(versionedAttr, param, celconfig.RuntimeCELCostBudget)
 
 			for _, decision := range decisions {
 				switch decision.Action {
