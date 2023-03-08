@@ -24,13 +24,9 @@ import (
 	"strings"
 	"testing"
 
+	celgo "github.com/google/cel-go/cel"
 	celtypes "github.com/google/cel-go/common/types"
 	"github.com/stretchr/testify/require"
-
-	celconfig "k8s.io/apiserver/pkg/apis/cel"
-	"k8s.io/apiserver/pkg/authentication/user"
-	"k8s.io/apiserver/pkg/authorization/authorizer"
-	apiservercel "k8s.io/apiserver/pkg/cel"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,7 +34,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/admission"
-	"k8s.io/apiserver/pkg/admission/plugin/webhook/generic"
+	celconfig "k8s.io/apiserver/pkg/apis/cel"
+	"k8s.io/apiserver/pkg/authentication/user"
+	"k8s.io/apiserver/pkg/authorization/authorizer"
+	apiservercel "k8s.io/apiserver/pkg/cel"
 )
 
 type condition struct {
@@ -47,6 +46,10 @@ type condition struct {
 
 func (c *condition) GetExpression() string {
 	return c.Expression
+}
+
+func (v *condition) ReturnTypes() []*celgo.Type {
+	return []*celgo.Type{celgo.BoolType}
 }
 
 func TestCompile(t *testing.T) {
@@ -651,13 +654,14 @@ func TestFilter(t *testing.T) {
 			CompilationResults := f.(*filter).compilationResults
 			require.Equal(t, len(validations), len(CompilationResults))
 
-			versionedAttr, err := generic.NewVersionedAttributes(tc.attributes, tc.attributes.GetKind(), newObjectInterfacesForTest())
+			versionedAttr, err := admission.NewVersionedAttributes(tc.attributes, tc.attributes.GetKind(), newObjectInterfacesForTest())
 			if err != nil {
 				t.Fatalf("unexpected error on conversion: %v", err)
 			}
 
 			optionalVars := OptionalVariableBindings{VersionedParams: tc.params, Authorizer: tc.authorizer}
-			evalResults, err := f.ForInput(versionedAttr, CreateAdmissionRequest(versionedAttr.Attributes), optionalVars, celconfig.RuntimeCELCostBudget)
+			ctx := context.TODO()
+			evalResults, err := f.ForInput(ctx, versionedAttr, CreateAdmissionRequest(versionedAttr.Attributes), optionalVars, celconfig.RuntimeCELCostBudget)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -753,7 +757,7 @@ func TestRuntimeCELCostBudget(t *testing.T) {
 			CompilationResults := f.(*filter).compilationResults
 			require.Equal(t, len(validations), len(CompilationResults))
 
-			versionedAttr, err := generic.NewVersionedAttributes(tc.attributes, tc.attributes.GetKind(), newObjectInterfacesForTest())
+			versionedAttr, err := admission.NewVersionedAttributes(tc.attributes, tc.attributes.GetKind(), newObjectInterfacesForTest())
 			if err != nil {
 				t.Fatalf("unexpected error on conversion: %v", err)
 			}
@@ -762,7 +766,8 @@ func TestRuntimeCELCostBudget(t *testing.T) {
 				tc.testRuntimeCELCostBudget = celconfig.RuntimeCELCostBudget
 			}
 			optionalVars := OptionalVariableBindings{VersionedParams: tc.params, Authorizer: tc.authorizer}
-			evalResults, err := f.ForInput(versionedAttr, CreateAdmissionRequest(versionedAttr.Attributes), optionalVars, tc.testRuntimeCELCostBudget)
+			ctx := context.TODO()
+			evalResults, err := f.ForInput(ctx, versionedAttr, CreateAdmissionRequest(versionedAttr.Attributes), optionalVars, tc.testRuntimeCELCostBudget)
 			if tc.exceedBudget && err == nil {
 				t.Errorf("Expected RuntimeCELCostBudge to be exceeded but got nil")
 			}

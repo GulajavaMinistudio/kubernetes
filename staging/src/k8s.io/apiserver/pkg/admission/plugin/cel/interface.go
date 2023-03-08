@@ -17,13 +17,15 @@ limitations under the License.
 package cel
 
 import (
+	"context"
 	"time"
 
+	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types/ref"
 
 	v1 "k8s.io/api/admission/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apiserver/pkg/admission/plugin/webhook/generic"
+	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 )
 
@@ -31,6 +33,7 @@ var _ ExpressionAccessor = &MatchCondition{}
 
 type ExpressionAccessor interface {
 	GetExpression() string
+	ReturnTypes() []*cel.Type
 }
 
 // EvaluationResult contains the minimal required fields and metadata of a cel evaluation
@@ -48,6 +51,10 @@ type MatchCondition struct {
 
 func (v *MatchCondition) GetExpression() string {
 	return v.Expression
+}
+
+func (v *MatchCondition) ReturnTypes() []*cel.Type {
+	return []*cel.Type{cel.BoolType}
 }
 
 // OptionalVariableDeclarations declares which optional CEL variables
@@ -83,10 +90,11 @@ type OptionalVariableBindings struct {
 // Filter contains a function to evaluate compiled CEL-typed values
 // It expects the inbound object to already have been converted to the version expected
 // by the underlying CEL code (which is indicated by the match criteria of a policy definition).
+// versionedParams may be nil.
 type Filter interface {
 	// ForInput converts compiled CEL-typed values into evaluated CEL-typed values
 	// runtimeCELCostBudget was added for testing purpose only. Callers should always use const RuntimeCELCostBudget from k8s.io/apiserver/pkg/apis/cel/config.go as input.
-	ForInput(versionedAttr *generic.VersionedAttributes, request *v1.AdmissionRequest, optionalVars OptionalVariableBindings, runtimeCELCostBudget int64) ([]EvaluationResult, error)
+	ForInput(ctx context.Context, versionedAttr *admission.VersionedAttributes, request *v1.AdmissionRequest, optionalVars OptionalVariableBindings, runtimeCELCostBudget int64) ([]EvaluationResult, error)
 
 	// CompilationErrors returns a list of errors from the compilation of the evaluator
 	CompilationErrors() []error
