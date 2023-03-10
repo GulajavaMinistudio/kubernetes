@@ -368,7 +368,6 @@ type KubeletConfiguration struct {
 	// - `single-numa-node`: kubelet only allows pods with a single NUMA alignment
 	//   of CPU and device resources.
 	//
-	// Policies other than "none" require the TopologyManager feature gate to be enabled.
 	// Default: "none"
 	// +optional
 	TopologyManagerPolicy string `json:"topologyManagerPolicy,omitempty"`
@@ -378,7 +377,6 @@ type KubeletConfiguration struct {
 	// - `container`: topology policy is applied on a per-container basis.
 	// - `pod`: topology policy is applied on a per-pod basis.
 	//
-	// "pod" scope requires the TopologyManager feature gate to be enabled.
 	// Default: "container"
 	// +optional
 	TopologyManagerScope string `json:"topologyManagerScope,omitempty"`
@@ -778,7 +776,7 @@ type KubeletConfiguration struct {
 	// Decreasing this factor will set lower high limit for container cgroups and put heavier reclaim pressure
 	// while increasing will put less reclaim pressure.
 	// See https://kep.k8s.io/2570 for more details.
-	// Default: 0.8
+	// Default: 0.9
 	// +featureGate=MemoryQoS
 	// +optional
 	MemoryThrottlingFactor *float64 `json:"memoryThrottlingFactor,omitempty"`
