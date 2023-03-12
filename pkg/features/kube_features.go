@@ -259,6 +259,7 @@ const (
 	// owner: @harche
 	// kep: http://kep.k8s.io/3386
 	// alpha: v1.25
+	// beta: v1.27
 	//
 	// Allows using event-driven PLEG (pod lifecycle event generator) through kubelet
 	// which avoids frequent relisting of containers which helps optimize performance.
@@ -739,6 +740,14 @@ const (
 	// Enables kubelet support to size memory backed volumes
 	SizeMemoryBackedVolumes featuregate.Feature = "SizeMemoryBackedVolumes"
 
+	// owner: @alexanderConstantinescu
+	// kep: http://kep.k8s.io/3458
+	// beta: v1.27
+	//
+	// Enables less load balancer re-configurations by the service controller
+	// (KCCM) as an effect of changing node state.
+	StableLoadBalancerNodeSet featuregate.Feature = "StableLoadBalancerNodeSet"
+
 	// owner: @mattcary
 	// alpha: v1.22
 	//
@@ -929,7 +938,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	DynamicResourceAllocation: {Default: false, PreRelease: featuregate.Alpha},
 
-	EventedPLEG: {Default: false, PreRelease: featuregate.Alpha},
+	EventedPLEG: {Default: false, PreRelease: featuregate.Beta}, // off by default, requires CRI Runtime support
 
 	ExecProbeTimeout: {Default: true, PreRelease: featuregate.GA}, // lock to default and remove after v1.22 based on KEP #1972 update
 
@@ -1057,6 +1066,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	SizeMemoryBackedVolumes: {Default: true, PreRelease: featuregate.Beta},
 
+	StableLoadBalancerNodeSet: {Default: true, PreRelease: featuregate.Beta},
+
 	StatefulSetAutoDeletePVC: {Default: false, PreRelease: featuregate.Alpha},
 
 	StatefulSetStartOrdinal: {Default: true, PreRelease: featuregate.Beta},
@@ -1092,7 +1103,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
 
-	genericfeatures.AggregatedDiscoveryEndpoint: {Default: false, PreRelease: featuregate.Alpha},
+	genericfeatures.AggregatedDiscoveryEndpoint: {Default: true, PreRelease: featuregate.Beta},
 
 	genericfeatures.APIListChunking: {Default: true, PreRelease: featuregate.Beta},
 
