@@ -735,7 +735,7 @@ type EmptyDirVolumeSource struct {
 	// The maximum usage on memory medium EmptyDir would be the minimum value between
 	// the SizeLimit specified here and the sum of memory limits of all containers in a pod.
 	// The default is nil which means that the limit is undefined.
-	// More info: http://kubernetes.io/docs/user-guide/volumes#emptydir
+	// More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir
 	// +optional
 	SizeLimit *resource.Quantity `json:"sizeLimit,omitempty" protobuf:"bytes,2,opt,name=sizeLimit"`
 }
@@ -2710,12 +2710,12 @@ type ContainerStatus struct {
 	// same as false.
 	// +optional
 	Started *bool `json:"started,omitempty" protobuf:"varint,9,opt,name=started"`
-	// ResourcesAllocated represents the compute resources allocated for this container by the
+	// AllocatedResources represents the compute resources allocated for this container by the
 	// node. Kubelet sets this value to Container.Resources.Requests upon successful pod admission
 	// and after successfully admitting desired pod resize.
 	// +featureGate=InPlacePodVerticalScaling
 	// +optional
-	ResourcesAllocated ResourceList `json:"resourcesAllocated,omitempty" protobuf:"bytes,10,rep,name=resourcesAllocated,casttype=ResourceList,castkey=ResourceName"`
+	AllocatedResources ResourceList `json:"allocatedResources,omitempty" protobuf:"bytes,10,rep,name=allocatedResources,casttype=ResourceList,castkey=ResourceName"`
 	// Resources represents the compute resource requests and limits that have been successfully
 	// enacted on the running container after it has been started or has been successfully resized.
 	// +featureGate=InPlacePodVerticalScaling
@@ -4515,6 +4515,9 @@ const (
 	// LoadBalancerPortsError represents the condition of the requested ports
 	// on the cloud load balancer instance.
 	LoadBalancerPortsError = "LoadBalancerPortsError"
+	// LoadBalancerPortsErrorReason reason in ServiceStatus condition LoadBalancerPortsError
+	// means the LoadBalancer was not able to be configured correctly.
+	LoadBalancerPortsErrorReason = "LoadBalancerMixedProtocolNotSupported"
 )
 
 // ServiceStatus represents the current status of a service.
@@ -6870,6 +6873,13 @@ const (
 	// Name of header that specifies a request ID used to associate the error
 	// and data streams for a single forwarded connection
 	PortForwardRequestIDHeader = "requestID"
+)
+
+const (
+	// MixedProtocolNotSupported error in PortStatus means that the cloud provider
+	// can't publish the port on the load balancer because mixed values of protocols
+	// on the same LoadBalancer type of Service are not supported by the cloud provider.
+	MixedProtocolNotSupported = "MixedProtocolNotSupported"
 )
 
 // PortStatus represents the error condition of a service port

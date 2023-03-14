@@ -1,8 +1,5 @@
-//go:build !providerless && !linux && !windows
-// +build !providerless,!linux,!windows
-
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2023 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,13 +14,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package azuredd
+package validatingadmissionpolicy
 
-import "k8s.io/utils/exec"
+import (
+	celgo "github.com/google/cel-go/cel"
+	"k8s.io/apiserver/pkg/admission/plugin/cel"
+)
 
-func scsiHostRescan(io ioHandler, exec exec.Interface) {
+var _ cel.ExpressionAccessor = (*MessageExpressionCondition)(nil)
+
+type MessageExpressionCondition struct {
+	MessageExpression string
 }
 
-func findDiskByLun(lun int, io ioHandler, exec exec.Interface) (string, error) {
-	return "", nil
+func (m *MessageExpressionCondition) GetExpression() string {
+	return m.MessageExpression
+}
+
+func (m *MessageExpressionCondition) ReturnTypes() []*celgo.Type {
+	return []*celgo.Type{celgo.StringType}
 }

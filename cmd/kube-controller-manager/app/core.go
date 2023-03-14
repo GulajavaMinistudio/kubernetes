@@ -186,12 +186,10 @@ func startNodeLifecycleController(ctx context.Context, controllerContext Control
 		controllerContext.ComponentConfig.KubeCloudShared.NodeMonitorPeriod.Duration,
 		controllerContext.ComponentConfig.NodeLifecycleController.NodeStartupGracePeriod.Duration,
 		controllerContext.ComponentConfig.NodeLifecycleController.NodeMonitorGracePeriod.Duration,
-		controllerContext.ComponentConfig.NodeLifecycleController.PodEvictionTimeout.Duration,
 		controllerContext.ComponentConfig.NodeLifecycleController.NodeEvictionRate,
 		controllerContext.ComponentConfig.NodeLifecycleController.SecondaryNodeEvictionRate,
 		controllerContext.ComponentConfig.NodeLifecycleController.LargeClusterSizeThreshold,
 		controllerContext.ComponentConfig.NodeLifecycleController.UnhealthyZoneThreshold,
-		controllerContext.ComponentConfig.NodeLifecycleController.EnableTaintManager,
 	)
 	if err != nil {
 		return nil, true, err
@@ -464,7 +462,9 @@ func startModifiedNamespaceController(ctx context.Context, controllerContext Con
 
 	discoverResourcesFn := namespaceKubeClient.Discovery().ServerPreferredNamespacedResources
 
+	ctx = klog.NewContext(ctx, klog.LoggerWithName(klog.FromContext(ctx), "namespace"))
 	namespaceController := namespacecontroller.NewNamespaceController(
+		ctx,
 		namespaceKubeClient,
 		metadataClient,
 		discoverResourcesFn,
@@ -472,7 +472,7 @@ func startModifiedNamespaceController(ctx context.Context, controllerContext Con
 		controllerContext.ComponentConfig.NamespaceController.NamespaceSyncPeriod.Duration,
 		v1.FinalizerKubernetes,
 	)
-	go namespaceController.Run(int(controllerContext.ComponentConfig.NamespaceController.ConcurrentNamespaceSyncs), ctx.Done())
+	go namespaceController.Run(ctx, int(controllerContext.ComponentConfig.NamespaceController.ConcurrentNamespaceSyncs))
 
 	return nil, true, nil
 }

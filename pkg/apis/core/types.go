@@ -682,7 +682,7 @@ type EmptyDirVolumeSource struct {
 	// The maximum usage on memory medium EmptyDir would be the minimum value between
 	// the SizeLimit specified here and the sum of memory limits of all containers in a pod.
 	// The default is nil which means that the limit is undefined.
-	// More info: http://kubernetes.io/docs/user-guide/volumes#emptydir
+	// More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir
 	// +optional
 	SizeLimit *resource.Quantity
 }
@@ -2492,12 +2492,12 @@ type ContainerStatus struct {
 	// same as false.
 	// +optional
 	Started *bool
-	// ResourcesAllocated represents the compute resources allocated for this container by the
+	// AllocatedResources represents the compute resources allocated for this container by the
 	// node. Kubelet sets this value to Container.Resources.Requests upon successful pod admission
 	// and after successfully admitting desired pod resize.
 	// +featureGate=InPlacePodVerticalScaling
 	// +optional
-	ResourcesAllocated ResourceList
+	AllocatedResources ResourceList
 	// Resources represents the compute resource requests and limits that have been successfully
 	// enacted on the running container after it has been started or has been successfully resized.
 	// +featureGate=InPlacePodVerticalScaling

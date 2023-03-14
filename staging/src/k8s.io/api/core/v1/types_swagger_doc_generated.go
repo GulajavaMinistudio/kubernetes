@@ -455,7 +455,7 @@ var map_ContainerStatus = map[string]string{
 	"imageID":            "ImageID is the image ID of the container's image. The image ID may not match the image ID of the image used in the PodSpec, as it may have been resolved by the runtime.",
 	"containerID":        "ContainerID is the ID of the container in the format '<type>://<container_id>'. Where type is a container runtime identifier, returned from Version call of CRI API (for example \"containerd\").",
 	"started":            "Started indicates whether the container has finished its postStart lifecycle hook and passed its startup probe. Initialized as false, becomes true after startupProbe is considered successful. Resets to false when the container is restarted, or if kubelet loses state temporarily. In both cases, startup probes will run again. Is always true when no startupProbe is defined and container is running and has passed the postStart lifecycle hook. The null value must be treated the same as false.",
-	"resourcesAllocated": "ResourcesAllocated represents the compute resources allocated for this container by the node. Kubelet sets this value to Container.Resources.Requests upon successful pod admission and after successfully admitting desired pod resize.",
+	"allocatedResources": "AllocatedResources represents the compute resources allocated for this container by the node. Kubelet sets this value to Container.Resources.Requests upon successful pod admission and after successfully admitting desired pod resize.",
 	"resources":          "Resources represents the compute resource requests and limits that have been successfully enacted on the running container after it has been started or has been successfully resized.",
 }
 
@@ -506,7 +506,7 @@ func (DownwardAPIVolumeSource) SwaggerDoc() map[string]string {
 var map_EmptyDirVolumeSource = map[string]string{
 	"":          "Represents an empty directory for a pod. Empty directory volumes support ownership management and SELinux relabeling.",
 	"medium":    "medium represents what type of storage medium should back this directory. The default is \"\" which means to use the node's default medium. Must be an empty string (default) or Memory. More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir",
-	"sizeLimit": "sizeLimit is the total amount of local storage required for this EmptyDir volume. The size limit is also applicable for memory medium. The maximum usage on memory medium EmptyDir would be the minimum value between the SizeLimit specified here and the sum of memory limits of all containers in a pod. The default is nil which means that the limit is undefined. More info: http://kubernetes.io/docs/user-guide/volumes#emptydir",
+	"sizeLimit": "sizeLimit is the total amount of local storage required for this EmptyDir volume. The size limit is also applicable for memory medium. The maximum usage on memory medium EmptyDir would be the minimum value between the SizeLimit specified here and the sum of memory limits of all containers in a pod. The default is nil which means that the limit is undefined. More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir",
 }
 
 func (EmptyDirVolumeSource) SwaggerDoc() map[string]string {

@@ -404,6 +404,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: message
       type:
         scalar: string
+    - name: messageExpression
+      type:
+        scalar: string
     - name: reason
       type:
         scalar: string
@@ -4303,6 +4306,11 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: io.k8s.api.core.v1.ContainerStatus
   map:
     fields:
+    - name: allocatedResources
+      type:
+        map:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.api.resource.Quantity
     - name: containerID
       type:
         scalar: string
@@ -4329,11 +4337,6 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: resources
       type:
         namedType: io.k8s.api.core.v1.ResourceRequirements
-    - name: resourcesAllocated
-      type:
-        map:
-          elementType:
-            namedType: io.k8s.apimachinery.pkg.api.resource.Quantity
     - name: restartCount
       type:
         scalar: numeric

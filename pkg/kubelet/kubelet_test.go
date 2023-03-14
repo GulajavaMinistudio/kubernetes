@@ -92,7 +92,6 @@ import (
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/util/oom"
 	"k8s.io/kubernetes/pkg/volume"
-	"k8s.io/kubernetes/pkg/volume/azuredd"
 	"k8s.io/kubernetes/pkg/volume/gcepd"
 	_ "k8s.io/kubernetes/pkg/volume/hostpath"
 	volumetest "k8s.io/kubernetes/pkg/volume/testing"
@@ -367,7 +366,6 @@ func newTestKubeletWithImageList(
 		allPlugins = append(allPlugins, plug)
 	} else {
 		allPlugins = append(allPlugins, gcepd.ProbeVolumePlugins()...)
-		allPlugins = append(allPlugins, azuredd.ProbeVolumePlugins()...)
 	}
 
 	var prober volume.DynamicPluginProber // TODO (#51147) inject mock
@@ -2494,7 +2492,7 @@ func TestHandlePodResourcesResize(t *testing.T) {
 			ContainerStatuses: []v1.ContainerStatus{
 				{
 					Name:               "c1",
-					ResourcesAllocated: v1.ResourceList{v1.ResourceCPU: cpu1000m, v1.ResourceMemory: mem1000M},
+					AllocatedResources: v1.ResourceList{v1.ResourceCPU: cpu1000m, v1.ResourceMemory: mem1000M},
 					Resources:          &v1.ResourceRequirements{},
 				},
 			},
@@ -2584,9 +2582,9 @@ func TestHandlePodResourcesResize(t *testing.T) {
 
 	for _, tt := range tests {
 		tt.pod.Spec.Containers[0].Resources.Requests = tt.newRequests
-		tt.pod.Status.ContainerStatuses[0].ResourcesAllocated = v1.ResourceList{v1.ResourceCPU: cpu1000m, v1.ResourceMemory: mem1000M}
+		tt.pod.Status.ContainerStatuses[0].AllocatedResources = v1.ResourceList{v1.ResourceCPU: cpu1000m, v1.ResourceMemory: mem1000M}
 		kubelet.handlePodResourcesResize(tt.pod)
-		assert.Equal(t, tt.expectedAllocations, tt.pod.Status.ContainerStatuses[0].ResourcesAllocated, tt.name)
+		assert.Equal(t, tt.expectedAllocations, tt.pod.Status.ContainerStatuses[0].AllocatedResources, tt.name)
 		assert.Equal(t, tt.expectedResize, tt.pod.Status.Resize, tt.name)
 		testKubelet.fakeKubeClient.ClearActions()
 	}

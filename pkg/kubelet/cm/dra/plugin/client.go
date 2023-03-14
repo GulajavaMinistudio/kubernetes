@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -30,6 +31,8 @@ import (
 
 	drapbv1 "k8s.io/kubelet/pkg/apis/dra/v1alpha1"
 )
+
+const PluginClientTimeout = 10 * time.Second
 
 type Client interface {
 	NodePrepareResource(
@@ -131,6 +134,9 @@ func (r *draPluginClient) NodePrepareResource(
 		ResourceHandle: resourceHandle,
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, PluginClientTimeout)
+	defer cancel()
+
 	return nodeClient.NodePrepareResource(ctx, req)
 }
 
@@ -164,6 +170,9 @@ func (r *draPluginClient) NodeUnprepareResource(
 		ClaimName:  claimName,
 		CdiDevices: cdiDevices,
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, PluginClientTimeout)
+	defer cancel()
 
 	return nodeClient.NodeUnprepareResource(ctx, req)
 }

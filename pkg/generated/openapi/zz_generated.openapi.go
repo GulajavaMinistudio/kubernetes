@@ -2498,6 +2498,13 @@ func schema_k8sio_api_admissionregistration_v1alpha1_Validation(ref common.Refer
 							Format:      "",
 						},
 					},
+					"messageExpression": {
+						SchemaProps: spec.SchemaProps{
+							Description: "messageExpression declares a CEL expression that evaluates to the validation failure message that is returned when this rule fails. Since messageExpression is used as a failure message, it must evaluate to a string. If both message and messageExpression are present on a validation, then messageExpression will be used if validation fails. If messageExpression results in a runtime error, the runtime error is logged, and the validation failure message is produced as if the messageExpression field were unset. If messageExpression evaluates to an empty string, a string with only spaces, or a string that contains line breaks, then the validation failure message will also be produced as if the messageExpression field were unset, and the fact that messageExpression produced an empty string/string with only spaces/string with line breaks will be logged. messageExpression has access to all the same variables as the `expression` except for 'authorizer' and 'authorizer.requestResource'. Example: \"object.x must be less than max (\"+string(params.max)+\")\"",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 				Required: []string{"expression"},
 			},
@@ -17649,9 +17656,9 @@ func schema_k8sio_api_core_v1_ContainerStatus(ref common.ReferenceCallback) comm
 							Format:      "",
 						},
 					},
-					"resourcesAllocated": {
+					"allocatedResources": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ResourcesAllocated represents the compute resources allocated for this container by the node. Kubelet sets this value to Container.Resources.Requests upon successful pod admission and after successfully admitting desired pod resize.",
+							Description: "AllocatedResources represents the compute resources allocated for this container by the node. Kubelet sets this value to Container.Resources.Requests upon successful pod admission and after successfully admitting desired pod resize.",
 							Type:        []string{"object"},
 							AdditionalProperties: &spec.SchemaOrBool{
 								Allows: true,
@@ -17825,7 +17832,7 @@ func schema_k8sio_api_core_v1_EmptyDirVolumeSource(ref common.ReferenceCallback)
 					},
 					"sizeLimit": {
 						SchemaProps: spec.SchemaProps{
-							Description: "sizeLimit is the total amount of local storage required for this EmptyDir volume. The size limit is also applicable for memory medium. The maximum usage on memory medium EmptyDir would be the minimum value between the SizeLimit specified here and the sum of memory limits of all containers in a pod. The default is nil which means that the limit is undefined. More info: http://kubernetes.io/docs/user-guide/volumes#emptydir",
+							Description: "sizeLimit is the total amount of local storage required for this EmptyDir volume. The size limit is also applicable for memory medium. The maximum usage on memory medium EmptyDir would be the minimum value between the SizeLimit specified here and the sum of memory limits of all containers in a pod. The default is nil which means that the limit is undefined. More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir",
 							Ref:         ref("k8s.io/apimachinery/pkg/api/resource.Quantity"),
 						},
 					},
@@ -48439,7 +48446,7 @@ func schema_pkg_apis_meta_v1_ObjectMeta(ref common.ReferenceCallback) common.Ope
 				Properties: map[string]spec.Schema{
 					"name": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Name must be unique within a namespace. Is required when creating resources, although some resources may allow a client to request the generation of an appropriate name automatically. Name is primarily intended for creation idempotence and configuration definition. Cannot be updated. More info: http://kubernetes.io/docs/user-guide/identifiers#names",
+							Description: "Name must be unique within a namespace. Is required when creating resources, although some resources may allow a client to request the generation of an appropriate name automatically. Name is primarily intended for creation idempotence and configuration definition. Cannot be updated. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#names",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -48453,7 +48460,7 @@ func schema_pkg_apis_meta_v1_ObjectMeta(ref common.ReferenceCallback) common.Ope
 					},
 					"namespace": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Namespace defines the space within which each name must be unique. An empty namespace is equivalent to the \"default\" namespace, but \"default\" is the canonical representation. Not all objects are required to be scoped to a namespace - the value of this field for those objects will be empty.\n\nMust be a DNS_LABEL. Cannot be updated. More info: http://kubernetes.io/docs/user-guide/namespaces",
+							Description: "Namespace defines the space within which each name must be unique. An empty namespace is equivalent to the \"default\" namespace, but \"default\" is the canonical representation. Not all objects are required to be scoped to a namespace - the value of this field for those objects will be empty.\n\nMust be a DNS_LABEL. Cannot be updated. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -48467,7 +48474,7 @@ func schema_pkg_apis_meta_v1_ObjectMeta(ref common.ReferenceCallback) common.Ope
 					},
 					"uid": {
 						SchemaProps: spec.SchemaProps{
-							Description: "UID is the unique in time and space value for this object. It is typically generated by the server on successful creation of a resource and is not allowed to change on PUT operations.\n\nPopulated by the system. Read-only. More info: http://kubernetes.io/docs/user-guide/identifiers#uids",
+							Description: "UID is the unique in time and space value for this object. It is typically generated by the server on successful creation of a resource and is not allowed to change on PUT operations.\n\nPopulated by the system. Read-only. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#uids",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -48508,7 +48515,7 @@ func schema_pkg_apis_meta_v1_ObjectMeta(ref common.ReferenceCallback) common.Ope
 					},
 					"labels": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Map of string keys and values that can be used to organize and categorize (scope and select) objects. May match selectors of replication controllers and services. More info: http://kubernetes.io/docs/user-guide/labels",
+							Description: "Map of string keys and values that can be used to organize and categorize (scope and select) objects. May match selectors of replication controllers and services. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels",
 							Type:        []string{"object"},
 							AdditionalProperties: &spec.SchemaOrBool{
 								Allows: true,
@@ -48524,7 +48531,7 @@ func schema_pkg_apis_meta_v1_ObjectMeta(ref common.ReferenceCallback) common.Ope
 					},
 					"annotations": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Annotations is an unstructured key value map stored with a resource that may be set by external tools to store and retrieve arbitrary metadata. They are not queryable and should be preserved when modifying objects. More info: http://kubernetes.io/docs/user-guide/annotations",
+							Description: "Annotations is an unstructured key value map stored with a resource that may be set by external tools to store and retrieve arbitrary metadata. They are not queryable and should be preserved when modifying objects. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations",
 							Type:        []string{"object"},
 							AdditionalProperties: &spec.SchemaOrBool{
 								Allows: true,
@@ -48625,7 +48632,7 @@ func schema_pkg_apis_meta_v1_OwnerReference(ref common.ReferenceCallback) common
 					},
 					"name": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Name of the referent. More info: http://kubernetes.io/docs/user-guide/identifiers#names",
+							Description: "Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#names",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -48633,7 +48640,7 @@ func schema_pkg_apis_meta_v1_OwnerReference(ref common.ReferenceCallback) common
 					},
 					"uid": {
 						SchemaProps: spec.SchemaProps{
-							Description: "UID of the referent. More info: http://kubernetes.io/docs/user-guide/identifiers#uids",
+							Description: "UID of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#uids",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -49046,7 +49053,7 @@ func schema_pkg_apis_meta_v1_StatusDetails(ref common.ReferenceCallback) common.
 					},
 					"uid": {
 						SchemaProps: spec.SchemaProps{
-							Description: "UID of the resource. (when there is a single resource which can be described). More info: http://kubernetes.io/docs/user-guide/identifiers#uids",
+							Description: "UID of the resource. (when there is a single resource which can be described). More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#uids",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -52554,13 +52561,6 @@ func schema_k8sio_kube_controller_manager_config_v1alpha1_NodeLifecycleControlle
 				Description: "NodeLifecycleControllerConfiguration contains elements describing NodeLifecycleController.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
-					"EnableTaintManager": {
-						SchemaProps: spec.SchemaProps{
-							Description: "If set to true enables NoExecute Taints and will evict all not-tolerating Pod running on Nodes tainted with this kind of Taints.",
-							Type:        []string{"boolean"},
-							Format:      "",
-						},
-					},
 					"NodeEvictionRate": {
 						SchemaProps: spec.SchemaProps{
 							Description: "nodeEvictionRate is the number of nodes per second on which pods are deleted in case of node failure when a zone is healthy",
@@ -52615,7 +52615,7 @@ func schema_k8sio_kube_controller_manager_config_v1alpha1_NodeLifecycleControlle
 						},
 					},
 				},
-				Required: []string{"EnableTaintManager", "NodeEvictionRate", "SecondaryNodeEvictionRate", "NodeStartupGracePeriod", "NodeMonitorGracePeriod", "PodEvictionTimeout", "LargeClusterSizeThreshold", "UnhealthyZoneThreshold"},
+				Required: []string{"NodeEvictionRate", "SecondaryNodeEvictionRate", "NodeStartupGracePeriod", "NodeMonitorGracePeriod", "PodEvictionTimeout", "LargeClusterSizeThreshold", "UnhealthyZoneThreshold"},
 			},
 		},
 		Dependencies: []string{

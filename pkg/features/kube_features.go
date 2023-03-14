@@ -111,14 +111,6 @@ const (
 
 	// owner: @andyzhangx
 	// alpha: v1.15
-	// beta: v1.19
-	// GA: v1.24
-	//
-	// Enables the Azure Disk in-tree driver to Azure Disk Driver migration feature.
-	CSIMigrationAzureDisk featuregate.Feature = "CSIMigrationAzureDisk"
-
-	// owner: @andyzhangx
-	// alpha: v1.15
 	// beta: v1.21
 	// GA: v1.26
 	//
@@ -154,6 +146,7 @@ const (
 	// owner: @humblec, @zhucan
 	// kep: https://kep.k8s.io/3171
 	// alpha: v1.25
+	// beta: v1.27
 	//
 	// Enables SecretRef field in CSI NodeExpandVolume request.
 	CSINodeExpandSecret featuregate.Feature = "CSINodeExpandSecret"
@@ -708,6 +701,14 @@ const (
 	// Enables the use of `RuntimeDefault` as the default seccomp profile for all workloads.
 	SeccompDefault featuregate.Feature = "SeccompDefault"
 
+	// owner: @mtardy
+	// alpha: v1.0
+	//
+	// Putting this admission plugin behind a feature gate is part of the
+	// deprecation process. For details about the removal see:
+	// https://github.com/kubernetes/kubernetes/issues/111516
+	SecurityContextDeny featuregate.Feature = "SecurityContextDeny"
+
 	// owner: @maplain @andrewsykim
 	// kep: https://kep.k8s.io/2086
 	// alpha: v1.21
@@ -750,6 +751,7 @@ const (
 
 	// owner: @mattcary
 	// alpha: v1.22
+	// beta: v1.27
 	//
 	// Enables policies controlling deletion of PVCs created by a StatefulSet.
 	StatefulSetAutoDeletePVC featuregate.Feature = "StatefulSetAutoDeletePVC"
@@ -898,8 +900,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	CPUManagerPolicyOptions: {Default: true, PreRelease: featuregate.Beta},
 
-	CSIMigrationAzureDisk: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.26
-
 	CSIMigrationAzureFile: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
 
 	CSIMigrationGCE: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.27
@@ -910,7 +910,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	CSIMigrationvSphere: {Default: true, PreRelease: featuregate.GA}, // LockToDefault when CSI driver with GA support for Windows, raw block and xfs features are available
 
-	CSINodeExpandSecret: {Default: false, PreRelease: featuregate.Alpha},
+	CSINodeExpandSecret: {Default: true, PreRelease: featuregate.Beta},
 
 	CSIStorageCapacity: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.26
 
@@ -1058,6 +1058,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	SeccompDefault: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.29
 
+	SecurityContextDeny: {Default: false, PreRelease: featuregate.Alpha},
+
 	ServiceIPStaticSubrange: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
 
 	ServiceInternalTrafficPolicy: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
@@ -1068,7 +1070,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	StableLoadBalancerNodeSet: {Default: true, PreRelease: featuregate.Beta},
 
-	StatefulSetAutoDeletePVC: {Default: false, PreRelease: featuregate.Alpha},
+	StatefulSetAutoDeletePVC: {Default: true, PreRelease: featuregate.Beta},
 
 	StatefulSetStartOrdinal: {Default: true, PreRelease: featuregate.Beta},
 
