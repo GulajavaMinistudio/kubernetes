@@ -31,13 +31,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/opencontainers/selinux/go-selinux"
-
-	"k8s.io/client-go/informers"
-
 	cadvisorapi "github.com/google/cadvisor/info/v1"
 	libcontaineruserns "github.com/opencontainers/runc/libcontainer/userns"
+	"github.com/opencontainers/selinux/go-selinux"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"k8s.io/client-go/informers"
 
 	"k8s.io/mount-utils"
 	"k8s.io/utils/integer"
@@ -109,6 +108,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/sysctl"
 	"k8s.io/kubernetes/pkg/kubelet/token"
 	kubetypes "k8s.io/kubernetes/pkg/kubelet/types"
+	"k8s.io/kubernetes/pkg/kubelet/userns"
 	"k8s.io/kubernetes/pkg/kubelet/util"
 	"k8s.io/kubernetes/pkg/kubelet/util/manager"
 	"k8s.io/kubernetes/pkg/kubelet/util/queue"
@@ -198,6 +198,9 @@ const (
 
 	// nodeLeaseRenewIntervalFraction is the fraction of lease duration to renew the lease
 	nodeLeaseRenewIntervalFraction = 0.25
+
+	// instrumentationScope is the name of OpenTelemetry instrumentation scope
+	instrumentationScope = "k8s.io/kubernetes/pkg/kubelet"
 )
 
 var (
@@ -511,6 +514,8 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		insecureContainerLifecycleHTTPClient.CheckRedirect = httpprobe.RedirectChecker(false)
 	}
 
+	tracer := kubeDeps.TracerProvider.Tracer(instrumentationScope)
+
 	klet := &Kubelet{
 		hostname:                                hostname,
 		hostnameOverridden:                      hostnameOverridden,
@@ -561,6 +566,7 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		experimentalHostUserNamespaceDefaulting: utilfeature.DefaultFeatureGate.Enabled(features.ExperimentalHostUserNamespaceDefaultingGate),
 		keepTerminatedPodVolumes:                keepTerminatedPodVolumes,
 		nodeStatusMaxImages:                     nodeStatusMaxImages,
+		tracer:                                  tracer,
 	}
 
 	if klet.cloud != nil {
@@ -677,6 +683,7 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		kubeDeps.ContainerManager.GetNodeAllocatableAbsolute,
 		*kubeCfg.MemoryThrottlingFactor,
 		kubeDeps.PodStartupLatencyTracker,
+		kubeDeps.TracerProvider,
 	)
 	if err != nil {
 		return nil, err
@@ -760,7 +767,7 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	klet.containerDeletor = newPodContainerDeletor(klet.containerRuntime, integer.IntMax(containerGCPolicy.MaxPerPodContainer, minDeadContainerInPod))
 
 	// setup imageManager
-	imageManager, err := images.NewImageGCManager(klet.containerRuntime, klet.StatsProvider, kubeDeps.Recorder, nodeRef, imageGCPolicy, crOptions.PodSandboxImage)
+	imageManager, err := images.NewImageGCManager(klet.containerRuntime, klet.StatsProvider, kubeDeps.Recorder, nodeRef, imageGCPolicy, crOptions.PodSandboxImage, kubeDeps.TracerProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize image manager: %v", err)
 	}
@@ -900,7 +907,7 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		StateDirectory:                   rootDirectory,
 	})
 	klet.shutdownManager = shutdownManager
-	klet.usernsManager, err = MakeUserNsManager(klet)
+	klet.usernsManager, err = userns.MakeUserNsManager(klet)
 	if err != nil {
 		return nil, err
 	}
@@ -1248,10 +1255,13 @@ type Kubelet struct {
 	shutdownManager nodeshutdown.Manager
 
 	// Manage user namespaces
-	usernsManager *usernsManager
+	usernsManager *userns.UsernsManager
 
 	// Mutex to serialize new pod admission and existing pod resizing
 	podResizeMutex sync.Mutex
+
+	// OpenTelemetry Tracer
+	tracer trace.Tracer
 }
 
 // ListPodStats is delegated to StatsProvider, which implements stats.Provider interface
@@ -1498,7 +1508,39 @@ func (kl *Kubelet) initializeRuntimeDependentModules() {
 func (kl *Kubelet) Run(updates <-chan kubetypes.PodUpdate) {
 	ctx := context.Background()
 	if kl.logServer == nil {
-		kl.logServer = http.StripPrefix("/logs/", http.FileServer(http.Dir("/var/log/")))
+		file := http.FileServer(http.Dir(nodeLogDir))
+		if utilfeature.DefaultFeatureGate.Enabled(features.NodeLogQuery) && kl.kubeletConfiguration.EnableSystemLogQuery {
+			kl.logServer = http.StripPrefix("/logs/", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if nlq, errs := newNodeLogQuery(req.URL.Query()); len(errs) > 0 {
+					http.Error(w, errs.ToAggregate().Error(), http.StatusBadRequest)
+					return
+				} else if nlq != nil {
+					if req.URL.Path != "/" && req.URL.Path != "" {
+						http.Error(w, "path not allowed in query mode", http.StatusNotAcceptable)
+						return
+					}
+					if errs := nlq.validate(); len(errs) > 0 {
+						http.Error(w, errs.ToAggregate().Error(), http.StatusNotAcceptable)
+						return
+					}
+					// Validation ensures that the request does not query services and files at the same time
+					if len(nlq.Services) > 0 {
+						journal.ServeHTTP(w, req)
+						return
+					}
+					// Validation ensures that the request does not explicitly query multiple files at the same time
+					if len(nlq.Files) == 1 {
+						// Account for the \ being used on Windows clients
+						req.URL.Path = filepath.ToSlash(nlq.Files[0])
+					}
+				}
+				// Fall back in case the caller is directly trying to query a file
+				// Example: kubectl get --raw /api/v1/nodes/$name/proxy/logs/foo.log
+				file.ServeHTTP(w, req)
+			}))
+		} else {
+			kl.logServer = http.StripPrefix("/logs/", file)
+		}
 	}
 	if kl.kubeClient == nil {
 		klog.InfoS("No API server defined - no node status update will be sent")
@@ -1612,10 +1654,17 @@ func (kl *Kubelet) Run(updates <-chan kubetypes.PodUpdate) {
 func (kl *Kubelet) SyncPod(_ context.Context, updateType kubetypes.SyncPodType, pod, mirrorPod *v1.Pod, podStatus *kubecontainer.PodStatus) (isTerminal bool, err error) {
 	// TODO(#113606): connect this with the incoming context parameter, which comes from the pod worker.
 	// Currently, using that context causes test failures.
-	ctx := context.TODO()
+	ctx, otelSpan := kl.tracer.Start(context.TODO(), "syncPod", trace.WithAttributes(
+		attribute.String("k8s.pod.uid", string(pod.UID)),
+		attribute.String("k8s.pod", klog.KObj(pod).String()),
+		attribute.String("k8s.pod.name", pod.Name),
+		attribute.String("k8s.pod.update_type", updateType.String()),
+		attribute.String("k8s.namespace.name", pod.Namespace),
+	))
 	klog.V(4).InfoS("SyncPod enter", "pod", klog.KObj(pod), "podUID", pod.UID)
 	defer func() {
 		klog.V(4).InfoS("SyncPod exit", "pod", klog.KObj(pod), "podUID", pod.UID, "isTerminal", isTerminal)
+		otelSpan.End()
 	}()
 
 	// Latency measurements for the main workflow are relative to the
@@ -1882,7 +1931,13 @@ func (kl *Kubelet) SyncPod(_ context.Context, updateType kubetypes.SyncPodType, 
 func (kl *Kubelet) SyncTerminatingPod(_ context.Context, pod *v1.Pod, podStatus *kubecontainer.PodStatus, gracePeriod *int64, podStatusFn func(*v1.PodStatus)) error {
 	// TODO(#113606): connect this with the incoming context parameter, which comes from the pod worker.
 	// Currently, using that context causes test failures.
-	ctx := context.Background()
+	ctx, otelSpan := kl.tracer.Start(context.Background(), "syncTerminatingPod", trace.WithAttributes(
+		attribute.String("k8s.pod.uid", string(pod.UID)),
+		attribute.String("k8s.pod", klog.KObj(pod).String()),
+		attribute.String("k8s.pod.name", pod.Name),
+		attribute.String("k8s.namespace.name", pod.Namespace),
+	))
+	defer otelSpan.End()
 	klog.V(4).InfoS("SyncTerminatingPod enter", "pod", klog.KObj(pod), "podUID", pod.UID)
 	defer klog.V(4).InfoS("SyncTerminatingPod exit", "pod", klog.KObj(pod), "podUID", pod.UID)
 
@@ -2004,6 +2059,13 @@ func (kl *Kubelet) SyncTerminatingRuntimePod(_ context.Context, runningPod *kube
 // This typically occurs when a pod is force deleted from configuration (local disk or API) and the
 // kubelet restarts in the middle of the action.
 func (kl *Kubelet) SyncTerminatedPod(ctx context.Context, pod *v1.Pod, podStatus *kubecontainer.PodStatus) error {
+	_, otelSpan := kl.tracer.Start(context.Background(), "syncTerminatedPod", trace.WithAttributes(
+		attribute.String("k8s.pod.uid", string(pod.UID)),
+		attribute.String("k8s.pod", klog.KObj(pod).String()),
+		attribute.String("k8s.pod.name", pod.Name),
+		attribute.String("k8s.namespace.name", pod.Namespace),
+	))
+	defer otelSpan.End()
 	klog.V(4).InfoS("SyncTerminatedPod enter", "pod", klog.KObj(pod), "podUID", pod.UID)
 	defer klog.V(4).InfoS("SyncTerminatedPod exit", "pod", klog.KObj(pod), "podUID", pod.UID)
 
@@ -2720,7 +2782,16 @@ func (kl *Kubelet) ListenAndServePodResources() {
 		klog.V(2).InfoS("Failed to get local endpoint for PodResources endpoint", "err", err)
 		return
 	}
-	server.ListenAndServePodResources(socket, kl.podManager, kl.containerManager, kl.containerManager, kl.containerManager)
+
+	providers := podresources.PodResourcesProviders{
+		Pods:             kl.podManager,
+		Devices:          kl.containerManager,
+		Cpus:             kl.containerManager,
+		Memory:           kl.containerManager,
+		DynamicResources: kl.containerManager,
+	}
+
+	server.ListenAndServePodResources(socket, providers)
 }
 
 // Delete the eligible dead container instances in a pod. Depending on the configuration, the latest dead containers may be kept around.

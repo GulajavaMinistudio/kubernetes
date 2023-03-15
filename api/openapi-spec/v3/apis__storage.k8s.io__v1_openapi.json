@@ -126,7 +126,7 @@
                 "$ref": "#/components/schemas/io.k8s.api.core.v1.SecretReference"
               }
             ],
-            "description": "nodeExpandSecretRef is a reference to the secret object containing sensitive information to pass to the CSI driver to complete the CSI NodeExpandVolume call. This is an alpha field and requires enabling CSINodeExpandSecret feature gate. This field is optional, may be omitted if no secret is required. If the secret object contains more than one secret, all secrets are passed."
+            "description": "nodeExpandSecretRef is a reference to the secret object containing sensitive information to pass to the CSI driver to complete the CSI NodeExpandVolume call. This is a beta field which is enabled default by CSINodeExpandSecret feature gate. This field is optional, may be omitted if no secret is required. If the secret object contains more than one secret, all secrets are passed."
           },
           "nodePublishSecretRef": {
             "allOf": [
@@ -2343,7 +2343,7 @@
           {
             "group": "resource.k8s.io",
             "kind": "DeleteOptions",
-            "version": "v1alpha1"
+            "version": "v1alpha2"
           },
           {
             "group": "scheduling.k8s.io",
@@ -2726,7 +2726,7 @@
           {
             "group": "resource.k8s.io",
             "kind": "Status",
-            "version": "v1alpha1"
+            "version": "v1alpha2"
           }
         ]
       },
@@ -3068,7 +3068,7 @@
           {
             "group": "resource.k8s.io",
             "kind": "WatchEvent",
-            "version": "v1alpha1"
+            "version": "v1alpha2"
           },
           {
             "group": "scheduling.k8s.io",

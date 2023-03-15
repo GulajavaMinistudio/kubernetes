@@ -123,6 +123,52 @@ type ValidatingAdmissionPolicy struct {
 	metav1.ObjectMeta
 	// Specification of the desired behavior of the ValidatingAdmissionPolicy.
 	Spec ValidatingAdmissionPolicySpec
+	// The status of the ValidatingAdmissionPolicy, including warnings that are useful to determine if the policy
+	// behaves in the expected way.
+	// Populated by the system.
+	// Read-only.
+	// +optional
+	Status ValidatingAdmissionPolicyStatus
+}
+
+// ValidatingAdmissionPolicyStatus represents the status of an admission validation policy.
+type ValidatingAdmissionPolicyStatus struct {
+	// The generation observed by the controller.
+	// +optional
+	ObservedGeneration int64
+	// The results of type checking for each expression.
+	// Presence of this field indicates the completion of the type checking.
+	// +optional
+	TypeChecking *TypeChecking
+	// The conditions represent the latest available observations of a policy's current state.
+	// +optional
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition
+}
+
+// ValidatingAdmissionPolicyConditionType is the condition type of admission validation policy.
+type ValidatingAdmissionPolicyConditionType string
+
+// TypeChecking contains results of type checking the expressions in the
+// ValidatingAdmissionPolicy
+type TypeChecking struct {
+	// The type checking warnings for each expression.
+	// +optional
+	// +listType=atomic
+	ExpressionWarnings []ExpressionWarning
+}
+
+// ExpressionWarning is a warning information that targets a specific expression.
+type ExpressionWarning struct {
+	// The path to the field that refers the expression.
+	// For example, the reference to the expression of the first item of
+	// validations is "spec.validations[0].expression"
+	FieldRef string
+	// The content of type checking information in a human-readable form.
+	// Each line of the warning contains the type that the expression is checked
+	// against, followed by the type check error from the compiler.
+	Warning string
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -694,6 +740,24 @@ type ValidatingWebhook struct {
 	// does not understand, calls to the webhook will fail and be subject to the failure policy.
 	// +optional
 	AdmissionReviewVersions []string
+
+	// MatchConditions is a list of conditions that must be met for a request to be sent to this
+	// webhook. Match conditions filter requests that have already been matched by the rules,
+	// namespaceSelector, and objectSelector. An empty list of matchConditions matches all requests.
+	// There are a maximum of 64 match conditions allowed.
+	//
+	// The exact matching logic is (in order):
+	//   1. If ANY matchCondition evaluates to FALSE, the webhook is skipped.
+	//   2. If ALL matchConditions evaluate to TRUE, the webhook is called.
+	//   3. If any matchCondition evaluates to an error (but none are FALSE):
+	//      - If failurePolicy=Fail, reject the request
+	//      - If failurePolicy=Ignore, the error is ignored and the webhook is skipped
+	//
+	// This is an alpha feature and managed by the AdmissionWebhookMatchConditions feature gate.
+	//
+	// +featureGate=AdmissionWebhookMatchConditions
+	// +optional
+	MatchConditions []MatchCondition
 }
 
 // MutatingWebhook describes an admission webhook and the resources and operations it applies to.
@@ -836,6 +900,24 @@ type MutatingWebhook struct {
 	// Defaults to "Never".
 	// +optional
 	ReinvocationPolicy *ReinvocationPolicyType
+
+	// MatchConditions is a list of conditions that must be met for a request to be sent to this
+	// webhook. Match conditions filter requests that have already been matched by the rules,
+	// namespaceSelector, and objectSelector. An empty list of matchConditions matches all requests.
+	// There are a maximum of 64 match conditions allowed.
+	//
+	// The exact matching logic is (in order):
+	//   1. If ANY matchCondition evaluates to FALSE, the webhook is skipped.
+	//   2. If ALL matchConditions evaluate to TRUE, the webhook is called.
+	//   3. If any matchCondition evaluates to an error (but none are FALSE):
+	//      - If failurePolicy=Fail, reject the request
+	//      - If failurePolicy=Ignore, the error is ignored and the webhook is skipped
+	//
+	// This is an alpha feature and managed by the AdmissionWebhookMatchConditions feature gate.
+	//
+	// +featureGate=AdmissionWebhookMatchConditions
+	// +optional
+	MatchConditions []MatchCondition
 }
 
 // ReinvocationPolicyType specifies what type of policy the admission hook uses.
@@ -940,4 +1022,33 @@ type ServiceReference struct {
 	// `port` should be a valid port number (1-65535, inclusive).
 	// +optional
 	Port int32
+}
+
+// MatchCondition represents a condition which must by fulfilled for a request to be sent to a webhook.
+type MatchCondition struct {
+	// Name is an identifier for this match condition, used for strategic merging of MatchConditions,
+	// as well as providing an identifier for logging purposes. A good name should be descriptive of
+	// the associated expression.
+	// Name must be a qualified name consisting of alphanumeric characters, '-', '_' or '.', and
+	// must start and end with an alphanumeric character (e.g. 'MyName',  or 'my.name',  or
+	// '123-abc', regex used for validation is '([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]') with an
+	// optional DNS subdomain prefix and '/' (e.g. 'example.com/MyName')
+	//
+	// Required.
+	Name string
+
+	// Expression represents the expression which will be evaluated by CEL. Must evaluate to bool.
+	// CEL expressions have access to the contents of the AdmissionRequest and Authorizer, organized into CEL variables:
+	//
+	// 'object' - The object from the incoming request. The value is null for DELETE requests.
+	// 'oldObject' - The existing object. The value is null for CREATE requests.
+	// 'request' - Attributes of the admission request(/pkg/apis/admission/types.go#AdmissionRequest).
+	// 'authorizer' - A CEL Authorizer. May be used to perform authorization checks for the principal (user or service account) of the request.
+	//   See https://pkg.go.dev/k8s.io/apiserver/pkg/cel/library#Authz
+	// 'authorizer.requestResource' - A CEL ResourceCheck constructed from the 'authorizer' and configured with the
+	//   request resource.
+	// Documentation on CEL: https://kubernetes.io/docs/reference/using-api/cel/
+	//
+	// Required.
+	Expression string
 }
