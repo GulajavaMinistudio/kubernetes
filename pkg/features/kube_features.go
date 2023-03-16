@@ -61,6 +61,12 @@ const (
 	// beta: v1.4
 	AppArmor featuregate.Feature = "AppArmor"
 
+	// owner: @danwinship
+	// alpha: v1.27
+	//
+	// Enables dual-stack --node-ip in kubelet with external cloud providers
+	CloudDualStackNodeIPs featuregate.Feature = "CloudDualStackNodeIPs"
+
 	// owner: @szuecs
 	// alpha: v1.12
 	//
@@ -309,8 +315,10 @@ const (
 	// Make the kubelet use shutdown configuration based on pod priority values for graceful shutdown.
 	GracefulNodeShutdownBasedOnPodPriority featuregate.Feature = "GracefulNodeShutdownBasedOnPodPriority"
 
-	// owner: @arjunrn @mwielgus @josephburnett
+	// owner: @arjunrn @mwielgus @josephburnett @sanposhiho
+	// kep: https://kep.k8s.io/1610
 	// alpha: v1.20
+	// beta:  v1.27
 	//
 	// Add support for the HPA to scale based on metrics from individual containers
 	// in target pods
@@ -924,6 +932,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	AppArmor: {Default: true, PreRelease: featuregate.Beta},
 
+	CloudDualStackNodeIPs: {Default: false, PreRelease: featuregate.Alpha},
+
 	CPUCFSQuotaPeriod: {Default: false, PreRelease: featuregate.Alpha},
 
 	CPUManager: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // GA in 1.26
@@ -988,7 +998,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	GracefulNodeShutdownBasedOnPodPriority: {Default: true, PreRelease: featuregate.Beta},
 
-	HPAContainerMetrics: {Default: false, PreRelease: featuregate.Alpha},
+	HPAContainerMetrics: {Default: true, PreRelease: featuregate.Beta},
 
 	HonorPVReclaimPolicy: {Default: false, PreRelease: featuregate.Alpha},
 
