@@ -1,32 +1,16 @@
 {
   "components": {
     "schemas": {
-      "io.k8s.api.storage.v1beta1.CSIStorageCapacity": {
-        "description": "CSIStorageCapacity stores the result of one CSI GetCapacity call. For a given StorageClass, this describes the available capacity in a particular topology segment.  This can be used when considering where to instantiate new PersistentVolumes.\n\nFor example this can express things like: - StorageClass \"standard\" has \"1234 GiB\" available in \"topology.kubernetes.io/zone=us-east1\" - StorageClass \"localssd\" has \"10 GiB\" available in \"kubernetes.io/hostname=knode-abc123\"\n\nThe following three cases all imply that no capacity is available for a certain combination: - no object exists with suitable topology and storage class name - such an object exists, but the capacity is unset - such an object exists, but the capacity is zero\n\nThe producer of these objects can decide which approach is more suitable.\n\nThey are consumed by the kube-scheduler when a CSI driver opts into capacity-aware scheduling with CSIDriverSpec.StorageCapacity. The scheduler compares the MaximumVolumeSize against the requested size of pending volumes to filter out unsuitable nodes. If MaximumVolumeSize is unset, it falls back to a comparison against the less precise Capacity. If that is also unset, the scheduler assumes that capacity is insufficient and tries some other node.",
+      "io.k8s.api.certificates.v1alpha1.ClusterTrustBundle": {
+        "description": "ClusterTrustBundle is a cluster-scoped container for X.509 trust anchors (root certificates).\n\nClusterTrustBundle objects are considered to be readable by any authenticated user in the cluster, because they can be mounted by pods using the `clusterTrustBundle` projection.  All service accounts have read access to ClusterTrustBundles by default.  Users who only have namespace-level access to a cluster can read ClusterTrustBundles by impersonating a serviceaccount that they have access to.\n\nIt can be optionally associated with a particular assigner, in which case it contains one valid set of trust anchors for that signer. Signers may have multiple associated ClusterTrustBundles; each is an independent set of trust anchors for that signer. Admission control is used to enforce that only users with permissions on the signer can create or modify the corresponding bundle.",
         "properties": {
           "apiVersion": {
             "description": "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
             "type": "string"
           },
-          "capacity": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/io.k8s.apimachinery.pkg.api.resource.Quantity"
-              }
-            ],
-            "description": "capacity is the value reported by the CSI driver in its GetCapacityResponse for a GetCapacityRequest with topology and parameters that match the previous fields.\n\nThe semantic is currently (CSI spec 1.2) defined as: The available capacity, in bytes, of the storage that can be used to provision volumes. If not set, that information is currently unavailable."
-          },
           "kind": {
             "description": "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
             "type": "string"
-          },
-          "maximumVolumeSize": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/io.k8s.apimachinery.pkg.api.resource.Quantity"
-              }
-            ],
-            "description": "maximumVolumeSize is the value reported by the CSI driver in its GetCapacityResponse for a GetCapacityRequest with topology and parameters that match the previous fields.\n\nThis is defined since CSI spec 1.4.0 as the largest size that may be used in a CreateVolumeRequest.capacity_range.required_bytes field to create a volume with the same parameters as those in GetCapacityRequest. The corresponding value in the Kubernetes API is ResourceRequirements.Requests in a volume claim."
           },
           "metadata": {
             "allOf": [
@@ -35,56 +19,48 @@
               }
             ],
             "default": {},
-            "description": "Standard object's metadata. The name has no particular meaning. It must be be a DNS subdomain (dots allowed, 253 characters). To ensure that there are no conflicts with other CSI drivers on the cluster, the recommendation is to use csisc-<uuid>, a generated name, or a reverse-domain name which ends with the unique CSI driver name.\n\nObjects are namespaced.\n\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata"
+            "description": "metadata contains the object metadata."
           },
-          "nodeTopology": {
+          "spec": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector"
+                "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundleSpec"
               }
             ],
-            "description": "nodeTopology defines which nodes have access to the storage for which capacity was reported. If not set, the storage is not accessible from any node in the cluster. If empty, the storage is accessible from all nodes. This field is immutable."
-          },
-          "storageClassName": {
-            "default": "",
-            "description": "storageClassName represents the name of the StorageClass that the reported capacity applies to. It must meet the same requirements as the name of a StorageClass object (non-empty, DNS subdomain). If that object no longer exists, the CSIStorageCapacity object is obsolete and should be removed by its creator. This field is immutable.",
-            "type": "string"
+            "default": {},
+            "description": "spec contains the signer (if any) and trust anchors."
           }
         },
         "required": [
-          "storageClassName"
+          "spec"
         ],
         "type": "object",
         "x-kubernetes-group-version-kind": [
           {
-            "group": "storage.k8s.io",
-            "kind": "CSIStorageCapacity",
-            "version": "v1beta1"
+            "group": "certificates.k8s.io",
+            "kind": "ClusterTrustBundle",
+            "version": "v1alpha1"
           }
         ]
       },
-      "io.k8s.api.storage.v1beta1.CSIStorageCapacityList": {
-        "description": "CSIStorageCapacityList is a collection of CSIStorageCapacity objects.",
+      "io.k8s.api.certificates.v1alpha1.ClusterTrustBundleList": {
+        "description": "ClusterTrustBundleList is a collection of ClusterTrustBundle objects",
         "properties": {
           "apiVersion": {
             "description": "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
             "type": "string"
           },
           "items": {
-            "description": "items is the list of CSIStorageCapacity objects.",
+            "description": "items is a collection of ClusterTrustBundle objects",
             "items": {
               "allOf": [
                 {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               ],
               "default": {}
             },
-            "type": "array",
-            "x-kubernetes-list-map-keys": [
-              "name"
-            ],
-            "x-kubernetes-list-type": "map"
+            "type": "array"
           },
           "kind": {
             "description": "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
@@ -97,7 +73,7 @@
               }
             ],
             "default": {},
-            "description": "Standard list metadata More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata"
+            "description": "metadata contains the list metadata."
           }
         },
         "required": [
@@ -106,22 +82,29 @@
         "type": "object",
         "x-kubernetes-group-version-kind": [
           {
-            "group": "storage.k8s.io",
-            "kind": "CSIStorageCapacityList",
-            "version": "v1beta1"
+            "group": "certificates.k8s.io",
+            "kind": "ClusterTrustBundleList",
+            "version": "v1alpha1"
           }
         ]
       },
-      "io.k8s.apimachinery.pkg.api.resource.Quantity": {
-        "description": "Quantity is a fixed-point representation of a number. It provides convenient marshaling/unmarshaling in JSON and YAML, in addition to String() and AsInt64() accessors.\n\nThe serialization format is:\n\n``` <quantity>        ::= <signedNumber><suffix>\n\n\t(Note that <suffix> may be empty, from the \"\" case in <decimalSI>.)\n\n<digit>           ::= 0 | 1 | ... | 9 <digits>          ::= <digit> | <digit><digits> <number>          ::= <digits> | <digits>.<digits> | <digits>. | .<digits> <sign>            ::= \"+\" | \"-\" <signedNumber>    ::= <number> | <sign><number> <suffix>          ::= <binarySI> | <decimalExponent> | <decimalSI> <binarySI>        ::= Ki | Mi | Gi | Ti | Pi | Ei\n\n\t(International System of units; See: http://physics.nist.gov/cuu/Units/binary.html)\n\n<decimalSI>       ::= m | \"\" | k | M | G | T | P | E\n\n\t(Note that 1024 = 1Ki but 1000 = 1k; I didn't choose the capitalization.)\n\n<decimalExponent> ::= \"e\" <signedNumber> | \"E\" <signedNumber> ```\n\nNo matter which of the three exponent forms is used, no quantity may represent a number greater than 2^63-1 in magnitude, nor may it have more than 3 decimal places. Numbers larger or more precise will be capped or rounded up. (E.g.: 0.1m will rounded up to 1m.) This may be extended in the future if we require larger or smaller quantities.\n\nWhen a Quantity is parsed from a string, it will remember the type of suffix it had, and will use the same type again when it is serialized.\n\nBefore serializing, Quantity will be put in \"canonical form\". This means that Exponent/suffix will be adjusted up or down (with a corresponding increase or decrease in Mantissa) such that:\n\n- No precision is lost - No fractional digits will be emitted - The exponent (or suffix) is as large as possible.\n\nThe sign will be omitted unless the number is negative.\n\nExamples:\n\n- 1.5 will be serialized as \"1500m\" - 1.5Gi will be serialized as \"1536Mi\"\n\nNote that the quantity will NEVER be internally represented by a floating point number. That is the whole point of this exercise.\n\nNon-canonical values will still parse as long as they are well formed, but will be re-emitted in their canonical form. (So always use canonical form, or don't diff.)\n\nThis format is intended to make it difficult to use these numbers without writing some sort of special handling code in the hopes that that will cause implementors to also use a fixed point implementation.",
-        "oneOf": [
-          {
+      "io.k8s.api.certificates.v1alpha1.ClusterTrustBundleSpec": {
+        "description": "ClusterTrustBundleSpec contains the signer and trust anchors.",
+        "properties": {
+          "signerName": {
+            "description": "signerName indicates the associated signer, if any.\n\nIn order to create or update a ClusterTrustBundle that sets signerName, you must have the following cluster-scoped permission: group=certificates.k8s.io resource=signers resourceName=<the signer name> verb=attest.\n\nIf signerName is not empty, then the ClusterTrustBundle object must be named with the signer name as a prefix (translating slashes to colons). For example, for the signer name `example.com/foo`, valid ClusterTrustBundle object names include `example.com:foo:abc` and `example.com:foo:v1`.\n\nIf signerName is empty, then the ClusterTrustBundle object's name must not have such a prefix.\n\nList/watch requests for ClusterTrustBundles can filter on this field using a `spec.signerName=NAME` field selector.",
             "type": "string"
           },
-          {
-            "type": "number"
+          "trustBundle": {
+            "default": "",
+            "description": "trustBundle contains the individual X.509 trust anchors for this bundle, as PEM bundle of PEM-wrapped, DER-formatted X.509 certificates.\n\nThe data must consist only of PEM certificate blocks that parse as valid X.509 certificates.  Each certificate must include a basic constraints extension with the CA bit set.  The API server will reject objects that contain duplicate certificates, or that use PEM block headers.\n\nUsers of ClusterTrustBundles, including Kubelet, are free to reorder and deduplicate certificate blocks in this file according to their own logic, as well as to drop PEM block headers and inter-block data.",
+            "type": "string"
           }
-        ]
+        },
+        "required": [
+          "trustBundle"
+        ],
+        "type": "object"
       },
       "io.k8s.apimachinery.pkg.apis.meta.v1.APIResource": {
         "description": "APIResource specifies the name of a resource and whether it is namespaced.",
@@ -405,6 +388,11 @@
           {
             "group": "certificates.k8s.io",
             "kind": "DeleteOptions",
+            "version": "v1alpha1"
+          },
+          {
+            "group": "certificates.k8s.io",
+            "kind": "DeleteOptions",
             "version": "v1beta1"
           },
           {
@@ -566,63 +554,6 @@
       },
       "io.k8s.apimachinery.pkg.apis.meta.v1.FieldsV1": {
         "description": "FieldsV1 stores a set of fields in a data structure like a Trie, in JSON format.\n\nEach key is either a '.' representing the field itself, and will always map to an empty set, or a string representing a sub-field or item. The string will follow one of these four formats: 'f:<name>', where <name> is the name of a field in a struct, or key in a map 'v:<value>', where <value> is the exact json formatted value of a list item 'i:<index>', where <index> is position of a item in a list 'k:<keys>', where <keys> is a map of  a list item's key fields to their unique values If a key maps to an empty Fields value, the field that key represents is part of the set.\n\nThe exact format is defined in sigs.k8s.io/structured-merge-diff",
-        "type": "object"
-      },
-      "io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector": {
-        "description": "A label selector is a label query over a set of resources. The result of matchLabels and matchExpressions are ANDed. An empty label selector matches all objects. A null label selector matches no objects.",
-        "properties": {
-          "matchExpressions": {
-            "description": "matchExpressions is a list of label selector requirements. The requirements are ANDed.",
-            "items": {
-              "allOf": [
-                {
-                  "$ref": "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelectorRequirement"
-                }
-              ],
-              "default": {}
-            },
-            "type": "array"
-          },
-          "matchLabels": {
-            "additionalProperties": {
-              "default": "",
-              "type": "string"
-            },
-            "description": "matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is \"key\", the operator is \"In\", and the values array contains only \"value\". The requirements are ANDed.",
-            "type": "object"
-          }
-        },
-        "type": "object",
-        "x-kubernetes-map-type": "atomic"
-      },
-      "io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelectorRequirement": {
-        "description": "A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.",
-        "properties": {
-          "key": {
-            "default": "",
-            "description": "key is the label key that the selector applies to.",
-            "type": "string",
-            "x-kubernetes-patch-merge-key": "key",
-            "x-kubernetes-patch-strategy": "merge"
-          },
-          "operator": {
-            "default": "",
-            "description": "operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.",
-            "type": "string"
-          },
-          "values": {
-            "description": "values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.",
-            "items": {
-              "default": "",
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "key",
-          "operator"
-        ],
         "type": "object"
       },
       "io.k8s.apimachinery.pkg.apis.meta.v1.ListMeta": {
@@ -1130,6 +1061,11 @@
           {
             "group": "certificates.k8s.io",
             "kind": "WatchEvent",
+            "version": "v1alpha1"
+          },
+          {
+            "group": "certificates.k8s.io",
+            "kind": "WatchEvent",
             "version": "v1beta1"
           },
           {
@@ -1309,10 +1245,10 @@
   },
   "openapi": "3.0.0",
   "paths": {
-    "/apis/storage.k8s.io/v1beta1/": {
+    "/apis/certificates.k8s.io/v1alpha1/": {
       "get": {
         "description": "get available resources",
-        "operationId": "getStorageV1beta1APIResources",
+        "operationId": "getCertificatesV1alpha1APIResources",
         "responses": {
           "200": {
             "content": {
@@ -1339,165 +1275,14 @@
           }
         },
         "tags": [
-          "storage_v1beta1"
+          "certificates_v1alpha1"
         ]
       }
     },
-    "/apis/storage.k8s.io/v1beta1/csistoragecapacities": {
-      "get": {
-        "description": "list or watch objects of kind CSIStorageCapacity",
-        "operationId": "listStorageV1beta1CSIStorageCapacityForAllNamespaces",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacityList"
-                }
-              },
-              "application/json;stream=watch": {
-                "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacityList"
-                }
-              },
-              "application/vnd.kubernetes.protobuf": {
-                "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacityList"
-                }
-              },
-              "application/vnd.kubernetes.protobuf;stream=watch": {
-                "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacityList"
-                }
-              },
-              "application/yaml": {
-                "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacityList"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "tags": [
-          "storage_v1beta1"
-        ],
-        "x-kubernetes-action": "list",
-        "x-kubernetes-group-version-kind": {
-          "group": "storage.k8s.io",
-          "kind": "CSIStorageCapacity",
-          "version": "v1beta1"
-        }
-      },
-      "parameters": [
-        {
-          "description": "allowWatchBookmarks requests watch events with type \"BOOKMARK\". Servers that do not implement bookmarks may ignore this flag and bookmarks are sent at the server's discretion. Clients should not assume bookmarks are returned at any specific interval, nor may they assume the server will send any BOOKMARK event during a session. If this is not a watch, this field is ignored.",
-          "in": "query",
-          "name": "allowWatchBookmarks",
-          "schema": {
-            "type": "boolean",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "The continue option should be set when retrieving more results from the server. Since this value is server defined, clients may only use the continue value from a previous query result with identical query parameters (except for the value of continue) and the server may reject a continue value it does not recognize. If the specified continue value is no longer valid whether due to expiration (generally five to fifteen minutes) or a configuration change on the server, the server will respond with a 410 ResourceExpired error together with a continue token. If the client needs a consistent list, it must restart their list without the continue field. Otherwise, the client may send another list request with the token received with the 410 error, the server will respond with a list starting from the next key, but from the latest snapshot, which is inconsistent from the previous list results - objects that are created, modified, or deleted after the first list request will be included in the response, as long as their keys are after the \"next key\".\n\nThis field is not supported when watch is true. Clients may start a watch from the last resourceVersion value returned by the server and not miss any modifications.",
-          "in": "query",
-          "name": "continue",
-          "schema": {
-            "type": "string",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "A selector to restrict the list of returned objects by their fields. Defaults to everything.",
-          "in": "query",
-          "name": "fieldSelector",
-          "schema": {
-            "type": "string",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "A selector to restrict the list of returned objects by their labels. Defaults to everything.",
-          "in": "query",
-          "name": "labelSelector",
-          "schema": {
-            "type": "string",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "limit is a maximum number of responses to return for a list call. If more items exist, the server will set the `continue` field on the list metadata to a value that can be used with the same initial query to retrieve the next set of results. Setting a limit may return fewer than the requested amount of items (up to zero items) in the event all requested objects are filtered out and clients should only use the presence of the continue field to determine whether more results are available. Servers may choose not to support the limit argument and will return all of the available results. If limit is specified and the continue field is empty, clients may assume that no more results are available. This field is not supported if watch is true.\n\nThe server guarantees that the objects returned when using continue will be identical to issuing a single list call without a limit - that is, no objects created, modified, or deleted after the first request is issued will be included in any subsequent continued requests. This is sometimes referred to as a consistent snapshot, and ensures that a client that is using limit to receive smaller chunks of a very large result can ensure they see all possible objects. If objects are updated during a chunked list the version of the object that was present at the time the first list result was calculated is returned.",
-          "in": "query",
-          "name": "limit",
-          "schema": {
-            "type": "integer",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "If 'true', then the output is pretty printed.",
-          "in": "query",
-          "name": "pretty",
-          "schema": {
-            "type": "string",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "resourceVersion sets a constraint on what resource versions a request may be served from. See https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-versions for details.\n\nDefaults to unset",
-          "in": "query",
-          "name": "resourceVersion",
-          "schema": {
-            "type": "string",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "resourceVersionMatch determines how resourceVersion is applied to list calls. It is highly recommended that resourceVersionMatch be set for list calls where resourceVersion is set See https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-versions for details.\n\nDefaults to unset",
-          "in": "query",
-          "name": "resourceVersionMatch",
-          "schema": {
-            "type": "string",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "`sendInitialEvents=true` may be set together with `watch=true`. In that case, the watch stream will begin with synthetic events to produce the current state of objects in the collection. Once all such events have been sent, a synthetic \"Bookmark\" event  will be sent. The bookmark will report the ResourceVersion (RV) corresponding to the set of objects, and be marked with `\"k8s.io/initial-events-end\": \"true\"` annotation. Afterwards, the watch stream will proceed as usual, sending watch events corresponding to changes (subsequent to the RV) to objects watched.\n\nWhen `sendInitialEvents` option is set, we require `resourceVersionMatch` option to also be set. The semantic of the watch request is as following: - `resourceVersionMatch` = NotOlderThan\n  is interpreted as \"data at least as new as the provided `resourceVersion`\"\n  and the bookmark event is send when the state is synced\n  to a `resourceVersion` at least as fresh as the one provided by the ListOptions.\n  If `resourceVersion` is unset, this is interpreted as \"consistent read\" and the\n  bookmark event is send when the state is synced at least to the moment\n  when request started being processed.\n- `resourceVersionMatch` set to any other value or unset\n  Invalid error is returned.\n\nDefaults to true if `resourceVersion=\"\"` or `resourceVersion=\"0\"` (for backward compatibility reasons) and to false otherwise.",
-          "in": "query",
-          "name": "sendInitialEvents",
-          "schema": {
-            "type": "boolean",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "Timeout for the list/watch call. This limits the duration of the call, regardless of any activity or inactivity.",
-          "in": "query",
-          "name": "timeoutSeconds",
-          "schema": {
-            "type": "integer",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "Watch for changes to the described resources and return them as a stream of add, update, and remove notifications. Specify resourceVersion.",
-          "in": "query",
-          "name": "watch",
-          "schema": {
-            "type": "boolean",
-            "uniqueItems": true
-          }
-        }
-      ]
-    },
-    "/apis/storage.k8s.io/v1beta1/namespaces/{namespace}/csistoragecapacities": {
+    "/apis/certificates.k8s.io/v1alpha1/clustertrustbundles": {
       "delete": {
-        "description": "delete collection of CSIStorageCapacity",
-        "operationId": "deleteStorageV1beta1CollectionNamespacedCSIStorageCapacity",
+        "description": "delete collection of ClusterTrustBundle",
+        "operationId": "deleteCertificatesV1alpha1CollectionClusterTrustBundle",
         "parameters": [
           {
             "description": "The continue option should be set when retrieving more results from the server. Since this value is server defined, clients may only use the continue value from a previous query result with identical query parameters (except for the value of continue) and the server may reject a continue value it does not recognize. If the specified continue value is no longer valid whether due to expiration (generally five to fifteen minutes) or a configuration change on the server, the server will respond with a 410 ResourceExpired error together with a continue token. If the client needs a consistent list, it must restart their list without the continue field. Otherwise, the client may send another list request with the token received with the 410 error, the server will respond with a list starting from the next key, but from the latest snapshot, which is inconsistent from the previous list results - objects that are created, modified, or deleted after the first list request will be included in the response, as long as their keys are after the \"next key\".\n\nThis field is not supported when watch is true. Clients may start a watch from the last resourceVersion value returned by the server and not miss any modifications.",
@@ -1643,18 +1428,18 @@
           }
         },
         "tags": [
-          "storage_v1beta1"
+          "certificates_v1alpha1"
         ],
         "x-kubernetes-action": "deletecollection",
         "x-kubernetes-group-version-kind": {
-          "group": "storage.k8s.io",
-          "kind": "CSIStorageCapacity",
-          "version": "v1beta1"
+          "group": "certificates.k8s.io",
+          "kind": "ClusterTrustBundle",
+          "version": "v1alpha1"
         }
       },
       "get": {
-        "description": "list or watch objects of kind CSIStorageCapacity",
-        "operationId": "listStorageV1beta1NamespacedCSIStorageCapacity",
+        "description": "list or watch objects of kind ClusterTrustBundle",
+        "operationId": "listCertificatesV1alpha1ClusterTrustBundle",
         "parameters": [
           {
             "description": "allowWatchBookmarks requests watch events with type \"BOOKMARK\". Servers that do not implement bookmarks may ignore this flag and bookmarks are sent at the server's discretion. Clients should not assume bookmarks are returned at any specific interval, nor may they assume the server will send any BOOKMARK event during a session. If this is not a watch, this field is ignored.",
@@ -1752,27 +1537,27 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacityList"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundleList"
                 }
               },
               "application/json;stream=watch": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacityList"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundleList"
                 }
               },
               "application/vnd.kubernetes.protobuf": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacityList"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundleList"
                 }
               },
               "application/vnd.kubernetes.protobuf;stream=watch": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacityList"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundleList"
                 }
               },
               "application/yaml": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacityList"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundleList"
                 }
               }
             },
@@ -1783,26 +1568,16 @@
           }
         },
         "tags": [
-          "storage_v1beta1"
+          "certificates_v1alpha1"
         ],
         "x-kubernetes-action": "list",
         "x-kubernetes-group-version-kind": {
-          "group": "storage.k8s.io",
-          "kind": "CSIStorageCapacity",
-          "version": "v1beta1"
+          "group": "certificates.k8s.io",
+          "kind": "ClusterTrustBundle",
+          "version": "v1alpha1"
         }
       },
       "parameters": [
-        {
-          "description": "object name and auth scope, such as for teams and projects",
-          "in": "path",
-          "name": "namespace",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "uniqueItems": true
-          }
-        },
         {
           "description": "If 'true', then the output is pretty printed.",
           "in": "query",
@@ -1814,8 +1589,8 @@
         }
       ],
       "post": {
-        "description": "create a CSIStorageCapacity",
-        "operationId": "createStorageV1beta1NamespacedCSIStorageCapacity",
+        "description": "create a ClusterTrustBundle",
+        "operationId": "createCertificatesV1alpha1ClusterTrustBundle",
         "parameters": [
           {
             "description": "When present, indicates that modifications should not be persisted. An invalid or unrecognized dryRun directive will result in an error response and no further processing of the request. Valid values are: - All: all dry run stages will be processed",
@@ -1849,7 +1624,7 @@
           "content": {
             "*/*": {
               "schema": {
-                "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
               }
             }
           }
@@ -1859,17 +1634,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               },
               "application/vnd.kubernetes.protobuf": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               },
               "application/yaml": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               }
             },
@@ -1879,17 +1654,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               },
               "application/vnd.kubernetes.protobuf": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               },
               "application/yaml": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               }
             },
@@ -1899,17 +1674,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               },
               "application/vnd.kubernetes.protobuf": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               },
               "application/yaml": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               }
             },
@@ -1920,20 +1695,20 @@
           }
         },
         "tags": [
-          "storage_v1beta1"
+          "certificates_v1alpha1"
         ],
         "x-kubernetes-action": "post",
         "x-kubernetes-group-version-kind": {
-          "group": "storage.k8s.io",
-          "kind": "CSIStorageCapacity",
-          "version": "v1beta1"
+          "group": "certificates.k8s.io",
+          "kind": "ClusterTrustBundle",
+          "version": "v1alpha1"
         }
       }
     },
-    "/apis/storage.k8s.io/v1beta1/namespaces/{namespace}/csistoragecapacities/{name}": {
+    "/apis/certificates.k8s.io/v1alpha1/clustertrustbundles/{name}": {
       "delete": {
-        "description": "delete a CSIStorageCapacity",
-        "operationId": "deleteStorageV1beta1NamespacedCSIStorageCapacity",
+        "description": "delete a ClusterTrustBundle",
+        "operationId": "deleteCertificatesV1alpha1ClusterTrustBundle",
         "parameters": [
           {
             "description": "When present, indicates that modifications should not be persisted. An invalid or unrecognized dryRun directive will result in an error response and no further processing of the request. Valid values are: - All: all dry run stages will be processed",
@@ -2027,34 +1802,34 @@
           }
         },
         "tags": [
-          "storage_v1beta1"
+          "certificates_v1alpha1"
         ],
         "x-kubernetes-action": "delete",
         "x-kubernetes-group-version-kind": {
-          "group": "storage.k8s.io",
-          "kind": "CSIStorageCapacity",
-          "version": "v1beta1"
+          "group": "certificates.k8s.io",
+          "kind": "ClusterTrustBundle",
+          "version": "v1alpha1"
         }
       },
       "get": {
-        "description": "read the specified CSIStorageCapacity",
-        "operationId": "readStorageV1beta1NamespacedCSIStorageCapacity",
+        "description": "read the specified ClusterTrustBundle",
+        "operationId": "readCertificatesV1alpha1ClusterTrustBundle",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               },
               "application/vnd.kubernetes.protobuf": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               },
               "application/yaml": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               }
             },
@@ -2065,30 +1840,20 @@
           }
         },
         "tags": [
-          "storage_v1beta1"
+          "certificates_v1alpha1"
         ],
         "x-kubernetes-action": "get",
         "x-kubernetes-group-version-kind": {
-          "group": "storage.k8s.io",
-          "kind": "CSIStorageCapacity",
-          "version": "v1beta1"
+          "group": "certificates.k8s.io",
+          "kind": "ClusterTrustBundle",
+          "version": "v1alpha1"
         }
       },
       "parameters": [
         {
-          "description": "name of the CSIStorageCapacity",
+          "description": "name of the ClusterTrustBundle",
           "in": "path",
           "name": "name",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "object name and auth scope, such as for teams and projects",
-          "in": "path",
-          "name": "namespace",
           "required": true,
           "schema": {
             "type": "string",
@@ -2106,8 +1871,8 @@
         }
       ],
       "patch": {
-        "description": "partially update the specified CSIStorageCapacity",
-        "operationId": "patchStorageV1beta1NamespacedCSIStorageCapacity",
+        "description": "partially update the specified ClusterTrustBundle",
+        "operationId": "patchCertificatesV1alpha1ClusterTrustBundle",
         "parameters": [
           {
             "description": "When present, indicates that modifications should not be persisted. An invalid or unrecognized dryRun directive will result in an error response and no further processing of the request. Valid values are: - All: all dry run stages will be processed",
@@ -2175,17 +1940,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               },
               "application/vnd.kubernetes.protobuf": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               },
               "application/yaml": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               }
             },
@@ -2195,17 +1960,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               },
               "application/vnd.kubernetes.protobuf": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               },
               "application/yaml": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               }
             },
@@ -2216,18 +1981,18 @@
           }
         },
         "tags": [
-          "storage_v1beta1"
+          "certificates_v1alpha1"
         ],
         "x-kubernetes-action": "patch",
         "x-kubernetes-group-version-kind": {
-          "group": "storage.k8s.io",
-          "kind": "CSIStorageCapacity",
-          "version": "v1beta1"
+          "group": "certificates.k8s.io",
+          "kind": "ClusterTrustBundle",
+          "version": "v1alpha1"
         }
       },
       "put": {
-        "description": "replace the specified CSIStorageCapacity",
-        "operationId": "replaceStorageV1beta1NamespacedCSIStorageCapacity",
+        "description": "replace the specified ClusterTrustBundle",
+        "operationId": "replaceCertificatesV1alpha1ClusterTrustBundle",
         "parameters": [
           {
             "description": "When present, indicates that modifications should not be persisted. An invalid or unrecognized dryRun directive will result in an error response and no further processing of the request. Valid values are: - All: all dry run stages will be processed",
@@ -2261,7 +2026,7 @@
           "content": {
             "*/*": {
               "schema": {
-                "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
               }
             }
           }
@@ -2271,17 +2036,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               },
               "application/vnd.kubernetes.protobuf": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               },
               "application/yaml": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               }
             },
@@ -2291,17 +2056,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               },
               "application/vnd.kubernetes.protobuf": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               },
               "application/yaml": {
                 "schema": {
-                  "$ref": "#/components/schemas/io.k8s.api.storage.v1beta1.CSIStorageCapacity"
+                  "$ref": "#/components/schemas/io.k8s.api.certificates.v1alpha1.ClusterTrustBundle"
                 }
               }
             },
@@ -2312,20 +2077,20 @@
           }
         },
         "tags": [
-          "storage_v1beta1"
+          "certificates_v1alpha1"
         ],
         "x-kubernetes-action": "put",
         "x-kubernetes-group-version-kind": {
-          "group": "storage.k8s.io",
-          "kind": "CSIStorageCapacity",
-          "version": "v1beta1"
+          "group": "certificates.k8s.io",
+          "kind": "ClusterTrustBundle",
+          "version": "v1alpha1"
         }
       }
     },
-    "/apis/storage.k8s.io/v1beta1/watch/csistoragecapacities": {
+    "/apis/certificates.k8s.io/v1alpha1/watch/clustertrustbundles": {
       "get": {
-        "description": "watch individual changes to a list of CSIStorageCapacity. deprecated: use the 'watch' parameter with a list operation instead.",
-        "operationId": "watchStorageV1beta1CSIStorageCapacityListForAllNamespaces",
+        "description": "watch individual changes to a list of ClusterTrustBundle. deprecated: use the 'watch' parameter with a list operation instead.",
+        "operationId": "watchCertificatesV1alpha1ClusterTrustBundleList",
         "responses": {
           "200": {
             "content": {
@@ -2362,13 +2127,13 @@
           }
         },
         "tags": [
-          "storage_v1beta1"
+          "certificates_v1alpha1"
         ],
         "x-kubernetes-action": "watchlist",
         "x-kubernetes-group-version-kind": {
-          "group": "storage.k8s.io",
-          "kind": "CSIStorageCapacity",
-          "version": "v1beta1"
+          "group": "certificates.k8s.io",
+          "kind": "ClusterTrustBundle",
+          "version": "v1alpha1"
         }
       },
       "parameters": [
@@ -2473,10 +2238,10 @@
         }
       ]
     },
-    "/apis/storage.k8s.io/v1beta1/watch/namespaces/{namespace}/csistoragecapacities": {
+    "/apis/certificates.k8s.io/v1alpha1/watch/clustertrustbundles/{name}": {
       "get": {
-        "description": "watch individual changes to a list of CSIStorageCapacity. deprecated: use the 'watch' parameter with a list operation instead.",
-        "operationId": "watchStorageV1beta1NamespacedCSIStorageCapacityList",
+        "description": "watch changes to an object of kind ClusterTrustBundle. deprecated: use the 'watch' parameter with a list operation instead, filtered to a single item with the 'fieldSelector' parameter.",
+        "operationId": "watchCertificatesV1alpha1ClusterTrustBundle",
         "responses": {
           "200": {
             "content": {
@@ -2513,174 +2278,13 @@
           }
         },
         "tags": [
-          "storage_v1beta1"
-        ],
-        "x-kubernetes-action": "watchlist",
-        "x-kubernetes-group-version-kind": {
-          "group": "storage.k8s.io",
-          "kind": "CSIStorageCapacity",
-          "version": "v1beta1"
-        }
-      },
-      "parameters": [
-        {
-          "description": "allowWatchBookmarks requests watch events with type \"BOOKMARK\". Servers that do not implement bookmarks may ignore this flag and bookmarks are sent at the server's discretion. Clients should not assume bookmarks are returned at any specific interval, nor may they assume the server will send any BOOKMARK event during a session. If this is not a watch, this field is ignored.",
-          "in": "query",
-          "name": "allowWatchBookmarks",
-          "schema": {
-            "type": "boolean",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "The continue option should be set when retrieving more results from the server. Since this value is server defined, clients may only use the continue value from a previous query result with identical query parameters (except for the value of continue) and the server may reject a continue value it does not recognize. If the specified continue value is no longer valid whether due to expiration (generally five to fifteen minutes) or a configuration change on the server, the server will respond with a 410 ResourceExpired error together with a continue token. If the client needs a consistent list, it must restart their list without the continue field. Otherwise, the client may send another list request with the token received with the 410 error, the server will respond with a list starting from the next key, but from the latest snapshot, which is inconsistent from the previous list results - objects that are created, modified, or deleted after the first list request will be included in the response, as long as their keys are after the \"next key\".\n\nThis field is not supported when watch is true. Clients may start a watch from the last resourceVersion value returned by the server and not miss any modifications.",
-          "in": "query",
-          "name": "continue",
-          "schema": {
-            "type": "string",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "A selector to restrict the list of returned objects by their fields. Defaults to everything.",
-          "in": "query",
-          "name": "fieldSelector",
-          "schema": {
-            "type": "string",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "A selector to restrict the list of returned objects by their labels. Defaults to everything.",
-          "in": "query",
-          "name": "labelSelector",
-          "schema": {
-            "type": "string",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "limit is a maximum number of responses to return for a list call. If more items exist, the server will set the `continue` field on the list metadata to a value that can be used with the same initial query to retrieve the next set of results. Setting a limit may return fewer than the requested amount of items (up to zero items) in the event all requested objects are filtered out and clients should only use the presence of the continue field to determine whether more results are available. Servers may choose not to support the limit argument and will return all of the available results. If limit is specified and the continue field is empty, clients may assume that no more results are available. This field is not supported if watch is true.\n\nThe server guarantees that the objects returned when using continue will be identical to issuing a single list call without a limit - that is, no objects created, modified, or deleted after the first request is issued will be included in any subsequent continued requests. This is sometimes referred to as a consistent snapshot, and ensures that a client that is using limit to receive smaller chunks of a very large result can ensure they see all possible objects. If objects are updated during a chunked list the version of the object that was present at the time the first list result was calculated is returned.",
-          "in": "query",
-          "name": "limit",
-          "schema": {
-            "type": "integer",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "object name and auth scope, such as for teams and projects",
-          "in": "path",
-          "name": "namespace",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "If 'true', then the output is pretty printed.",
-          "in": "query",
-          "name": "pretty",
-          "schema": {
-            "type": "string",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "resourceVersion sets a constraint on what resource versions a request may be served from. See https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-versions for details.\n\nDefaults to unset",
-          "in": "query",
-          "name": "resourceVersion",
-          "schema": {
-            "type": "string",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "resourceVersionMatch determines how resourceVersion is applied to list calls. It is highly recommended that resourceVersionMatch be set for list calls where resourceVersion is set See https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-versions for details.\n\nDefaults to unset",
-          "in": "query",
-          "name": "resourceVersionMatch",
-          "schema": {
-            "type": "string",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "`sendInitialEvents=true` may be set together with `watch=true`. In that case, the watch stream will begin with synthetic events to produce the current state of objects in the collection. Once all such events have been sent, a synthetic \"Bookmark\" event  will be sent. The bookmark will report the ResourceVersion (RV) corresponding to the set of objects, and be marked with `\"k8s.io/initial-events-end\": \"true\"` annotation. Afterwards, the watch stream will proceed as usual, sending watch events corresponding to changes (subsequent to the RV) to objects watched.\n\nWhen `sendInitialEvents` option is set, we require `resourceVersionMatch` option to also be set. The semantic of the watch request is as following: - `resourceVersionMatch` = NotOlderThan\n  is interpreted as \"data at least as new as the provided `resourceVersion`\"\n  and the bookmark event is send when the state is synced\n  to a `resourceVersion` at least as fresh as the one provided by the ListOptions.\n  If `resourceVersion` is unset, this is interpreted as \"consistent read\" and the\n  bookmark event is send when the state is synced at least to the moment\n  when request started being processed.\n- `resourceVersionMatch` set to any other value or unset\n  Invalid error is returned.\n\nDefaults to true if `resourceVersion=\"\"` or `resourceVersion=\"0\"` (for backward compatibility reasons) and to false otherwise.",
-          "in": "query",
-          "name": "sendInitialEvents",
-          "schema": {
-            "type": "boolean",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "Timeout for the list/watch call. This limits the duration of the call, regardless of any activity or inactivity.",
-          "in": "query",
-          "name": "timeoutSeconds",
-          "schema": {
-            "type": "integer",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "Watch for changes to the described resources and return them as a stream of add, update, and remove notifications. Specify resourceVersion.",
-          "in": "query",
-          "name": "watch",
-          "schema": {
-            "type": "boolean",
-            "uniqueItems": true
-          }
-        }
-      ]
-    },
-    "/apis/storage.k8s.io/v1beta1/watch/namespaces/{namespace}/csistoragecapacities/{name}": {
-      "get": {
-        "description": "watch changes to an object of kind CSIStorageCapacity. deprecated: use the 'watch' parameter with a list operation instead, filtered to a single item with the 'fieldSelector' parameter.",
-        "operationId": "watchStorageV1beta1NamespacedCSIStorageCapacity",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.WatchEvent"
-                }
-              },
-              "application/json;stream=watch": {
-                "schema": {
-                  "$ref": "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.WatchEvent"
-                }
-              },
-              "application/vnd.kubernetes.protobuf": {
-                "schema": {
-                  "$ref": "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.WatchEvent"
-                }
-              },
-              "application/vnd.kubernetes.protobuf;stream=watch": {
-                "schema": {
-                  "$ref": "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.WatchEvent"
-                }
-              },
-              "application/yaml": {
-                "schema": {
-                  "$ref": "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.WatchEvent"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "tags": [
-          "storage_v1beta1"
+          "certificates_v1alpha1"
         ],
         "x-kubernetes-action": "watch",
         "x-kubernetes-group-version-kind": {
-          "group": "storage.k8s.io",
-          "kind": "CSIStorageCapacity",
-          "version": "v1beta1"
+          "group": "certificates.k8s.io",
+          "kind": "ClusterTrustBundle",
+          "version": "v1alpha1"
         }
       },
       "parameters": [
@@ -2730,19 +2334,9 @@
           }
         },
         {
-          "description": "name of the CSIStorageCapacity",
+          "description": "name of the ClusterTrustBundle",
           "in": "path",
           "name": "name",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "uniqueItems": true
-          }
-        },
-        {
-          "description": "object name and auth scope, such as for teams and projects",
-          "in": "path",
-          "name": "namespace",
           "required": true,
           "schema": {
             "type": "string",
