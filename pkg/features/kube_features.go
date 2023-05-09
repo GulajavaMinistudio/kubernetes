@@ -212,23 +212,6 @@ const (
 	// Enables support for time zones in CronJobs.
 	CronJobTimeZone featuregate.Feature = "CronJobTimeZone"
 
-	// owner: @gnufied, @verult, @bertinatto
-	// alpha: v1.22
-	// beta: v1.23
-	// GA: v1.26
-	// If supported by the CSI driver, delegates the role of applying FSGroup to
-	// the driver by passing FSGroup through the NodeStageVolume and
-	// NodePublishVolume calls.
-	DelegateFSGroupToCSIDriver featuregate.Feature = "DelegateFSGroupToCSIDriver"
-
-	// owner: @jiayingz, @swatisehgal (for GA graduation)
-	// alpha: v1.8
-	// beta: v1.10
-	// GA: v1.26
-	//
-	// Enables support for Device Plugins
-	DevicePlugins featuregate.Feature = "DevicePlugins"
-
 	// owner: @andrewsykim
 	// alpha: v1.22
 	//
@@ -424,14 +407,6 @@ const (
 	// allow the Job controller to keep track of Pods that it didn't account for
 	// yet.
 	JobTrackingWithFinalizers featuregate.Feature = "JobTrackingWithFinalizers"
-
-	// owner: @andrewsykim @adisky @ndixita
-	// alpha: v1.20
-	// beta: v1.24
-	// GA: v1.26
-	//
-	// Enable kubelet exec plugins for image pull credentials.
-	KubeletCredentialProviders featuregate.Feature = "KubeletCredentialProviders"
 
 	// owner: @AkihiroSuda
 	// alpha: v1.22
@@ -918,10 +893,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	CronJobTimeZone: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.29
 
-	DelegateFSGroupToCSIDriver: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
-
-	DevicePlugins: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
-
 	DisableCloudProviders: {Default: false, PreRelease: featuregate.Alpha},
 
 	DisableKubeletCloudCredentialProviders: {Default: false, PreRelease: featuregate.Alpha},
@@ -973,8 +944,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	JobReadyPods: {Default: true, PreRelease: featuregate.Beta},
 
 	JobTrackingWithFinalizers: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
-
-	KubeletCredentialProviders: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
 
 	KubeletInUserNamespace: {Default: false, PreRelease: featuregate.Alpha},
 
