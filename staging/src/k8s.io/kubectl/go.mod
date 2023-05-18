@@ -8,7 +8,7 @@ require (
 	github.com/MakeNowJust/heredoc v1.0.0
 	github.com/chai2010/gettext-go v1.0.2
 	github.com/daviddengcn/go-colortext v1.0.0
-	github.com/docker/distribution v2.8.1+incompatible
+	github.com/docker/distribution v2.8.2+incompatible
 	github.com/evanphx/json-patch v4.12.0+incompatible
 	github.com/exponent-io/jsonpath v0.0.0-20151013193312-d6023ce2651d
 	github.com/fatih/camelcase v1.0.0
@@ -19,7 +19,7 @@ require (
 	github.com/jonboulle/clockwork v0.2.2
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
 	github.com/lithammer/dedent v1.1.0
-	github.com/mitchellh/go-wordwrap v1.0.0
+	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/moby/term v0.0.0-20221205130635-1aeaba878587
 	github.com/onsi/ginkgo/v2 v2.9.4
 	github.com/onsi/gomega v1.27.6
