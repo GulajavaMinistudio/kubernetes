@@ -254,6 +254,7 @@ const (
 	// kep: https://kep.k8s.io/2595
 	// alpha: v1.22
 	// beta: v1.26
+	// GA: v1.28
 	//
 	// Enables apiserver and kubelet to allow up to 32 DNSSearchPaths and up to 2048 DNSSearchListChars.
 	ExpandedDNSConfig featuregate.Feature = "ExpandedDNSConfig"
@@ -701,6 +702,7 @@ const (
 	// owner: @xuzhenglun
 	// kep: http://kep.k8s.io/3682
 	// alpha: v1.27
+	// beta: v1.28
 	//
 	// Subdivide the NodePort range for dynamic and static port allocation.
 	ServiceNodePortStaticSubrange featuregate.Feature = "ServiceNodePortStaticSubrange"
@@ -904,7 +906,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	ExecProbeTimeout: {Default: true, PreRelease: featuregate.GA}, // lock to default and remove after v1.22 based on KEP #1972 update
 
-	ExpandedDNSConfig: {Default: true, PreRelease: featuregate.Beta},
+	ExpandedDNSConfig: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.30
 
 	ExperimentalHostUserNamespaceDefaultingGate: {Default: false, PreRelease: featuregate.Deprecated, LockToDefault: true}, // remove in 1.30
 
@@ -1024,7 +1026,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	SecurityContextDeny: {Default: false, PreRelease: featuregate.Alpha},
 
-	ServiceNodePortStaticSubrange: {Default: false, PreRelease: featuregate.Alpha},
+	ServiceNodePortStaticSubrange: {Default: true, PreRelease: featuregate.Beta},
 
 	SizeMemoryBackedVolumes: {Default: true, PreRelease: featuregate.Beta},
 
