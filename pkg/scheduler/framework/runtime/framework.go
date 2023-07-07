@@ -355,6 +355,12 @@ func NewFramework(ctx context.Context, r Registry, profile *config.KubeScheduler
 		options.captureProfile(outputProfile)
 	}
 
+	f.setInstrumentedPlugins()
+	return f, nil
+}
+
+// setInstrumentedPlugins initializes instrumented plugins from current plugins that frameworkImpl has.
+func (f *frameworkImpl) setInstrumentedPlugins() {
 	// Cache metric streams for prefilter and filter plugins.
 	for i, pl := range f.preFilterPlugins {
 		f.preFilterPlugins[i] = &instrumentedPreFilterPlugin{
@@ -369,7 +375,19 @@ func NewFramework(ctx context.Context, r Registry, profile *config.KubeScheduler
 		}
 	}
 
-	return f, nil
+	// Cache metric streams for prescore and score plugins.
+	for i, pl := range f.preScorePlugins {
+		f.preScorePlugins[i] = &instrumentedPreScorePlugin{
+			PreScorePlugin: f.preScorePlugins[i],
+			metric:         metrics.PluginEvaluationTotal.WithLabelValues(pl.Name(), metrics.PreScore, f.profileName),
+		}
+	}
+	for i, pl := range f.scorePlugins {
+		f.scorePlugins[i] = &instrumentedScorePlugin{
+			ScorePlugin: f.scorePlugins[i],
+			metric:      metrics.PluginEvaluationTotal.WithLabelValues(pl.Name(), metrics.Score, f.profileName),
+		}
+	}
 }
 
 func (f *frameworkImpl) SetPodNominator(n framework.PodNominator) {
@@ -551,17 +569,7 @@ func (p *defaultEnqueueExtension) EventsToRegister() []framework.ClusterEventWit
 	// because the returning values are used to register event handlers.
 	// If we return the wildcard here, it won't affect the event handlers registered by the plugin
 	// and some events may not be registered in the event handlers.
-	return []framework.ClusterEventWithHint{
-		{Event: framework.ClusterEvent{Resource: framework.Pod, ActionType: framework.All}},
-		{Event: framework.ClusterEvent{Resource: framework.Node, ActionType: framework.All}},
-		{Event: framework.ClusterEvent{Resource: framework.CSINode, ActionType: framework.All}},
-		{Event: framework.ClusterEvent{Resource: framework.CSIDriver, ActionType: framework.All}},
-		{Event: framework.ClusterEvent{Resource: framework.CSIStorageCapacity, ActionType: framework.All}},
-		{Event: framework.ClusterEvent{Resource: framework.PersistentVolume, ActionType: framework.All}},
-		{Event: framework.ClusterEvent{Resource: framework.PersistentVolumeClaim, ActionType: framework.All}},
-		{Event: framework.ClusterEvent{Resource: framework.StorageClass, ActionType: framework.All}},
-		{Event: framework.ClusterEvent{Resource: framework.PodSchedulingContext, ActionType: framework.All}},
-	}
+	return framework.UnrollWildCardResource()
 }
 
 func updatePluginList(pluginList interface{}, pluginSet config.PluginSet, pluginsMap map[string]framework.Plugin) error {
@@ -1333,8 +1341,7 @@ func (f *frameworkImpl) RunPermitPlugins(ctx context.Context, state *framework.C
 		if !status.IsSuccess() {
 			if status.IsUnschedulable() {
 				logger.V(4).Info("Pod rejected by plugin", "pod", klog.KObj(pod), "plugin", pl.Name(), "status", status.Message())
-				status.SetFailedPlugin(pl.Name())
-				return status
+				return status.WithFailedPlugin(pl.Name())
 			}
 			if status.IsWait() {
 				// Not allowed to be greater than maxTimeout.

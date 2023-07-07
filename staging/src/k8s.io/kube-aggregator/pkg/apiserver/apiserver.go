@@ -367,7 +367,7 @@ func (c completedConfig) NewWithDelegate(delegationTarget genericapiserver.Deleg
 				// All apiservers (aggregator-apiserver, kube-apiserver, apiextensions-apiserver)
 				// share the same generic apiserver config. The same StorageVersion manager is used
 				// to register all built-in resources when the generic apiservers install APIs.
-				s.GenericAPIServer.StorageVersionManager.UpdateStorageVersions(hookContext.LoopbackClientConfig, s.GenericAPIServer.APIServerID)
+				s.GenericAPIServer.StorageVersionManager.UpdateStorageVersions(hookContext.LoopbackClientConfig, s.GenericAPIServer.APIServerID, c.GenericConfig.MergedResourceConfig)
 				return false, nil
 			}, hookContext.StopCh)
 			// Once the storage version updater finishes the first round of update,
@@ -440,6 +440,8 @@ func (s *APIAggregator) PrepareRun() (preparedAPIAggregator, error) {
 		openAPIV3Aggregator, err := openapiv3aggregator.BuildAndRegisterAggregator(
 			specDownloaderV3,
 			s.GenericAPIServer.NextDelegate(),
+			s.GenericAPIServer.Handler.GoRestfulContainer,
+			s.openAPIConfig,
 			s.GenericAPIServer.Handler.NonGoRestfulMux)
 		if err != nil {
 			return preparedAPIAggregator{}, err
