@@ -25,9 +25,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"k8s.io/klog/v2"
-
 	"k8s.io/api/admissionregistration/v1alpha1"
+	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,18 +37,16 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/admission"
 	celmetrics "k8s.io/apiserver/pkg/admission/cel"
-	"k8s.io/apiserver/pkg/admission/plugin/cel"
 	"k8s.io/apiserver/pkg/admission/plugin/validatingadmissionpolicy/internal/generic"
 	"k8s.io/apiserver/pkg/admission/plugin/validatingadmissionpolicy/matching"
 	celconfig "k8s.io/apiserver/pkg/apis/cel"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
-	"k8s.io/apiserver/pkg/cel/environment"
-	"k8s.io/apiserver/pkg/cel/openapi/resolver"
 	"k8s.io/apiserver/pkg/warning"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/klog/v2"
 )
 
 var _ CELPolicyEvaluator = &celAdmissionController{}
@@ -128,22 +125,16 @@ func NewAdmissionController(
 	informerFactory informers.SharedInformerFactory,
 	client kubernetes.Interface,
 	restMapper meta.RESTMapper,
-	schemaResolver resolver.SchemaResolver,
 	dynamicClient dynamic.Interface,
 	authz authorizer.Authorizer,
 ) CELPolicyEvaluator {
-	var typeChecker *TypeChecker
-	if schemaResolver != nil {
-		typeChecker = &TypeChecker{schemaResolver: schemaResolver, restMapper: restMapper}
-	}
 	return &celAdmissionController{
 		definitions: atomic.Value{},
 		policyController: newPolicyController(
 			restMapper,
 			client,
 			dynamicClient,
-			typeChecker,
-			cel.NewFilterCompiler(environment.MustBaseEnvSet(environment.DefaultCompatibilityVersion())),
+			nil,
 			NewMatcher(matching.NewMatcher(informerFactory.Core().V1().Namespaces().Lister(), client)),
 			generic.NewInformer[*v1alpha1.ValidatingAdmissionPolicy](
 				informerFactory.Admissionregistration().V1alpha1().ValidatingAdmissionPolicies().Informer()),
@@ -329,6 +320,23 @@ func (c *celAdmissionController) Validate(
 					continue
 				}
 			}
+			var namespace *v1.Namespace
+			namespaceName := a.GetNamespace()
+
+			// Special case, the namespace object has the namespace of itself (maybe a bug).
+			// unset it if the incoming object is a namespace
+			if gvk := a.GetKind(); gvk.Kind == "Namespace" && gvk.Version == "v1" && gvk.Group == "" {
+				namespaceName = ""
+			}
+
+			// if it is cluster scoped, namespaceName will be empty
+			// Otherwise, get the Namespace resource.
+			if namespaceName != "" {
+				namespace, err = c.policyController.matcher.GetNamespace(namespaceName)
+				if err != nil {
+					return err
+				}
+			}
 
 			if versionedAttr == nil {
 				va, err := admission.NewVersionedAttributes(a, matchKind, o)
@@ -340,7 +348,7 @@ func (c *celAdmissionController) Validate(
 				versionedAttr = va
 			}
 
-			validationResult := bindingInfo.validator.Validate(ctx, versionedAttr, param, celconfig.RuntimeCELCostBudget, authz)
+			validationResult := bindingInfo.validator.Validate(ctx, versionedAttr, param, namespace, celconfig.RuntimeCELCostBudget, authz)
 
 			for i, decision := range validationResult.Decisions {
 				switch decision.Action {

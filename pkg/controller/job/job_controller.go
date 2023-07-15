@@ -1453,17 +1453,18 @@ func (jm *Controller) manageJob(ctx context.Context, job *batch.Job, jobCtx *syn
 			diff = int32(MaxPodCreateDeletePerSync)
 		}
 
+		var indexesToAdd []int
+		if isIndexedJob(job) {
+			indexesToAdd = firstPendingIndexes(jobCtx, int(diff), int(*job.Spec.Completions))
+			diff = int32(len(indexesToAdd))
+		}
+
 		jm.expectations.ExpectCreations(logger, jobKey, int(diff))
 		errCh := make(chan error, diff)
 		logger.V(4).Info("Too few pods running", "key", jobKey, "need", wantActive, "creating", diff)
 
 		wait := sync.WaitGroup{}
 
-		var indexesToAdd []int
-		if isIndexedJob(job) {
-			indexesToAdd = firstPendingIndexes(jobCtx.activePods, jobCtx.succeededIndexes, int(diff), int(*job.Spec.Completions))
-			diff = int32(len(indexesToAdd))
-		}
 		active += diff
 
 		podTemplate := job.Spec.Template.DeepCopy()
@@ -1495,6 +1496,10 @@ func (jm *Controller) manageJob(ctx context.Context, job *batch.Job, jobCtx *syn
 					if completionIndex != unknownCompletionIndex {
 						template = podTemplate.DeepCopy()
 						addCompletionIndexAnnotation(template, completionIndex)
+
+						if feature.DefaultFeatureGate.Enabled(features.PodIndexLabel) {
+							addCompletionIndexLabel(template, completionIndex)
+						}
 						template.Spec.Hostname = fmt.Sprintf("%s-%d", job.Name, completionIndex)
 						generateName = podGenerateNameWithIndex(job.Name, completionIndex)
 					}
