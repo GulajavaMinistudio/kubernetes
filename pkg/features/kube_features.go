@@ -211,6 +211,13 @@ const (
 	// (e.g. in a Deployment), which is the historical default.
 	DefaultHostNetworkHostPortsInPodTemplates featuregate.Feature = "DefaultHostNetworkHostPortsInPodTemplates"
 
+	// owner: @elezar
+	// kep: http://kep.k8s.io/4009
+	// alpha: v1.28
+	//
+	// Add support for CDI Device IDs in the Device Plugin API.
+	DevicePluginCDIDevices featuregate.Feature = "DevicePluginCDIDevices"
+
 	// owner: @andrewsykim
 	// alpha: v1.22
 	//
@@ -369,6 +376,7 @@ const (
 	// kep: https://kep.k8s.io/3178
 	// alpha: v1.25
 	// beta: v1.27
+	// stable: v1.28
 	//
 	// Causes kubelet to no longer create legacy IPTables rules
 	IPTablesOwnershipCleanup featuregate.Feature = "IPTablesOwnershipCleanup"
@@ -409,6 +417,17 @@ const (
 	// yet.
 	JobTrackingWithFinalizers featuregate.Feature = "JobTrackingWithFinalizers"
 
+	// owner: @marquiz
+	// kep: http://kep.k8s.io/4033
+	// alpha: v1.28
+	//
+	// Enable detection of the kubelet cgroup driver configuration option from
+	// the CRI.  The CRI runtime also needs to support this feature in which
+	// case the kubelet will ignore the cgroupDriver (--cgroup-driver)
+	// configuration option. If runtime doesn't support it, the kubelet will
+	// fallback to using it's cgroupDriver option.
+	KubeletCgroupDriverFromCRI featuregate.Feature = "KubeletCgroupDriverFromCRI"
+
 	// owner: @AkihiroSuda
 	// alpha: v1.22
 	//
@@ -437,9 +456,10 @@ const (
 	// Enable POD resources API with Get method
 	KubeletPodResourcesGet featuregate.Feature = "KubeletPodResourcesGet"
 
-	// owner: @fromanirh
+	// owner: @ffromani
 	// alpha: v1.21
 	// beta: v1.23
+	// GA: v1.28
 	// Enable POD resources API to return allocatable resources
 	KubeletPodResourcesGetAllocatable featuregate.Feature = "KubeletPodResourcesGetAllocatable"
 
@@ -576,8 +596,9 @@ const (
 	// Allow pods to failover to a different node in case of non graceful node shutdown
 	NodeOutOfServiceVolumeDetach featuregate.Feature = "NodeOutOfServiceVolumeDetach"
 
-	// owner: @ehashman
+	// owner: @iholder101
 	// alpha: v1.22
+	// beta1: v1.28. For more info, please look at the KEP: https://kep.k8s.io/2400.
 	//
 	// Permits kubelet to run with swap enabled
 	NodeSwap featuregate.Feature = "NodeSwap"
@@ -885,6 +906,12 @@ const (
 	//
 	// Enables In-Place Pod Vertical Scaling
 	InPlacePodVerticalScaling featuregate.Feature = "InPlacePodVerticalScaling"
+
+	// owner: @Sh4d1,@RyanAoh
+	// kep: http://kep.k8s.io/1860
+	// alpha: v1.29
+	// LoadBalancerIPMode enables the IPMode field in the LoadBalancerIngress status of a Service
+	LoadBalancerIPMode featuregate.Feature = "LoadBalancerIPMode"
 )
 
 func init() {
@@ -950,6 +977,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	DisableKubeletCloudCredentialProviders: {Default: false, PreRelease: featuregate.Alpha},
 
+	DevicePluginCDIDevices: {Default: false, PreRelease: featuregate.Alpha},
+
 	DownwardAPIHugePages: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in v1.29
 
 	DynamicResourceAllocation: {Default: false, PreRelease: featuregate.Alpha},
@@ -988,7 +1017,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	InTreePluginvSphereUnregister: {Default: false, PreRelease: featuregate.Alpha},
 
-	IPTablesOwnershipCleanup: {Default: true, PreRelease: featuregate.Beta},
+	IPTablesOwnershipCleanup: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.30
 
 	JobMutableNodeSchedulingDirectives: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.29
 
@@ -998,6 +1027,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	JobTrackingWithFinalizers: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
 
+	KubeletCgroupDriverFromCRI: {Default: false, PreRelease: featuregate.Alpha},
+
 	KubeletInUserNamespace: {Default: false, PreRelease: featuregate.Alpha},
 
 	KubeletPodResources: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // GA in 1.28, remove in 1.30
@@ -1006,7 +1037,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	KubeletPodResourcesGet: {Default: false, PreRelease: featuregate.Alpha},
 
-	KubeletPodResourcesGetAllocatable: {Default: true, PreRelease: featuregate.Beta},
+	KubeletPodResourcesGetAllocatable: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // GA in 1.28, remove in 1.30
 
 	KubeletTracing: {Default: true, PreRelease: featuregate.Beta},
 
@@ -1044,7 +1075,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	NodeOutOfServiceVolumeDetach: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.31
 
-	NodeSwap: {Default: false, PreRelease: featuregate.Alpha},
+	NodeSwap: {Default: false, PreRelease: featuregate.Beta},
 
 	PDBUnhealthyPodEvictionPolicy: {Default: true, PreRelease: featuregate.Beta},
 
@@ -1124,10 +1155,12 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	PodIndexLabel: {Default: true, PreRelease: featuregate.Beta},
 
+	LoadBalancerIPMode: {Default: false, PreRelease: featuregate.Alpha},
+
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
 
-	genericfeatures.AdmissionWebhookMatchConditions: {Default: false, PreRelease: featuregate.Alpha},
+	genericfeatures.AdmissionWebhookMatchConditions: {Default: true, PreRelease: featuregate.Beta},
 
 	genericfeatures.AggregatedDiscoveryEndpoint: {Default: true, PreRelease: featuregate.Beta},
 
