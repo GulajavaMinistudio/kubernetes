@@ -3353,6 +3353,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: backoffLimit
       type:
         scalar: numeric
+    - name: backoffLimitPerIndex
+      type:
+        scalar: numeric
     - name: completionMode
       type:
         scalar: string
@@ -3362,12 +3365,18 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: manualSelector
       type:
         scalar: boolean
+    - name: maxFailedIndexes
+      type:
+        scalar: numeric
     - name: parallelism
       type:
         scalar: numeric
     - name: podFailurePolicy
       type:
         namedType: io.k8s.api.batch.v1.PodFailurePolicy
+    - name: podReplacementPolicy
+      type:
+        scalar: string
     - name: selector
       type:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector
@@ -3402,6 +3411,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: failed
       type:
         scalar: numeric
+    - name: failedIndexes
+      type:
+        scalar: string
     - name: ready
       type:
         scalar: numeric
@@ -3409,6 +3421,9 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
     - name: succeeded
+      type:
+        scalar: numeric
+    - name: terminating
       type:
         scalar: numeric
     - name: uncountedTerminatedPods
