@@ -236,7 +236,12 @@ var _ = SIGDescribe("[NodeConformance] Containers Lifecycle ", func() {
 						Name:  regular1,
 						Image: busyboxImage,
 						Command: ExecCommand(regular1, execCommand{
-							Delay:    2,
+							// Allocate sufficient time for its postStart hook
+							// to complete.
+							// Note that we've observed approximately a 2s
+							// delay before the postStart hook is called.
+							// 10s > 1s + 2s(estimated maximum delay) + other possible delays
+							Delay:    10,
 							ExitCode: 0,
 						}),
 						Lifecycle: &v1.Lifecycle{
@@ -335,7 +340,12 @@ var _ = SIGDescribe("[NodeConformance] Containers Lifecycle ", func() {
 						Name:  regular1,
 						Image: busyboxImage,
 						Command: ExecCommand(regular1, execCommand{
-							Delay:    2,
+							// Allocate sufficient time for its postStart hook
+							// to complete.
+							// Note that we've observed approximately a 2s
+							// delay before the postStart hook is called.
+							// 10s > 1s + 2s(estimated maximum delay) + other possible delays
+							Delay:    10,
 							ExitCode: 0,
 						}),
 						Lifecycle: &v1.Lifecycle{
@@ -960,12 +970,15 @@ var _ = SIGDescribe("[NodeAlphaFeature:SidecarContainers] Containers Lifecycle "
 			client := e2epod.NewPodClient(f)
 			podSpec = client.Create(context.TODO(), podSpec)
 
-			// TODO: check for Pod to be succeeded
 			err := e2epod.WaitTimeoutForPodNoLongerRunningInNamespace(context.TODO(), f.ClientSet, podSpec.Name, podSpec.Namespace, 5*time.Minute)
 			framework.ExpectNoError(err)
 
 			podSpec, err := client.Get(context.Background(), podSpec.Name, metav1.GetOptions{})
 			framework.ExpectNoError(err)
+
+			// pod should exit successfully
+			gomega.Expect(podSpec.Status.Phase).To(gomega.Equal(v1.PodSucceeded))
+
 			results = parseOutput(context.TODO(), f, podSpec)
 		})
 
@@ -1056,6 +1069,10 @@ var _ = SIGDescribe("[NodeAlphaFeature:SidecarContainers] Containers Lifecycle "
 
 				podSpec, err := client.Get(context.TODO(), podSpec.Name, metav1.GetOptions{})
 				framework.ExpectNoError(err)
+
+				// pod should exit successfully
+				gomega.Expect(podSpec.Status.Phase).To(gomega.Equal(v1.PodSucceeded))
+
 				results = parseOutput(context.TODO(), f, podSpec)
 			})
 			ginkgo.It("should not restart a restartable init container", func() {
@@ -1182,6 +1199,9 @@ var _ = SIGDescribe("[NodeAlphaFeature:SidecarContainers] Containers Lifecycle "
 
 				podSpec, err := client.Get(context.TODO(), podSpec.Name, metav1.GetOptions{})
 				framework.ExpectNoError(err)
+
+				// pod should exit successfully
+				gomega.Expect(podSpec.Status.Phase).To(gomega.Equal(v1.PodSucceeded))
 				results = parseOutput(context.TODO(), f, podSpec)
 			})
 			ginkgo.It("should restart a restartable init container before the regular container started", func() {
@@ -1250,6 +1270,10 @@ var _ = SIGDescribe("[NodeAlphaFeature:SidecarContainers] Containers Lifecycle "
 
 				podSpec, err := client.Get(context.TODO(), podSpec.Name, metav1.GetOptions{})
 				framework.ExpectNoError(err)
+
+				// pod should exit successfully
+				gomega.Expect(podSpec.Status.Phase).To(gomega.Equal(v1.PodSucceeded))
+
 				results = parseOutput(context.TODO(), f, podSpec)
 			})
 			ginkgo.It("should restart a restartable init container before the regular container started", func() {
@@ -1447,6 +1471,10 @@ var _ = SIGDescribe("[NodeAlphaFeature:SidecarContainers] Containers Lifecycle "
 
 				podSpec, err := client.Get(context.TODO(), podSpec.Name, metav1.GetOptions{})
 				framework.ExpectNoError(err)
+
+				// pod should exit successfully
+				gomega.Expect(podSpec.Status.Phase).To(gomega.Equal(v1.PodSucceeded))
+
 				results = parseOutput(context.TODO(), f, podSpec)
 			})
 			ginkgo.It("should not restart a restartable init container", func() {
@@ -1574,6 +1602,10 @@ var _ = SIGDescribe("[NodeAlphaFeature:SidecarContainers] Containers Lifecycle "
 
 				podSpec, err := client.Get(context.TODO(), podSpec.Name, metav1.GetOptions{})
 				framework.ExpectNoError(err)
+
+				// pod should exit successfully
+				gomega.Expect(podSpec.Status.Phase).To(gomega.Equal(v1.PodSucceeded))
+
 				results = parseOutput(context.TODO(), f, podSpec)
 			})
 			ginkgo.It("should restart a restartable init container before the regular container started", func() {
@@ -1644,6 +1676,10 @@ var _ = SIGDescribe("[NodeAlphaFeature:SidecarContainers] Containers Lifecycle "
 
 				podSpec, err := client.Get(context.TODO(), podSpec.Name, metav1.GetOptions{})
 				framework.ExpectNoError(err)
+
+				// pod should exit successfully
+				gomega.Expect(podSpec.Status.Phase).To(gomega.Equal(v1.PodSucceeded))
+
 				results = parseOutput(context.TODO(), f, podSpec)
 			})
 			ginkgo.It("should restart a restartable init container before the regular container started", func() {
