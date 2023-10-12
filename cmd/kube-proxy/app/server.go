@@ -199,6 +199,9 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 		&o.config.Conntrack.TCPCloseWaitTimeout.Duration, "conntrack-tcp-timeout-close-wait",
 		o.config.Conntrack.TCPCloseWaitTimeout.Duration,
 		"NAT timeout for TCP connections in the CLOSE_WAIT state")
+	fs.DurationVar(&o.config.Conntrack.UDPTimeout.Duration, "conntrack-udp-timeout", o.config.Conntrack.UDPTimeout.Duration, "Idle timeout for UNREPLIED UDP connections (0 to leave as-is)")
+	fs.DurationVar(&o.config.Conntrack.UDPStreamTimeout.Duration, "conntrack-udp-timeout-stream", o.config.Conntrack.UDPStreamTimeout.Duration, "Idle timeout for ASSURED UDP connections (0 to leave as-is)")
+
 	fs.DurationVar(&o.config.ConfigSyncPeriod.Duration, "config-sync-period", o.config.ConfigSyncPeriod.Duration, "How often configuration from the apiserver is refreshed.  Must be greater than 0.")
 
 	fs.BoolVar(&o.config.IPVS.StrictARP, "ipvs-strict-arp", o.config.IPVS.StrictARP, "Enable strict ARP by setting arp_ignore to 1 and arp_announce to 2")
@@ -603,7 +606,8 @@ func newProxyServer(config *kubeproxyconfig.KubeProxyConfiguration, master strin
 		return nil, err
 	}
 
-	s.PrimaryIPFamily, s.NodeIPs = detectNodeIPs(s.Client, s.Hostname, config.BindAddress)
+	rawNodeIPs := getNodeIPs(s.Client, s.Hostname)
+	s.PrimaryIPFamily, s.NodeIPs = detectNodeIPs(rawNodeIPs, config.BindAddress)
 
 	s.Broadcaster = events.NewBroadcaster(&events.EventSinkImpl{Interface: s.Client.EventsV1()})
 	s.Recorder = s.Broadcaster.NewRecorder(proxyconfigscheme.Scheme, "kube-proxy")
@@ -955,27 +959,27 @@ func (s *ProxyServer) birthCry() {
 //
 // The order of precedence is:
 //  1. if bindAddress is not 0.0.0.0 or ::, then it is used as the primary IP.
-//  2. if the Node object can be fetched, then its address(es) is/are used
+//  2. if rawNodeIPs is not empty, then its address(es) is/are used
 //  3. otherwise the node IPs are 127.0.0.1 and ::1
-func detectNodeIPs(client clientset.Interface, hostname, bindAddress string) (v1.IPFamily, map[v1.IPFamily]net.IP) {
+func detectNodeIPs(rawNodeIPs []net.IP, bindAddress string) (v1.IPFamily, map[v1.IPFamily]net.IP) {
 	primaryFamily := v1.IPv4Protocol
 	nodeIPs := map[v1.IPFamily]net.IP{
 		v1.IPv4Protocol: net.IPv4(127, 0, 0, 1),
 		v1.IPv6Protocol: net.IPv6loopback,
 	}
 
-	if ips := getNodeIPs(client, hostname); len(ips) > 0 {
-		if !netutils.IsIPv4(ips[0]) {
+	if len(rawNodeIPs) > 0 {
+		if !netutils.IsIPv4(rawNodeIPs[0]) {
 			primaryFamily = v1.IPv6Protocol
 		}
-		nodeIPs[primaryFamily] = ips[0]
-		if len(ips) > 1 {
+		nodeIPs[primaryFamily] = rawNodeIPs[0]
+		if len(rawNodeIPs) > 1 {
 			// If more than one address is returned, they are guaranteed to be of different families
 			family := v1.IPv4Protocol
-			if !netutils.IsIPv4(ips[1]) {
+			if !netutils.IsIPv4(rawNodeIPs[1]) {
 				family = v1.IPv6Protocol
 			}
-			nodeIPs[family] = ips[1]
+			nodeIPs[family] = rawNodeIPs[1]
 		}
 	}
 

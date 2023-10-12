@@ -37418,13 +37418,6 @@ func schema_k8sio_api_networking_v1alpha1_ParentReference(ref common.ReferenceCa
 							Format:      "",
 						},
 					},
-					"uid": {
-						SchemaProps: spec.SchemaProps{
-							Description: "UID is the uid of the object being referenced.",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
 				},
 			},
 		},
@@ -51996,7 +51989,7 @@ func schema_k8sio_kube_controller_manager_config_v1alpha1_AttachDetachController
 					},
 					"ReconcilerSyncLoopPeriod": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ReconcilerSyncLoopPeriod is the amount of time the reconciler sync states loop wait between successive executions. Is set to 5 sec by default.",
+							Description: "ReconcilerSyncLoopPeriod is the amount of time the reconciler sync states loop wait between successive executions. Is set to 60 sec by default.",
 							Default:     0,
 							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.Duration"),
 						},
@@ -53539,8 +53532,22 @@ func schema_k8sio_kube_proxy_config_v1alpha1_KubeProxyConntrackConfiguration(ref
 							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.Duration"),
 						},
 					},
+					"udpTimeout": {
+						SchemaProps: spec.SchemaProps{
+							Description: "udpTimeout is how long an idle UDP conntrack entry in UNREPLIED state will remain in the conntrack table (e.g. '30s'). Must be greater than 0 to set.",
+							Default:     0,
+							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.Duration"),
+						},
+					},
+					"udpStreamTimeout": {
+						SchemaProps: spec.SchemaProps{
+							Description: "udpStreamTimeout is how long an idle UDP conntrack entry in ASSURED state will remain in the conntrack table (e.g. '300s'). Must be greater than 0 to set.",
+							Default:     0,
+							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.Duration"),
+						},
+					},
 				},
-				Required: []string{"maxPerCore", "min", "tcpEstablishedTimeout", "tcpCloseWaitTimeout"},
+				Required: []string{"maxPerCore", "min", "tcpEstablishedTimeout", "tcpCloseWaitTimeout", "udpTimeout", "udpStreamTimeout"},
 			},
 		},
 		Dependencies: []string{

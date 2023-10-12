@@ -10,11 +10,12 @@ require (
 	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.0
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
+	github.com/moby/term v0.0.0-20221205130635-1aeaba878587
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.8.2
-	golang.org/x/sync v0.2.0
-	golang.org/x/text v0.11.0
+	github.com/stretchr/testify v1.8.3
+	golang.org/x/sync v0.3.0
+	golang.org/x/text v0.13.0
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.0.0
 	k8s.io/apimachinery v0.0.0
@@ -28,6 +29,7 @@ require (
 )
 
 require (
+	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/go-errors/errors v1.4.2 // indirect
@@ -55,10 +57,10 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/xlab/treeprint v1.2.0 // indirect
 	go.starlark.net v0.0.0-20230525235612-a134d8f9ddca // indirect
-	golang.org/x/net v0.13.0 // indirect
+	golang.org/x/net v0.17.0 // indirect
 	golang.org/x/oauth2 v0.8.0 // indirect
-	golang.org/x/sys v0.10.0 // indirect
-	golang.org/x/term v0.10.0 // indirect
+	golang.org/x/sys v0.13.0 // indirect
+	golang.org/x/term v0.13.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
