@@ -212,6 +212,9 @@ func getDefaultInitConfigBytes() ([]byte, error) {
 }
 
 func getDefaultNodeConfigBytes() ([]byte, error) {
+	opts := configutil.LoadOrDefaultConfigurationOptions{
+		SkipCRIDetect: true,
+	}
 	internalcfg, err := configutil.DefaultedJoinConfiguration(&kubeadmapiv1old.JoinConfiguration{
 		Discovery: kubeadmapiv1old.Discovery{
 			BootstrapToken: &kubeadmapiv1old.BootstrapTokenDiscovery{
@@ -220,10 +223,7 @@ func getDefaultNodeConfigBytes() ([]byte, error) {
 				UnsafeSkipCAVerification: true, // TODO: UnsafeSkipCAVerification: true needs to be set for validation to pass, but shouldn't be recommended as the default
 			},
 		},
-		NodeRegistration: kubeadmapiv1old.NodeRegistrationOptions{
-			CRISocket: constants.DefaultCRISocket, // avoid CRI detection
-		},
-	}, true /* skipCRIDetect */)
+	}, opts)
 	if err != nil {
 		return []byte{}, err
 	}
@@ -232,9 +232,10 @@ func getDefaultNodeConfigBytes() ([]byte, error) {
 }
 
 func getDefaultResetConfigBytes() ([]byte, error) {
-	internalcfg, err := configutil.DefaultedResetConfiguration(&kubeadmapiv1.ResetConfiguration{
-		CRISocket: constants.DefaultCRISocket, // avoid CRI detection
-	}, true /* skipCRIDetect */)
+	opts := configutil.LoadOrDefaultConfigurationOptions{
+		SkipCRIDetect: true,
+	}
+	internalcfg, err := configutil.DefaultedResetConfiguration(&kubeadmapiv1.ResetConfiguration{}, opts)
 	if err != nil {
 		return []byte{}, err
 	}
@@ -367,7 +368,7 @@ func newCmdConfigImagesPull() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			internalcfg, err := configutil.LoadOrDefaultInitConfiguration(cfgPath, externalInitCfg, externalClusterCfg, false)
+			internalcfg, err := configutil.LoadOrDefaultInitConfiguration(cfgPath, externalInitCfg, externalClusterCfg, configutil.LoadOrDefaultConfigurationOptions{})
 			if err != nil {
 				return err
 			}
@@ -442,7 +443,9 @@ func newCmdConfigImagesList(out io.Writer, mockK8sVersion *string) *cobra.Comman
 
 // NewImagesList returns the underlying struct for the "kubeadm config images list" command
 func NewImagesList(cfgPath string, cfg *kubeadmapiv1old.ClusterConfiguration) (*ImagesList, error) {
-	initcfg, err := configutil.LoadOrDefaultInitConfiguration(cfgPath, &kubeadmapiv1old.InitConfiguration{}, cfg, true /* skipCRIDetect */)
+	initcfg, err := configutil.LoadOrDefaultInitConfiguration(cfgPath, &kubeadmapiv1old.InitConfiguration{}, cfg, configutil.LoadOrDefaultConfigurationOptions{
+		SkipCRIDetect: true,
+	})
 	if err != nil {
 		return nil, errors.Wrap(err, "could not convert cfg to an internal cfg")
 	}

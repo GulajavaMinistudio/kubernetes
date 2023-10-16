@@ -202,15 +202,6 @@ const (
 	// Set the scheduled time as an annotation in the job.
 	CronJobsScheduledAnnotation featuregate.Feature = "CronJobsScheduledAnnotation"
 
-	// owner: @deejross, @soltysh
-	// kep: https://kep.k8s.io/3140
-	// alpha: v1.24
-	// beta: v1.25
-	// GA: 1.27
-	//
-	// Enables support for time zones in CronJobs.
-	CronJobTimeZone featuregate.Feature = "CronJobTimeZone"
-
 	// owner: @thockin
 	// deprecated: v1.28
 	//
@@ -289,15 +280,6 @@ const (
 	//
 	// This flag used to be needed for dockershim CRI and currently does nothing.
 	ExperimentalHostUserNamespaceDefaultingGate featuregate.Feature = "ExperimentalHostUserNamespaceDefaulting"
-
-	// owner: @yuzhiquan, @bowei, @PxyUp, @SergeyKanzhelev
-	// kep: https://kep.k8s.io/2727
-	// alpha: v1.23
-	// beta: v1.24
-	// stable: v1.27
-	//
-	// Enables GRPC probe method for {Liveness,Readiness,Startup}Probe.
-	GRPCContainerProbe featuregate.Feature = "GRPCContainerProbe"
 
 	// owner: @bobbypage
 	// alpha: v1.20
@@ -399,15 +381,6 @@ const (
 	// Allows users to specify counting of failed pods per index.
 	JobBackoffLimitPerIndex featuregate.Feature = "JobBackoffLimitPerIndex"
 
-	// owner: @ahg
-	// beta: v1.23
-	// stable: v1.27
-	//
-	// Allow updating node scheduling directives in the pod template of jobs. Specifically,
-	// node affinity, selector and tolerations. This is allowed only for suspended jobs
-	// that have never been unsuspended before.
-	JobMutableNodeSchedulingDirectives featuregate.Feature = "JobMutableNodeSchedulingDirectives"
-
 	// owner: @mimowo
 	// kep: https://kep.k8s.io/3329
 	// alpha: v1.25
@@ -430,17 +403,6 @@ const (
 	//
 	// Track the number of pods with Ready condition in the Job status.
 	JobReadyPods featuregate.Feature = "JobReadyPods"
-
-	// owner: @alculquicondor
-	// alpha: v1.22
-	// beta: v1.23
-	// stable: v1.26
-	//
-	// Track Job completion without relying on Pod remaining in the cluster
-	// indefinitely. Pod finalizers, in addition to a field in the Job status
-	// allow the Job controller to keep track of Pods that it didn't account for
-	// yet.
-	JobTrackingWithFinalizers featuregate.Feature = "JobTrackingWithFinalizers"
 
 	// owner: @marquiz
 	// kep: http://kep.k8s.io/4033
@@ -503,14 +465,6 @@ const (
 	// Implement connection draining for terminating nodes for
 	// `externalTrafficPolicy: Cluster` services.
 	KubeProxyDrainingTerminatingNodes featuregate.Feature = "KubeProxyDrainingTerminatingNodes"
-
-	// owner: @zshihang
-	// kep: https://kep.k8s.io/2800
-	// beta: v1.24
-	// ga: v1.26
-	//
-	// Stop auto-generation of secret-based service account tokens.
-	LegacyServiceAccountTokenNoAutoGeneration featuregate.Feature = "LegacyServiceAccountTokenNoAutoGeneration"
 
 	// owner: @zshihang
 	// kep: http://kep.k8s.io/2800
@@ -583,13 +537,6 @@ const (
 	//
 	// Enables new performance-improving code in kube-proxy iptables mode
 	MinimizeIPTablesRestore featuregate.Feature = "MinimizeIPTablesRestore"
-
-	// owner: @sarveshr7
-	// kep: https://kep.k8s.io/2593
-	// alpha: v1.25
-	//
-	// Enables the MultiCIDR Range allocator.
-	MultiCIDRRangeAllocator featuregate.Feature = "MultiCIDRRangeAllocator"
 
 	// owner: @aojea
 	// kep: https://kep.k8s.io/1880
@@ -674,8 +621,9 @@ const (
 	// Set pod completion index as a pod label for Indexed Jobs.
 	PodIndexLabel featuregate.Feature = "PodIndexLabel"
 
-	// owner: @ddebroy
+	// owner: @ddebroy, @kannon92
 	// alpha: v1.25
+	// beta: v1.29
 	//
 	// Enables reporting of PodReadyToStartContainersCondition condition in pod status after pod
 	// sandbox creation and network configuration completes successfully
@@ -740,15 +688,6 @@ const (
 	//
 	// Allow users to recover from volume expansion failure
 	RecoverVolumeExpansionFailure featuregate.Feature = "RecoverVolumeExpansionFailure"
-
-	// owner: @RomanBednar
-	// kep: https://kep.k8s.io/3333
-	// alpha: v1.25
-	// beta: 1.26
-	// stable: v1.28
-	//
-	// Allow assigning StorageClass to unbound PVCs retroactively
-	RetroactiveDefaultStorageClass featuregate.Feature = "RetroactiveDefaultStorageClass"
 
 	// owner: @mikedanese
 	// alpha: v1.7
@@ -1010,8 +949,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	CronJobsScheduledAnnotation: {Default: true, PreRelease: featuregate.Beta},
 
-	CronJobTimeZone: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.29
-
 	DefaultHostNetworkHostPortsInPodTemplates: {Default: false, PreRelease: featuregate.Deprecated},
 
 	DisableCloudProviders: {Default: true, PreRelease: featuregate.Beta},
@@ -1031,8 +968,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	ExpandedDNSConfig: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.30
 
 	ExperimentalHostUserNamespaceDefaultingGate: {Default: false, PreRelease: featuregate.Deprecated, LockToDefault: true}, // remove in 1.30
-
-	GRPCContainerProbe: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, //remove in 1.29
 
 	GracefulNodeShutdown: {Default: true, PreRelease: featuregate.Beta},
 
@@ -1062,15 +997,11 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	JobBackoffLimitPerIndex: {Default: false, PreRelease: featuregate.Alpha},
 
-	JobMutableNodeSchedulingDirectives: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.29
-
 	JobPodFailurePolicy: {Default: true, PreRelease: featuregate.Beta},
 
 	JobPodReplacementPolicy: {Default: false, PreRelease: featuregate.Alpha},
 
 	JobReadyPods: {Default: true, PreRelease: featuregate.Beta},
-
-	JobTrackingWithFinalizers: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.28
 
 	KubeletCgroupDriverFromCRI: {Default: false, PreRelease: featuregate.Alpha},
 
@@ -1087,8 +1018,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	KubeletTracing: {Default: true, PreRelease: featuregate.Beta},
 
 	KubeProxyDrainingTerminatingNodes: {Default: false, PreRelease: featuregate.Alpha},
-
-	LegacyServiceAccountTokenNoAutoGeneration: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.29
 
 	LegacyServiceAccountTokenTracking: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.30
 
@@ -1110,8 +1039,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	MinimizeIPTablesRestore: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.30
 
-	MultiCIDRRangeAllocator: {Default: false, PreRelease: featuregate.Alpha},
-
 	MultiCIDRServiceAllocator: {Default: false, PreRelease: featuregate.Alpha},
 
 	NewVolumeManagerReconstruction: {Default: true, PreRelease: featuregate.Beta},
@@ -1132,7 +1059,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	PodDisruptionConditions: {Default: true, PreRelease: featuregate.Beta},
 
-	PodReadyToStartContainersCondition: {Default: false, PreRelease: featuregate.Alpha},
+	PodReadyToStartContainersCondition: {Default: true, PreRelease: featuregate.Beta},
 
 	PodHostIPs: {Default: false, PreRelease: featuregate.Alpha},
 
@@ -1149,8 +1076,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	ReadWriteOncePod: {Default: true, PreRelease: featuregate.Beta},
 
 	RecoverVolumeExpansionFailure: {Default: false, PreRelease: featuregate.Alpha},
-
-	RetroactiveDefaultStorageClass: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.29
 
 	RotateKubeletServerCertificate: {Default: true, PreRelease: featuregate.Beta},
 
@@ -1230,6 +1155,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	genericfeatures.ServerSideApply: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.29
 
 	genericfeatures.ServerSideFieldValidation: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.29
+
+	genericfeatures.UnauthenticatedHTTP2DOSMitigation: {Default: true, PreRelease: featuregate.Beta},
 
 	// inherited features from apiextensions-apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
