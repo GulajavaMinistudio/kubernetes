@@ -232,14 +232,6 @@ const (
 	// Disable in-tree functionality in kubelet to authenticate to cloud provider container registries for image pull credentials.
 	DisableKubeletCloudCredentialProviders featuregate.Feature = "DisableKubeletCloudCredentialProviders"
 
-	// owner: @derekwaynecarr
-	// alpha: v1.20
-	// beta: v1.21 (off by default until 1.22)
-	// ga: v1.27
-	//
-	// Enables usage of hugepages-<size> in downward API.
-	DownwardAPIHugePages featuregate.Feature = "DownwardAPIHugePages"
-
 	// owner: @pohly
 	// kep: http://kep.k8s.io/3063
 	// alpha: v1.26
@@ -636,6 +628,13 @@ const (
 	// Adds pod.status.hostIPs and downward API
 	PodHostIPs featuregate.Feature = "PodHostIPs"
 
+	// owner: @AxeZhan
+	// kep: http://kep.k8s.io/3960
+	// alpha: v1.29
+	//
+	// Enables SleepAction in container lifecycle hooks
+	PodLifecycleSleepAction featuregate.Feature = "PodLifecycleSleepAction"
+
 	// owner: @Huang-Wei
 	// kep: https://kep.k8s.io/3521
 	// alpha: v1.26
@@ -957,8 +956,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	DevicePluginCDIDevices: {Default: false, PreRelease: featuregate.Alpha},
 
-	DownwardAPIHugePages: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in v1.29
-
 	DynamicResourceAllocation: {Default: false, PreRelease: featuregate.Alpha},
 
 	EventedPLEG: {Default: false, PreRelease: featuregate.Beta}, // off by default, requires CRI Runtime support
@@ -1062,6 +1059,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	PodReadyToStartContainersCondition: {Default: true, PreRelease: featuregate.Beta},
 
 	PodHostIPs: {Default: false, PreRelease: featuregate.Alpha},
+
+	PodLifecycleSleepAction: {Default: false, PreRelease: featuregate.Alpha},
 
 	PodSchedulingReadiness: {Default: true, PreRelease: featuregate.Beta},
 
