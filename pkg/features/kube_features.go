@@ -142,7 +142,8 @@ const (
 	// owner: @mfordjody
 	// alpha: v1.26
 	//
-	// Skip validation Enable in next version
+	// Bypasses obsolete validation that GCP volumes are read-only when used in
+	// Deployments.
 	SkipReadOnlyValidationGCE featuregate.Feature = "SkipReadOnlyValidationGCE"
 
 	// owner: @trierra
@@ -643,14 +644,6 @@ const (
 	// Enable users to specify when a Pod is ready for scheduling.
 	PodSchedulingReadiness featuregate.Feature = "PodSchedulingReadiness"
 
-	// owner: @rphillips
-	// alpha: v1.21
-	// beta: v1.22
-	// ga: v1.28
-	//
-	// Allows user to override pod-level terminationGracePeriod for probes
-	ProbeTerminationGracePeriod featuregate.Feature = "ProbeTerminationGracePeriod"
-
 	// owner: @jessfraz
 	// alpha: v1.12
 	//
@@ -785,14 +778,6 @@ const (
 	//
 	// Enables topology aware hints for EndpointSlices
 	TopologyAwareHints featuregate.Feature = "TopologyAwareHints"
-
-	// owner: @lmdaly, @swatisehgal (for GA graduation)
-	// alpha: v1.16
-	// beta: v1.18
-	// GA: v1.27
-	//
-	// Enable resource managers to make NUMA aligned decisions
-	TopologyManager featuregate.Feature = "TopologyManager"
 
 	// owner: @PiotrProkop
 	// kep: https://kep.k8s.io/3545
@@ -938,7 +923,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	CSIVolumeHealth: {Default: false, PreRelease: featuregate.Alpha},
 
-	SkipReadOnlyValidationGCE: {Default: false, PreRelease: featuregate.Alpha},
+	SkipReadOnlyValidationGCE: {Default: true, PreRelease: featuregate.Deprecated}, // remove in 1.31
 
 	CloudControllerManagerWebhook: {Default: false, PreRelease: featuregate.Alpha},
 
@@ -1064,8 +1049,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	PodSchedulingReadiness: {Default: true, PreRelease: featuregate.Beta},
 
-	ProbeTerminationGracePeriod: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.29
-
 	ProcMountType: {Default: false, PreRelease: featuregate.Alpha},
 
 	ProxyTerminatingEndpoints: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.30
@@ -1099,8 +1082,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	StatefulSetStartOrdinal: {Default: true, PreRelease: featuregate.Beta},
 
 	TopologyAwareHints: {Default: true, PreRelease: featuregate.Beta},
-
-	TopologyManager: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // GA in 1.27; remove in 1.29
 
 	TopologyManagerPolicyAlphaOptions: {Default: false, PreRelease: featuregate.Alpha},
 
@@ -1154,6 +1135,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	genericfeatures.ServerSideApply: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.29
 
 	genericfeatures.ServerSideFieldValidation: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.29
+
+	genericfeatures.StructuredAuthorizationConfiguration: {Default: false, PreRelease: featuregate.Alpha},
 
 	genericfeatures.UnauthenticatedHTTP2DOSMitigation: {Default: true, PreRelease: featuregate.Beta},
 
