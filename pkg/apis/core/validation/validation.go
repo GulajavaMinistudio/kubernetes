@@ -1653,33 +1653,20 @@ var allowedTemplateObjectMetaFields = map[string]bool{
 
 // PersistentVolumeSpecValidationOptions contains the different settings for PeristentVolume validation
 type PersistentVolumeSpecValidationOptions struct {
-	// Allow spec to contain the "ReadWiteOncePod" access mode
-	AllowReadWriteOncePod bool
 }
 
 // ValidatePersistentVolumeName checks that a name is appropriate for a
 // PersistentVolumeName object.
 var ValidatePersistentVolumeName = apimachineryvalidation.NameIsDNSSubdomain
 
-var supportedAccessModes = sets.NewString(string(core.ReadWriteOnce), string(core.ReadOnlyMany), string(core.ReadWriteMany))
+var supportedAccessModes = sets.NewString(string(core.ReadWriteOnce), string(core.ReadOnlyMany), string(core.ReadWriteMany), string(core.ReadWriteOncePod))
 
 var supportedReclaimPolicy = sets.NewString(string(core.PersistentVolumeReclaimDelete), string(core.PersistentVolumeReclaimRecycle), string(core.PersistentVolumeReclaimRetain))
 
 var supportedVolumeModes = sets.NewString(string(core.PersistentVolumeBlock), string(core.PersistentVolumeFilesystem))
 
 func ValidationOptionsForPersistentVolume(pv, oldPv *core.PersistentVolume) PersistentVolumeSpecValidationOptions {
-	opts := PersistentVolumeSpecValidationOptions{
-		AllowReadWriteOncePod: utilfeature.DefaultFeatureGate.Enabled(features.ReadWriteOncePod),
-	}
-	if oldPv == nil {
-		// If there's no old PV, use the options based solely on feature enablement
-		return opts
-	}
-	if helper.ContainsAccessMode(oldPv.Spec.AccessModes, core.ReadWriteOncePod) {
-		// If the old object allowed "ReadWriteOncePod", continue to allow it in the new object
-		opts.AllowReadWriteOncePod = true
-	}
-	return opts
+	return PersistentVolumeSpecValidationOptions{}
 }
 
 func ValidatePersistentVolumeSpec(pvSpec *core.PersistentVolumeSpec, pvName string, validateInlinePersistentVolumeSpec bool, fldPath *field.Path, opts PersistentVolumeSpecValidationOptions) field.ErrorList {
@@ -1701,15 +1688,10 @@ func ValidatePersistentVolumeSpec(pvSpec *core.PersistentVolumeSpec, pvName stri
 		allErrs = append(allErrs, field.Required(fldPath.Child("accessModes"), ""))
 	}
 
-	expandedSupportedAccessModes := sets.StringKeySet(supportedAccessModes)
-	if opts.AllowReadWriteOncePod {
-		expandedSupportedAccessModes.Insert(string(core.ReadWriteOncePod))
-	}
-
 	foundReadWriteOncePod, foundNonReadWriteOncePod := false, false
 	for _, mode := range pvSpec.AccessModes {
-		if !expandedSupportedAccessModes.Has(string(mode)) {
-			allErrs = append(allErrs, field.NotSupported(fldPath.Child("accessModes"), mode, expandedSupportedAccessModes.List()))
+		if !supportedAccessModes.Has(string(mode)) {
+			allErrs = append(allErrs, field.NotSupported(fldPath.Child("accessModes"), mode, supportedAccessModes.List()))
 		}
 
 		if mode == core.ReadWriteOncePod {
@@ -2016,8 +1998,6 @@ func ValidatePersistentVolumeStatusUpdate(newPv, oldPv *core.PersistentVolume) f
 }
 
 type PersistentVolumeClaimSpecValidationOptions struct {
-	// Allow spec to contain the "ReadWiteOncePod" access mode
-	AllowReadWriteOncePod bool
 	// Allow users to recover from previously failing expansion operation
 	EnableRecoverFromExpansionFailure bool
 	// Allow to validate the label value of the label selector
@@ -2028,7 +2008,6 @@ type PersistentVolumeClaimSpecValidationOptions struct {
 
 func ValidationOptionsForPersistentVolumeClaim(pvc, oldPvc *core.PersistentVolumeClaim) PersistentVolumeClaimSpecValidationOptions {
 	opts := PersistentVolumeClaimSpecValidationOptions{
-		AllowReadWriteOncePod:             utilfeature.DefaultFeatureGate.Enabled(features.ReadWriteOncePod),
 		EnableRecoverFromExpansionFailure: utilfeature.DefaultFeatureGate.Enabled(features.RecoverVolumeExpansionFailure),
 		AllowInvalidLabelValueInSelector:  false,
 	}
@@ -2048,11 +2027,6 @@ func ValidationOptionsForPersistentVolumeClaim(pvc, oldPvc *core.PersistentVolum
 		opts.AllowInvalidLabelValueInSelector = true
 	}
 
-	if helper.ContainsAccessMode(oldPvc.Spec.AccessModes, core.ReadWriteOncePod) {
-		// If the old object allowed "ReadWriteOncePod", continue to allow it in the new object
-		opts.AllowReadWriteOncePod = true
-	}
-
 	if helper.ClaimContainsAllocatedResources(oldPvc) ||
 		helper.ClaimContainsAllocatedResourceStatus(oldPvc) {
 		opts.EnableRecoverFromExpansionFailure = true
@@ -2062,7 +2036,6 @@ func ValidationOptionsForPersistentVolumeClaim(pvc, oldPvc *core.PersistentVolum
 
 func ValidationOptionsForPersistentVolumeClaimTemplate(claimTemplate, oldClaimTemplate *core.PersistentVolumeClaimTemplate) PersistentVolumeClaimSpecValidationOptions {
 	opts := PersistentVolumeClaimSpecValidationOptions{
-		AllowReadWriteOncePod:            utilfeature.DefaultFeatureGate.Enabled(features.ReadWriteOncePod),
 		AllowInvalidLabelValueInSelector: false,
 	}
 	if oldClaimTemplate == nil {
@@ -2075,10 +2048,6 @@ func ValidationOptionsForPersistentVolumeClaimTemplate(claimTemplate, oldClaimTe
 	if len(unversionedvalidation.ValidateLabelSelector(oldClaimTemplate.Spec.Selector, labelSelectorValidationOpts, nil)) > 0 {
 		// If the old object had an invalid label selector, continue to allow it in the new object
 		opts.AllowInvalidLabelValueInSelector = true
-	}
-	if helper.ContainsAccessMode(oldClaimTemplate.Spec.AccessModes, core.ReadWriteOncePod) {
-		// If the old object allowed "ReadWriteOncePod", continue to allow it in the new object
-		opts.AllowReadWriteOncePod = true
 	}
 	return opts
 }
@@ -2172,15 +2141,10 @@ func ValidatePersistentVolumeClaimSpec(spec *core.PersistentVolumeClaimSpec, fld
 		allErrs = append(allErrs, unversionedvalidation.ValidateLabelSelector(spec.Selector, labelSelectorValidationOpts, fldPath.Child("selector"))...)
 	}
 
-	expandedSupportedAccessModes := sets.StringKeySet(supportedAccessModes)
-	if opts.AllowReadWriteOncePod {
-		expandedSupportedAccessModes.Insert(string(core.ReadWriteOncePod))
-	}
-
 	foundReadWriteOncePod, foundNonReadWriteOncePod := false, false
 	for _, mode := range spec.AccessModes {
-		if !expandedSupportedAccessModes.Has(string(mode)) {
-			allErrs = append(allErrs, field.NotSupported(fldPath.Child("accessModes"), mode, expandedSupportedAccessModes.List()))
+		if !supportedAccessModes.Has(string(mode)) {
+			allErrs = append(allErrs, field.NotSupported(fldPath.Child("accessModes"), mode, supportedAccessModes.List()))
 		}
 
 		if mode == core.ReadWriteOncePod {
@@ -3415,7 +3379,7 @@ func validateHostUsers(spec *core.PodSpec, fldPath *field.Path) field.ErrorList 
 
 	// Only make the following checks if hostUsers is false (otherwise, the container uses the
 	// same userns as the host, and so there isn't anything to check).
-	if spec.SecurityContext == nil || spec.SecurityContext.HostUsers == nil || *spec.SecurityContext.HostUsers == true {
+	if spec.SecurityContext == nil || spec.SecurityContext.HostUsers == nil || *spec.SecurityContext.HostUsers {
 		return allErrs
 	}
 
@@ -4385,6 +4349,7 @@ func validatePodAffinityTerm(podAffinityTerm core.PodAffinityTerm, allowInvalidL
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("namespace"), name, msg))
 		}
 	}
+	allErrs = append(allErrs, validateMatchLabelKeysAndMismatchLabelKeys(fldPath, podAffinityTerm.MatchLabelKeys, podAffinityTerm.MismatchLabelKeys, podAffinityTerm.LabelSelector)...)
 	if len(podAffinityTerm.TopologyKey) == 0 {
 		allErrs = append(allErrs, field.Required(fldPath.Child("topologyKey"), "can not be empty"))
 	}
@@ -4945,6 +4910,11 @@ func ValidatePodUpdate(newPod, oldPod *core.Pod, opts PodValidationOptions) fiel
 				mungedPodSpec.Affinity.NodeAffinity = oldNodeAffinity // +k8s:verify-mutation:reason=clone
 			}
 		}
+
+		// Note: Unlike NodeAffinity and NodeSelector, we cannot make PodAffinity/PodAntiAffinity mutable due to the presence of the matchLabelKeys/mismatchLabelKeys feature.
+		// Those features automatically generate the matchExpressions in labelSelector for PodAffinity/PodAntiAffinity when the Pod is created.
+		// When we make them mutable, we need to make sure things like how to handle/validate matchLabelKeys,
+		// and what if the fieldManager/A sets matchexpressions and fieldManager/B sets matchLabelKeys later. (could it lead the understandable conflict, etc)
 	}
 
 	if !apiequality.Semantic.DeepEqual(mungedPodSpec, oldPod.Spec) {
@@ -7210,7 +7180,7 @@ func validateTopologySpreadConstraints(constraints []core.TopologySpreadConstrai
 		if err := validateNodeInclusionPolicy(subFldPath.Child("nodeTaintsPolicy"), constraint.NodeTaintsPolicy); err != nil {
 			allErrs = append(allErrs, err)
 		}
-		allErrs = append(allErrs, validateMatchLabelKeys(subFldPath.Child("matchLabelKeys"), constraint.MatchLabelKeys, constraint.LabelSelector)...)
+		allErrs = append(allErrs, validateMatchLabelKeysInTopologySpread(subFldPath.Child("matchLabelKeys"), constraint.MatchLabelKeys, constraint.LabelSelector)...)
 		if !opts.AllowInvalidTopologySpreadConstraintLabelSelector {
 			allErrs = append(allErrs, unversionedvalidation.ValidateLabelSelector(constraint.LabelSelector, unversionedvalidation.LabelSelectorValidationOptions{AllowInvalidLabelValueInSelector: false}, subFldPath.Child("labelSelector"))...)
 		}
@@ -7287,8 +7257,60 @@ func validateNodeInclusionPolicy(fldPath *field.Path, policy *core.NodeInclusion
 	return nil
 }
 
-// validateMatchLabelKeys tests that the elements are a valid label name and are not already included in labelSelector.
-func validateMatchLabelKeys(fldPath *field.Path, matchLabelKeys []string, labelSelector *metav1.LabelSelector) field.ErrorList {
+// validateMatchLabelKeysAndMismatchLabelKeys checks if both matchLabelKeys and mismatchLabelKeys are valid.
+// - validate that all matchLabelKeys and mismatchLabelKeys are valid label names.
+// - validate that the user doens't specify the same key in both matchLabelKeys and labelSelector.
+// - validate that any matchLabelKeys are not duplicated with mismatchLabelKeys.
+func validateMatchLabelKeysAndMismatchLabelKeys(fldPath *field.Path, matchLabelKeys, mismatchLabelKeys []string, labelSelector *metav1.LabelSelector) field.ErrorList {
+	var allErrs field.ErrorList
+	// 1. validate that all matchLabelKeys and mismatchLabelKeys are valid label names.
+	allErrs = append(allErrs, validateLabelKeys(fldPath.Child("matchLabelKeys"), matchLabelKeys, labelSelector)...)
+	allErrs = append(allErrs, validateLabelKeys(fldPath.Child("mismatchLabelKeys"), mismatchLabelKeys, labelSelector)...)
+
+	// 2. validate that the user doens't specify the same key in both matchLabelKeys and labelSelector.
+	// It doesn't make sense to have the labelselector with the key specified in matchLabelKeys
+	// because the matchLabelKeys will be `In` labelSelector which matches with only one value in the key
+	// and we cannot make any further filtering with that key.
+	// On the other hand, we may want to have labelSelector with the key specified in mismatchLabelKeys.
+	// because the mismatchLabelKeys will be `NotIn` labelSelector
+	// and we may want to filter Pods further with other labelSelector with that key.
+
+	// labelKeysMap is keyed by label key and valued by the index of label key in labelKeys.
+	if labelSelector != nil {
+		labelKeysMap := map[string]int{}
+		for i, key := range matchLabelKeys {
+			labelKeysMap[key] = i
+		}
+		labelSelectorKeys := sets.New[string]()
+		for key := range labelSelector.MatchLabels {
+			labelSelectorKeys.Insert(key)
+		}
+		for _, matchExpression := range labelSelector.MatchExpressions {
+			key := matchExpression.Key
+			if i, ok := labelKeysMap[key]; ok && labelSelectorKeys.Has(key) {
+				// Before validateLabelKeysWithSelector is called, the labelSelector has already got the selector created from matchLabelKeys.
+				// Here, we found the duplicate key in labelSelector and the key is specified in labelKeys.
+				// Meaning that the same key is specified in both labelSelector and matchLabelKeys/mismatchLabelKeys.
+				allErrs = append(allErrs, field.Invalid(fldPath.Index(i), key, "exists in both matchLabelKeys and labelSelector"))
+			}
+
+			labelSelectorKeys.Insert(key)
+		}
+	}
+
+	// 3. validate that any matchLabelKeys are not duplicated with mismatchLabelKeys.
+	mismatchLabelKeysSet := sets.New(mismatchLabelKeys...)
+	for i, k := range matchLabelKeys {
+		if mismatchLabelKeysSet.Has(k) {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("matchLabelKeys").Index(i), k, "exists in both matchLabelKeys and mismatchLabelKeys"))
+		}
+	}
+
+	return allErrs
+}
+
+// validateMatchLabelKeysInTopologySpread tests that the elements are a valid label name and are not already included in labelSelector.
+func validateMatchLabelKeysInTopologySpread(fldPath *field.Path, matchLabelKeys []string, labelSelector *metav1.LabelSelector) field.ErrorList {
 	if len(matchLabelKeys) == 0 {
 		return nil
 	}
@@ -7312,6 +7334,25 @@ func validateMatchLabelKeys(fldPath *field.Path, matchLabelKeys []string, labelS
 		if labelSelectorKeys.Has(key) {
 			allErrs = append(allErrs, field.Invalid(fldPath.Index(i), key, "exists in both matchLabelKeys and labelSelector"))
 		}
+	}
+
+	return allErrs
+}
+
+// validateLabelKeys tests that the label keys are a valid label name.
+// It's intended to be used for matchLabelKeys or mismatchLabelKeys.
+func validateLabelKeys(fldPath *field.Path, labelKeys []string, labelSelector *metav1.LabelSelector) field.ErrorList {
+	if len(labelKeys) == 0 {
+		return nil
+	}
+
+	if labelSelector == nil {
+		return field.ErrorList{field.Forbidden(fldPath, "must not be specified when labelSelector is not set")}
+	}
+
+	var allErrs field.ErrorList
+	for i, key := range labelKeys {
+		allErrs = append(allErrs, unversionedvalidation.ValidateLabelName(key, fldPath.Index(i))...)
 	}
 
 	return allErrs

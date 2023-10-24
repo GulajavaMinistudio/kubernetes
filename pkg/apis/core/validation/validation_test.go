@@ -109,9 +109,8 @@ func TestValidatePersistentVolumes(t *testing.T) {
 	validMode := core.PersistentVolumeFilesystem
 	invalidMode := core.PersistentVolumeMode("fakeVolumeMode")
 	scenarios := map[string]struct {
-		isExpectedFailure      bool
-		enableReadWriteOncePod bool
-		volume                 *core.PersistentVolume
+		isExpectedFailure bool
+		volume            *core.PersistentVolume
 	}{
 		"good-volume": {
 			isExpectedFailure: false,
@@ -253,9 +252,8 @@ func TestValidatePersistentVolumes(t *testing.T) {
 				VolumeMode: &invalidMode,
 			}),
 		},
-		"with-read-write-once-pod-feature-gate-enabled": {
-			isExpectedFailure:      false,
-			enableReadWriteOncePod: true,
+		"with-read-write-once-pod": {
+			isExpectedFailure: false,
 			volume: testVolume("foo", "", core.PersistentVolumeSpec{
 				Capacity: core.ResourceList{
 					core.ResourceName(core.ResourceStorage): resource.MustParse("10G"),
@@ -269,25 +267,8 @@ func TestValidatePersistentVolumes(t *testing.T) {
 				},
 			}),
 		},
-		"with-read-write-once-pod-feature-gate-disabled": {
-			isExpectedFailure:      true,
-			enableReadWriteOncePod: false,
-			volume: testVolume("foo", "", core.PersistentVolumeSpec{
-				Capacity: core.ResourceList{
-					core.ResourceName(core.ResourceStorage): resource.MustParse("10G"),
-				},
-				AccessModes: []core.PersistentVolumeAccessMode{"ReadWriteOncePod"},
-				PersistentVolumeSource: core.PersistentVolumeSource{
-					HostPath: &core.HostPathVolumeSource{
-						Path: "/foo",
-						Type: newHostPathType(string(core.HostPathDirectory)),
-					},
-				},
-			}),
-		},
-		"with-read-write-once-pod-and-others-feature-gate-enabled": {
-			isExpectedFailure:      true,
-			enableReadWriteOncePod: true,
+		"with-read-write-once-pod-and-others": {
+			isExpectedFailure: true,
 			volume: testVolume("foo", "", core.PersistentVolumeSpec{
 				Capacity: core.ResourceList{
 					core.ResourceName(core.ResourceStorage): resource.MustParse("10G"),
@@ -501,8 +482,6 @@ func TestValidatePersistentVolumes(t *testing.T) {
 
 	for name, scenario := range scenarios {
 		t.Run(name, func(t *testing.T) {
-			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.ReadWriteOncePod, scenario.enableReadWriteOncePod)()
-
 			opts := ValidationOptionsForPersistentVolume(scenario.volume, nil)
 			errs := ValidatePersistentVolume(scenario.volume, opts)
 			if len(errs) == 0 && scenario.isExpectedFailure {
@@ -903,51 +882,17 @@ func TestValidatePersistentVolumeSourceUpdate(t *testing.T) {
 
 func TestValidationOptionsForPersistentVolume(t *testing.T) {
 	tests := map[string]struct {
-		oldPv                  *core.PersistentVolume
-		enableReadWriteOncePod bool
-		expectValidationOpts   PersistentVolumeSpecValidationOptions
+		oldPv                *core.PersistentVolume
+		expectValidationOpts PersistentVolumeSpecValidationOptions
 	}{
 		"nil old pv": {
-			oldPv:                  nil,
-			enableReadWriteOncePod: true,
-			expectValidationOpts: PersistentVolumeSpecValidationOptions{
-				AllowReadWriteOncePod: true,
-			},
-		},
-		"rwop allowed because feature enabled": {
-			oldPv:                  pvWithAccessModes([]core.PersistentVolumeAccessMode{core.ReadWriteOnce}),
-			enableReadWriteOncePod: true,
-			expectValidationOpts: PersistentVolumeSpecValidationOptions{
-				AllowReadWriteOncePod: true,
-			},
-		},
-		"rwop not allowed because not used and feature disabled": {
-			oldPv:                  pvWithAccessModes([]core.PersistentVolumeAccessMode{core.ReadWriteOnce}),
-			enableReadWriteOncePod: false,
-			expectValidationOpts: PersistentVolumeSpecValidationOptions{
-				AllowReadWriteOncePod: false,
-			},
-		},
-		"rwop allowed because used and feature enabled": {
-			oldPv:                  pvWithAccessModes([]core.PersistentVolumeAccessMode{core.ReadWriteOncePod}),
-			enableReadWriteOncePod: true,
-			expectValidationOpts: PersistentVolumeSpecValidationOptions{
-				AllowReadWriteOncePod: true,
-			},
-		},
-		"rwop allowed because used and feature disabled": {
-			oldPv:                  pvWithAccessModes([]core.PersistentVolumeAccessMode{core.ReadWriteOncePod}),
-			enableReadWriteOncePod: false,
-			expectValidationOpts: PersistentVolumeSpecValidationOptions{
-				AllowReadWriteOncePod: true,
-			},
+			oldPv:                nil,
+			expectValidationOpts: PersistentVolumeSpecValidationOptions{},
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.ReadWriteOncePod, tc.enableReadWriteOncePod)()
-
 			opts := ValidationOptionsForPersistentVolume(nil, tc.oldPv)
 			if opts != tc.expectValidationOpts {
 				t.Errorf("Expected opts: %+v, received: %+v", opts, tc.expectValidationOpts)
@@ -972,29 +917,6 @@ func getCSIVolumeWithSecret(pv *core.PersistentVolume, secret *core.SecretRefere
 	}
 
 	return pvCopy
-}
-func pvWithAccessModes(accessModes []core.PersistentVolumeAccessMode) *core.PersistentVolume {
-	return &core.PersistentVolume{
-		Spec: core.PersistentVolumeSpec{
-			AccessModes: accessModes,
-		},
-	}
-}
-
-func pvcWithAccessModes(accessModes []core.PersistentVolumeAccessMode) *core.PersistentVolumeClaim {
-	return &core.PersistentVolumeClaim{
-		Spec: core.PersistentVolumeClaimSpec{
-			AccessModes: accessModes,
-		},
-	}
-}
-
-func pvcTemplateWithAccessModes(accessModes []core.PersistentVolumeAccessMode) *core.PersistentVolumeClaimTemplate {
-	return &core.PersistentVolumeClaimTemplate{
-		Spec: core.PersistentVolumeClaimSpec{
-			AccessModes: accessModes,
-		},
-	}
 }
 
 func pvcWithDataSource(dataSource *core.TypedLocalObjectReference) *core.PersistentVolumeClaim {
@@ -1594,9 +1516,8 @@ func testValidatePVC(t *testing.T, ephemeral bool) {
 	ten := int64(10)
 
 	scenarios := map[string]struct {
-		isExpectedFailure      bool
-		enableReadWriteOncePod bool
-		claim                  *core.PersistentVolumeClaim
+		isExpectedFailure bool
+		claim             *core.PersistentVolumeClaim
 	}{
 		"good-claim": {
 			isExpectedFailure: false,
@@ -1734,9 +1655,8 @@ func testValidatePVC(t *testing.T, ephemeral bool) {
 				return claim
 			}(),
 		},
-		"with-read-write-once-pod-feature-gate-enabled": {
-			isExpectedFailure:      false,
-			enableReadWriteOncePod: true,
+		"with-read-write-once-pod": {
+			isExpectedFailure: false,
 			claim: testVolumeClaim(goodName, goodNS, core.PersistentVolumeClaimSpec{
 				AccessModes: []core.PersistentVolumeAccessMode{"ReadWriteOncePod"},
 				Resources: core.VolumeResourceRequirements{
@@ -1746,21 +1666,8 @@ func testValidatePVC(t *testing.T, ephemeral bool) {
 				},
 			}),
 		},
-		"with-read-write-once-pod-feature-gate-disabled": {
-			isExpectedFailure:      true,
-			enableReadWriteOncePod: false,
-			claim: testVolumeClaim(goodName, goodNS, core.PersistentVolumeClaimSpec{
-				AccessModes: []core.PersistentVolumeAccessMode{"ReadWriteOncePod"},
-				Resources: core.VolumeResourceRequirements{
-					Requests: core.ResourceList{
-						core.ResourceName(core.ResourceStorage): resource.MustParse("10G"),
-					},
-				},
-			}),
-		},
-		"with-read-write-once-pod-and-others-feature-gate-enabled": {
-			isExpectedFailure:      true,
-			enableReadWriteOncePod: true,
+		"with-read-write-once-pod-and-others": {
+			isExpectedFailure: true,
 			claim: testVolumeClaim(goodName, goodNS, core.PersistentVolumeClaimSpec{
 				AccessModes: []core.PersistentVolumeAccessMode{"ReadWriteOncePod", "ReadWriteMany"},
 				Resources: core.VolumeResourceRequirements{
@@ -1991,8 +1898,6 @@ func testValidatePVC(t *testing.T, ephemeral bool) {
 
 	for name, scenario := range scenarios {
 		t.Run(name, func(t *testing.T) {
-			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.ReadWriteOncePod, scenario.enableReadWriteOncePod)()
-
 			var errs field.ErrorList
 			if ephemeral {
 				volumes := []core.Volume{{
@@ -2754,47 +2659,12 @@ func TestValidationOptionsForPersistentVolumeClaim(t *testing.T) {
 	invaildAPIGroup := "^invalid"
 
 	tests := map[string]struct {
-		oldPvc                 *core.PersistentVolumeClaim
-		enableReadWriteOncePod bool
-		expectValidationOpts   PersistentVolumeClaimSpecValidationOptions
+		oldPvc               *core.PersistentVolumeClaim
+		expectValidationOpts PersistentVolumeClaimSpecValidationOptions
 	}{
 		"nil pv": {
-			oldPvc:                 nil,
-			enableReadWriteOncePod: true,
+			oldPvc: nil,
 			expectValidationOpts: PersistentVolumeClaimSpecValidationOptions{
-				AllowReadWriteOncePod:             true,
-				EnableRecoverFromExpansionFailure: false,
-			},
-		},
-		"rwop allowed because feature enabled": {
-			oldPvc:                 pvcWithAccessModes([]core.PersistentVolumeAccessMode{core.ReadWriteOnce}),
-			enableReadWriteOncePod: true,
-			expectValidationOpts: PersistentVolumeClaimSpecValidationOptions{
-				AllowReadWriteOncePod:             true,
-				EnableRecoverFromExpansionFailure: false,
-			},
-		},
-		"rwop not allowed because not used and feature disabled": {
-			oldPvc:                 pvcWithAccessModes([]core.PersistentVolumeAccessMode{core.ReadWriteOnce}),
-			enableReadWriteOncePod: false,
-			expectValidationOpts: PersistentVolumeClaimSpecValidationOptions{
-				AllowReadWriteOncePod:             false,
-				EnableRecoverFromExpansionFailure: false,
-			},
-		},
-		"rwop allowed because used and feature enabled": {
-			oldPvc:                 pvcWithAccessModes([]core.PersistentVolumeAccessMode{core.ReadWriteOncePod}),
-			enableReadWriteOncePod: true,
-			expectValidationOpts: PersistentVolumeClaimSpecValidationOptions{
-				AllowReadWriteOncePod:             true,
-				EnableRecoverFromExpansionFailure: false,
-			},
-		},
-		"rwop allowed because used and feature disabled": {
-			oldPvc:                 pvcWithAccessModes([]core.PersistentVolumeAccessMode{core.ReadWriteOncePod}),
-			enableReadWriteOncePod: false,
-			expectValidationOpts: PersistentVolumeClaimSpecValidationOptions{
-				AllowReadWriteOncePod:             true,
 				EnableRecoverFromExpansionFailure: false,
 			},
 		},
@@ -2814,8 +2684,6 @@ func TestValidationOptionsForPersistentVolumeClaim(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.ReadWriteOncePod, tc.enableReadWriteOncePod)()
-
 			opts := ValidationOptionsForPersistentVolumeClaim(nil, tc.oldPvc)
 			if opts != tc.expectValidationOpts {
 				t.Errorf("Expected opts: %+v, received: %+v", tc.expectValidationOpts, opts)
@@ -2826,51 +2694,17 @@ func TestValidationOptionsForPersistentVolumeClaim(t *testing.T) {
 
 func TestValidationOptionsForPersistentVolumeClaimTemplate(t *testing.T) {
 	tests := map[string]struct {
-		oldPvcTemplate         *core.PersistentVolumeClaimTemplate
-		enableReadWriteOncePod bool
-		expectValidationOpts   PersistentVolumeClaimSpecValidationOptions
+		oldPvcTemplate       *core.PersistentVolumeClaimTemplate
+		expectValidationOpts PersistentVolumeClaimSpecValidationOptions
 	}{
 		"nil pv": {
-			oldPvcTemplate:         nil,
-			enableReadWriteOncePod: true,
-			expectValidationOpts: PersistentVolumeClaimSpecValidationOptions{
-				AllowReadWriteOncePod: true,
-			},
-		},
-		"rwop allowed because feature enabled": {
-			oldPvcTemplate:         pvcTemplateWithAccessModes([]core.PersistentVolumeAccessMode{core.ReadWriteOnce}),
-			enableReadWriteOncePod: true,
-			expectValidationOpts: PersistentVolumeClaimSpecValidationOptions{
-				AllowReadWriteOncePod: true,
-			},
-		},
-		"rwop not allowed because not used and feature disabled": {
-			oldPvcTemplate:         pvcTemplateWithAccessModes([]core.PersistentVolumeAccessMode{core.ReadWriteOnce}),
-			enableReadWriteOncePod: false,
-			expectValidationOpts: PersistentVolumeClaimSpecValidationOptions{
-				AllowReadWriteOncePod: false,
-			},
-		},
-		"rwop allowed because used and feature enabled": {
-			oldPvcTemplate:         pvcTemplateWithAccessModes([]core.PersistentVolumeAccessMode{core.ReadWriteOncePod}),
-			enableReadWriteOncePod: true,
-			expectValidationOpts: PersistentVolumeClaimSpecValidationOptions{
-				AllowReadWriteOncePod: true,
-			},
-		},
-		"rwop allowed because used and feature disabled": {
-			oldPvcTemplate:         pvcTemplateWithAccessModes([]core.PersistentVolumeAccessMode{core.ReadWriteOncePod}),
-			enableReadWriteOncePod: false,
-			expectValidationOpts: PersistentVolumeClaimSpecValidationOptions{
-				AllowReadWriteOncePod: true,
-			},
+			oldPvcTemplate:       nil,
+			expectValidationOpts: PersistentVolumeClaimSpecValidationOptions{},
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.ReadWriteOncePod, tc.enableReadWriteOncePod)()
-
 			opts := ValidationOptionsForPersistentVolumeClaimTemplate(nil, tc.oldPvcTemplate)
 			if opts != tc.expectValidationOpts {
 				t.Errorf("Expected opts: %+v, received: %+v", opts, tc.expectValidationOpts)
@@ -10198,7 +10032,206 @@ func TestValidatePod(t *testing.T) {
 				DNSPolicy:     core.DNSClusterFirst,
 			},
 		},
+		"MatchLabelKeys/MismatchLabelKeys in required PodAffinity": {
+			ObjectMeta: metav1.ObjectMeta{Name: "123", Namespace: "ns"},
+			Spec: core.PodSpec{
+				Containers:    []core.Container{{Name: "ctr", Image: "image", ImagePullPolicy: "IfNotPresent", TerminationMessagePolicy: "File"}},
+				RestartPolicy: core.RestartPolicyAlways,
+				DNSPolicy:     core.DNSClusterFirst,
+				Affinity: &core.Affinity{
+					PodAffinity: &core.PodAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []core.PodAffinityTerm{
+							{
+								LabelSelector: &metav1.LabelSelector{
+									MatchExpressions: []metav1.LabelSelectorRequirement{
+										{
+											Key:      "key",
+											Operator: metav1.LabelSelectorOpNotIn,
+											Values:   []string{"value1", "value2"},
+										},
+										{
+											Key:      "key2",
+											Operator: metav1.LabelSelectorOpIn,
+											Values:   []string{"value1"},
+										},
+										{
+											Key:      "key3",
+											Operator: metav1.LabelSelectorOpNotIn,
+											Values:   []string{"value1"},
+										},
+									},
+								},
+								TopologyKey:       "k8s.io/zone",
+								MatchLabelKeys:    []string{"key2"},
+								MismatchLabelKeys: []string{"key3"},
+							},
+						},
+					},
+				},
+			},
+		},
+		"MatchLabelKeys/MismatchLabelKeys in preferred PodAffinity": {
+			ObjectMeta: metav1.ObjectMeta{Name: "123", Namespace: "ns"},
+			Spec: core.PodSpec{
+				Containers:    []core.Container{{Name: "ctr", Image: "image", ImagePullPolicy: "IfNotPresent", TerminationMessagePolicy: "File"}},
+				RestartPolicy: core.RestartPolicyAlways,
+				DNSPolicy:     core.DNSClusterFirst,
+				Affinity: &core.Affinity{
+					PodAffinity: &core.PodAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []core.WeightedPodAffinityTerm{
+							{
+								Weight: 10,
+								PodAffinityTerm: core.PodAffinityTerm{
+									LabelSelector: &metav1.LabelSelector{
+										MatchExpressions: []metav1.LabelSelectorRequirement{
+											{
+												Key:      "key",
+												Operator: metav1.LabelSelectorOpNotIn,
+												Values:   []string{"value1", "value2"},
+											},
+											{
+												Key:      "key2",
+												Operator: metav1.LabelSelectorOpIn,
+												Values:   []string{"value1"},
+											},
+											{
+												Key:      "key3",
+												Operator: metav1.LabelSelectorOpNotIn,
+												Values:   []string{"value1"},
+											},
+										},
+									},
+									TopologyKey:       "k8s.io/zone",
+									MatchLabelKeys:    []string{"key2"},
+									MismatchLabelKeys: []string{"key3"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		"MatchLabelKeys/MismatchLabelKeys in required PodAntiAffinity": {
+			ObjectMeta: metav1.ObjectMeta{Name: "123", Namespace: "ns"},
+			Spec: core.PodSpec{
+				Containers:    []core.Container{{Name: "ctr", Image: "image", ImagePullPolicy: "IfNotPresent", TerminationMessagePolicy: "File"}},
+				RestartPolicy: core.RestartPolicyAlways,
+				DNSPolicy:     core.DNSClusterFirst,
+				Affinity: &core.Affinity{
+					PodAntiAffinity: &core.PodAntiAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []core.PodAffinityTerm{
+							{
+								LabelSelector: &metav1.LabelSelector{
+									MatchExpressions: []metav1.LabelSelectorRequirement{
+										{
+											Key:      "key",
+											Operator: metav1.LabelSelectorOpNotIn,
+											Values:   []string{"value1", "value2"},
+										},
+										{
+											Key:      "key2",
+											Operator: metav1.LabelSelectorOpIn,
+											Values:   []string{"value1"},
+										},
+										{
+											Key:      "key3",
+											Operator: metav1.LabelSelectorOpNotIn,
+											Values:   []string{"value1"},
+										},
+									},
+								},
+								TopologyKey:       "k8s.io/zone",
+								MatchLabelKeys:    []string{"key2"},
+								MismatchLabelKeys: []string{"key3"},
+							},
+						},
+					},
+				},
+			},
+		},
+		"MatchLabelKeys/MismatchLabelKeys in preferred PodAntiAffinity": {
+			ObjectMeta: metav1.ObjectMeta{Name: "123", Namespace: "ns"},
+			Spec: core.PodSpec{
+				Containers:    []core.Container{{Name: "ctr", Image: "image", ImagePullPolicy: "IfNotPresent", TerminationMessagePolicy: "File"}},
+				RestartPolicy: core.RestartPolicyAlways,
+				DNSPolicy:     core.DNSClusterFirst,
+				Affinity: &core.Affinity{
+					PodAntiAffinity: &core.PodAntiAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []core.WeightedPodAffinityTerm{
+							{
+								Weight: 10,
+								PodAffinityTerm: core.PodAffinityTerm{
+									LabelSelector: &metav1.LabelSelector{
+										MatchExpressions: []metav1.LabelSelectorRequirement{
+											{
+												Key:      "key",
+												Operator: metav1.LabelSelectorOpNotIn,
+												Values:   []string{"value1", "value2"},
+											},
+											{
+												Key:      "key2",
+												Operator: metav1.LabelSelectorOpIn,
+												Values:   []string{"value1"},
+											},
+											{
+												Key:      "key3",
+												Operator: metav1.LabelSelectorOpNotIn,
+												Values:   []string{"value1"},
+											},
+										},
+									},
+									TopologyKey:       "k8s.io/zone",
+									MatchLabelKeys:    []string{"key2"},
+									MismatchLabelKeys: []string{"key3"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		"LabelSelector can have the same key as MismatchLabelKeys": {
+			// Note: On the contrary, in case of matchLabelKeys, keys in matchLabelKeys are not allowed to be specified in labelSelector by users.
+			ObjectMeta: metav1.ObjectMeta{Name: "123", Namespace: "ns"},
+			Spec: core.PodSpec{
+				Containers:    []core.Container{{Name: "ctr", Image: "image", ImagePullPolicy: "IfNotPresent", TerminationMessagePolicy: "File"}},
+				RestartPolicy: core.RestartPolicyAlways,
+				DNSPolicy:     core.DNSClusterFirst,
+				Affinity: &core.Affinity{
+					PodAffinity: &core.PodAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []core.PodAffinityTerm{
+							{
+								LabelSelector: &metav1.LabelSelector{
+									MatchExpressions: []metav1.LabelSelectorRequirement{
+										{
+											Key:      "key",
+											Operator: metav1.LabelSelectorOpNotIn,
+											Values:   []string{"value1", "value2"},
+										},
+										{
+											// This is the same key as in MismatchLabelKeys
+											// but it's allowed.
+											Key:      "key2",
+											Operator: metav1.LabelSelectorOpIn,
+											Values:   []string{"value1"},
+										},
+										{
+											Key:      "key2",
+											Operator: metav1.LabelSelectorOpNotIn,
+											Values:   []string{"value1"},
+										},
+									},
+								},
+								TopologyKey:       "k8s.io/zone",
+								MismatchLabelKeys: []string{"key2"},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
+
 	for k, v := range successCases {
 		t.Run(k, func(t *testing.T) {
 			if errs := ValidatePodCreate(&v, PodValidationOptions{}); len(errs) != 0 {
@@ -10653,6 +10686,510 @@ func TestValidatePod(t *testing.T) {
 								Namespaces: []string{"ns"},
 							},
 						}},
+					},
+				}),
+			},
+		},
+		"invalid soft pod affinity, key in MatchLabelKeys isn't correctly defined": {
+			expectedError: "prefix part must be non-empty",
+			spec: core.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "123",
+					Namespace: "ns",
+				},
+				Spec: validPodSpec(&core.Affinity{
+					PodAffinity: &core.PodAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []core.WeightedPodAffinityTerm{
+							{
+								Weight: 10,
+								PodAffinityTerm: core.PodAffinityTerm{
+									LabelSelector: &metav1.LabelSelector{
+										MatchExpressions: []metav1.LabelSelectorRequirement{
+											{
+												Key:      "key",
+												Operator: metav1.LabelSelectorOpNotIn,
+												Values:   []string{"value1", "value2"},
+											},
+										},
+									},
+									TopologyKey:    "k8s.io/zone",
+									MatchLabelKeys: []string{"/simple"},
+								},
+							},
+						},
+					},
+				}),
+			},
+		},
+		"invalid hard pod affinity, key in MatchLabelKeys isn't correctly defined": {
+			expectedError: "prefix part must be non-empty",
+			spec: core.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "123",
+					Namespace: "ns",
+				},
+				Spec: validPodSpec(&core.Affinity{
+					PodAffinity: &core.PodAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []core.PodAffinityTerm{
+							{
+								LabelSelector: &metav1.LabelSelector{
+									MatchExpressions: []metav1.LabelSelectorRequirement{
+										{
+											Key:      "key",
+											Operator: metav1.LabelSelectorOpNotIn,
+											Values:   []string{"value1", "value2"},
+										},
+									},
+								},
+								TopologyKey:    "k8s.io/zone",
+								MatchLabelKeys: []string{"/simple"},
+							},
+						},
+					},
+				}),
+			},
+		},
+		"invalid soft pod anti-affinity, key in MatchLabelKeys isn't correctly defined": {
+			expectedError: "prefix part must be non-empty",
+			spec: core.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "123",
+					Namespace: "ns",
+				},
+				Spec: validPodSpec(&core.Affinity{
+					PodAntiAffinity: &core.PodAntiAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []core.WeightedPodAffinityTerm{
+							{
+								Weight: 10,
+								PodAffinityTerm: core.PodAffinityTerm{
+									LabelSelector: &metav1.LabelSelector{
+										MatchExpressions: []metav1.LabelSelectorRequirement{
+											{
+												Key:      "key",
+												Operator: metav1.LabelSelectorOpNotIn,
+												Values:   []string{"value1", "value2"},
+											},
+										},
+									},
+									TopologyKey:    "k8s.io/zone",
+									MatchLabelKeys: []string{"/simple"},
+								},
+							},
+						},
+					},
+				}),
+			},
+		},
+		"invalid hard pod anti-affinity, key in MatchLabelKeys isn't correctly defined": {
+			expectedError: "prefix part must be non-empty",
+			spec: core.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "123",
+					Namespace: "ns",
+				},
+				Spec: validPodSpec(&core.Affinity{
+					PodAntiAffinity: &core.PodAntiAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []core.PodAffinityTerm{
+							{
+								LabelSelector: &metav1.LabelSelector{
+									MatchExpressions: []metav1.LabelSelectorRequirement{
+										{
+											Key:      "key",
+											Operator: metav1.LabelSelectorOpNotIn,
+											Values:   []string{"value1", "value2"},
+										},
+									},
+								},
+								TopologyKey:    "k8s.io/zone",
+								MatchLabelKeys: []string{"/simple"},
+							},
+						},
+					},
+				}),
+			},
+		},
+		"invalid soft pod affinity, key in MismatchLabelKeys isn't correctly defined": {
+			expectedError: "prefix part must be non-empty",
+			spec: core.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "123",
+					Namespace: "ns",
+				},
+				Spec: validPodSpec(&core.Affinity{
+					PodAffinity: &core.PodAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []core.WeightedPodAffinityTerm{
+							{
+								Weight: 10,
+								PodAffinityTerm: core.PodAffinityTerm{
+									LabelSelector: &metav1.LabelSelector{
+										MatchExpressions: []metav1.LabelSelectorRequirement{
+											{
+												Key:      "key",
+												Operator: metav1.LabelSelectorOpNotIn,
+												Values:   []string{"value1", "value2"},
+											},
+										},
+									},
+									TopologyKey:       "k8s.io/zone",
+									MismatchLabelKeys: []string{"/simple"},
+								},
+							},
+						},
+					},
+				}),
+			},
+		},
+		"invalid hard pod affinity, key in MismatchLabelKeys isn't correctly defined": {
+			expectedError: "prefix part must be non-empty",
+			spec: core.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "123",
+					Namespace: "ns",
+				},
+				Spec: validPodSpec(&core.Affinity{
+					PodAffinity: &core.PodAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []core.PodAffinityTerm{
+							{
+								LabelSelector: &metav1.LabelSelector{
+									MatchExpressions: []metav1.LabelSelectorRequirement{
+										{
+											Key:      "key",
+											Operator: metav1.LabelSelectorOpNotIn,
+											Values:   []string{"value1", "value2"},
+										},
+									},
+								},
+								TopologyKey:       "k8s.io/zone",
+								MismatchLabelKeys: []string{"/simple"},
+							},
+						},
+					},
+				}),
+			},
+		},
+		"invalid soft pod anti-affinity, key in MismatchLabelKeys isn't correctly defined": {
+			expectedError: "prefix part must be non-empty",
+			spec: core.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "123",
+					Namespace: "ns",
+				},
+				Spec: validPodSpec(&core.Affinity{
+					PodAntiAffinity: &core.PodAntiAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []core.WeightedPodAffinityTerm{
+							{
+								Weight: 10,
+								PodAffinityTerm: core.PodAffinityTerm{
+									LabelSelector: &metav1.LabelSelector{
+										MatchExpressions: []metav1.LabelSelectorRequirement{
+											{
+												Key:      "key",
+												Operator: metav1.LabelSelectorOpNotIn,
+												Values:   []string{"value1", "value2"},
+											},
+										},
+									},
+									TopologyKey:       "k8s.io/zone",
+									MismatchLabelKeys: []string{"/simple"},
+								},
+							},
+						},
+					},
+				}),
+			},
+		},
+		"invalid hard pod anti-affinity, key in MismatchLabelKeys isn't correctly defined": {
+			expectedError: "prefix part must be non-empty",
+			spec: core.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "123",
+					Namespace: "ns",
+				},
+				Spec: validPodSpec(&core.Affinity{
+					PodAntiAffinity: &core.PodAntiAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []core.PodAffinityTerm{
+							{
+								LabelSelector: &metav1.LabelSelector{
+									MatchExpressions: []metav1.LabelSelectorRequirement{
+										{
+											Key:      "key",
+											Operator: metav1.LabelSelectorOpNotIn,
+											Values:   []string{"value1", "value2"},
+										},
+									},
+								},
+								TopologyKey:       "k8s.io/zone",
+								MismatchLabelKeys: []string{"/simple"},
+							},
+						},
+					},
+				}),
+			},
+		},
+		"invalid soft pod affinity, key exists in both matchLabelKeys and labelSelector": {
+			expectedError: "exists in both matchLabelKeys and labelSelector",
+			spec: core.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "123",
+					Namespace: "ns",
+					Labels:    map[string]string{"key": "value1"},
+				},
+				Spec: validPodSpec(&core.Affinity{
+					PodAffinity: &core.PodAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []core.WeightedPodAffinityTerm{
+							{
+								Weight: 10,
+								PodAffinityTerm: core.PodAffinityTerm{
+									LabelSelector: &metav1.LabelSelector{
+										MatchExpressions: []metav1.LabelSelectorRequirement{
+											// This one should be created from MatchLabelKeys.
+											{
+												Key:      "key",
+												Operator: metav1.LabelSelectorOpIn,
+												Values:   []string{"value1"},
+											},
+											{
+												Key:      "key",
+												Operator: metav1.LabelSelectorOpNotIn,
+												Values:   []string{"value2"},
+											},
+										},
+									},
+									TopologyKey:    "k8s.io/zone",
+									MatchLabelKeys: []string{"key"},
+								},
+							},
+						},
+					},
+				}),
+			},
+		},
+		"invalid hard pod affinity, key exists in both matchLabelKeys and labelSelector": {
+			expectedError: "exists in both matchLabelKeys and labelSelector",
+			spec: core.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "123",
+					Namespace: "ns",
+					Labels:    map[string]string{"key": "value1"},
+				},
+				Spec: validPodSpec(&core.Affinity{
+					PodAffinity: &core.PodAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []core.PodAffinityTerm{
+							{
+								LabelSelector: &metav1.LabelSelector{
+									MatchExpressions: []metav1.LabelSelectorRequirement{
+										// This one should be created from MatchLabelKeys.
+										{
+											Key:      "key",
+											Operator: metav1.LabelSelectorOpIn,
+											Values:   []string{"value1"},
+										},
+										{
+											Key:      "key",
+											Operator: metav1.LabelSelectorOpNotIn,
+											Values:   []string{"value2"},
+										},
+									},
+								},
+								TopologyKey:    "k8s.io/zone",
+								MatchLabelKeys: []string{"key"},
+							},
+						},
+					},
+				}),
+			},
+		},
+		"invalid soft pod anti-affinity, key exists in both matchLabelKeys and labelSelector": {
+			expectedError: "exists in both matchLabelKeys and labelSelector",
+			spec: core.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "123",
+					Namespace: "ns",
+					Labels:    map[string]string{"key": "value1"},
+				},
+				Spec: validPodSpec(&core.Affinity{
+					PodAntiAffinity: &core.PodAntiAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []core.WeightedPodAffinityTerm{
+							{
+								Weight: 10,
+								PodAffinityTerm: core.PodAffinityTerm{
+									LabelSelector: &metav1.LabelSelector{
+										MatchExpressions: []metav1.LabelSelectorRequirement{
+											// This one should be created from MatchLabelKeys.
+											{
+												Key:      "key",
+												Operator: metav1.LabelSelectorOpIn,
+												Values:   []string{"value1"},
+											},
+											{
+												Key:      "key",
+												Operator: metav1.LabelSelectorOpNotIn,
+												Values:   []string{"value2"},
+											},
+										},
+									},
+									TopologyKey:    "k8s.io/zone",
+									MatchLabelKeys: []string{"key"},
+								},
+							},
+						},
+					},
+				}),
+			},
+		},
+		"invalid hard pod anti-affinity, key exists in both matchLabelKeys and labelSelector": {
+			expectedError: "exists in both matchLabelKeys and labelSelector",
+			spec: core.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "123",
+					Namespace: "ns",
+					Labels:    map[string]string{"key": "value1"},
+				},
+				Spec: validPodSpec(&core.Affinity{
+					PodAntiAffinity: &core.PodAntiAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []core.PodAffinityTerm{
+							{
+								LabelSelector: &metav1.LabelSelector{
+									MatchExpressions: []metav1.LabelSelectorRequirement{
+										// This one should be created from MatchLabelKeys.
+										{
+											Key:      "key",
+											Operator: metav1.LabelSelectorOpIn,
+											Values:   []string{"value1"},
+										},
+										{
+											Key:      "key",
+											Operator: metav1.LabelSelectorOpNotIn,
+											Values:   []string{"value2"},
+										},
+									},
+								},
+								TopologyKey:    "k8s.io/zone",
+								MatchLabelKeys: []string{"key"},
+							},
+						},
+					},
+				}),
+			},
+		},
+		"invalid soft pod affinity, key exists in both MatchLabelKeys and MismatchLabelKeys": {
+			expectedError: "exists in both matchLabelKeys and mismatchLabelKeys",
+			spec: core.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "123",
+					Namespace: "ns",
+				},
+				Spec: validPodSpec(&core.Affinity{
+					PodAffinity: &core.PodAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []core.WeightedPodAffinityTerm{
+							{
+								Weight: 10,
+								PodAffinityTerm: core.PodAffinityTerm{
+									LabelSelector: &metav1.LabelSelector{
+										MatchExpressions: []metav1.LabelSelectorRequirement{
+											{
+												Key:      "key",
+												Operator: metav1.LabelSelectorOpNotIn,
+												Values:   []string{"value1", "value2"},
+											},
+										},
+									},
+									TopologyKey:       "k8s.io/zone",
+									MatchLabelKeys:    []string{"samekey"},
+									MismatchLabelKeys: []string{"samekey"},
+								},
+							},
+						},
+					},
+				}),
+			},
+		},
+		"invalid hard pod affinity, key exists in both MatchLabelKeys and MismatchLabelKeys": {
+			expectedError: "exists in both matchLabelKeys and mismatchLabelKeys",
+			spec: core.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "123",
+					Namespace: "ns",
+				},
+				Spec: validPodSpec(&core.Affinity{
+					PodAffinity: &core.PodAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []core.PodAffinityTerm{
+							{
+								LabelSelector: &metav1.LabelSelector{
+									MatchExpressions: []metav1.LabelSelectorRequirement{
+										{
+											Key:      "key",
+											Operator: metav1.LabelSelectorOpNotIn,
+											Values:   []string{"value1", "value2"},
+										},
+									},
+								},
+								TopologyKey:       "k8s.io/zone",
+								MatchLabelKeys:    []string{"samekey"},
+								MismatchLabelKeys: []string{"samekey"},
+							},
+						},
+					},
+				}),
+			},
+		},
+		"invalid soft pod anti-affinity, key exists in both MatchLabelKeys and MismatchLabelKeys": {
+			expectedError: "exists in both matchLabelKeys and mismatchLabelKeys",
+			spec: core.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "123",
+					Namespace: "ns",
+				},
+				Spec: validPodSpec(&core.Affinity{
+					PodAntiAffinity: &core.PodAntiAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []core.WeightedPodAffinityTerm{
+							{
+								Weight: 10,
+								PodAffinityTerm: core.PodAffinityTerm{
+									LabelSelector: &metav1.LabelSelector{
+										MatchExpressions: []metav1.LabelSelectorRequirement{
+											{
+												Key:      "key",
+												Operator: metav1.LabelSelectorOpNotIn,
+												Values:   []string{"value1", "value2"},
+											},
+										},
+									},
+									TopologyKey:       "k8s.io/zone",
+									MatchLabelKeys:    []string{"samekey"},
+									MismatchLabelKeys: []string{"samekey"},
+								},
+							},
+						},
+					},
+				}),
+			},
+		},
+		"invalid hard pod anti-affinity, key exists in both MatchLabelKeys and MismatchLabelKeys": {
+			expectedError: "exists in both matchLabelKeys and mismatchLabelKeys",
+			spec: core.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "123",
+					Namespace: "ns",
+				},
+				Spec: validPodSpec(&core.Affinity{
+					PodAntiAffinity: &core.PodAntiAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []core.PodAffinityTerm{
+							{
+								LabelSelector: &metav1.LabelSelector{
+									MatchExpressions: []metav1.LabelSelectorRequirement{
+										{
+											Key:      "key",
+											Operator: metav1.LabelSelectorOpNotIn,
+											Values:   []string{"value1", "value2"},
+										},
+									},
+								},
+								TopologyKey:       "k8s.io/zone",
+								MatchLabelKeys:    []string{"samekey"},
+								MismatchLabelKeys: []string{"samekey"},
+							},
+						},
 					},
 				}),
 			},
@@ -11143,7 +11680,7 @@ func TestValidatePod(t *testing.T) {
 	}
 	for k, v := range errorCases {
 		t.Run(k, func(t *testing.T) {
-			if errs := ValidatePodCreate(&v.spec, PodValidationOptions{AllowInvalidPodDeletionCost: false}); len(errs) == 0 {
+			if errs := ValidatePodCreate(&v.spec, PodValidationOptions{}); len(errs) == 0 {
 				t.Errorf("expected failure")
 			} else if v.expectedError == "" {
 				t.Errorf("missing expectedError, got %q", errs.ToAggregate().Error())
@@ -21756,11 +22293,13 @@ func TestValidateTopologySpreadConstraints(t *testing.T) {
 			WhenUnsatisfiable: core.DoNotSchedule,
 			MatchLabelKeys:    []string{"foo"},
 			LabelSelector: &metav1.LabelSelector{
-				MatchExpressions: []metav1.LabelSelectorRequirement{{
-					Key:      "foo",
-					Operator: metav1.LabelSelectorOpNotIn,
-					Values:   []string{"value1", "value2"},
-				}},
+				MatchExpressions: []metav1.LabelSelectorRequirement{
+					{
+						Key:      "foo",
+						Operator: metav1.LabelSelectorOpNotIn,
+						Values:   []string{"value1", "value2"},
+					},
+				},
 			},
 		}},
 		wantFieldErrors: field.ErrorList{field.Invalid(fieldPathMatchLabelKeys.Index(0), "foo", "exists in both matchLabelKeys and labelSelector")},

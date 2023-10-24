@@ -370,6 +370,7 @@ const (
 	// owner: @mimowo
 	// kep: https://kep.k8s.io/3850
 	// alpha: v1.28
+	// beta: v1.29
 	//
 	// Allows users to specify counting of failed pods per index.
 	JobBackoffLimitPerIndex featuregate.Feature = "JobBackoffLimitPerIndex"
@@ -487,6 +488,13 @@ const (
 	//
 	// Enables scaling down replicas via logarithmic comparison of creation/ready timestamps
 	LogarithmicScaleDown featuregate.Feature = "LogarithmicScaleDown"
+
+	// owner: @sanposhiho
+	// kep: https://kep.k8s.io/3633
+	// alpha: v1.29
+	//
+	// Enables the MatchLabelKeys and MismatchLabelKeys in PodAffinity and PodAntiAffinity.
+	MatchLabelKeysInPodAffinity featuregate.Feature = "MatchLabelKeysInPodAffinity"
 
 	// owner: @denkensk
 	// kep: https://kep.k8s.io/3243
@@ -625,7 +633,6 @@ const (
 	// owner: @wzshiming
 	// kep: http://kep.k8s.io/2681
 	// alpha: v1.28
-	// beta: v1.29
 	//
 	// Adds pod.status.hostIPs and downward API
 	PodHostIPs featuregate.Feature = "PodHostIPs"
@@ -671,6 +678,7 @@ const (
 	// kep: https://kep.k8s.io/2485
 	// alpha: v1.22
 	// beta: v1.27
+	// GA: v1.29
 	//
 	// Enables usage of the ReadWriteOncePod PersistentVolume access mode.
 	ReadWriteOncePod featuregate.Feature = "ReadWriteOncePod"
@@ -969,13 +977,13 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	IPTablesOwnershipCleanup: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.30
 
-	JobBackoffLimitPerIndex: {Default: false, PreRelease: featuregate.Alpha},
+	JobBackoffLimitPerIndex: {Default: true, PreRelease: featuregate.Beta},
 
 	JobPodFailurePolicy: {Default: true, PreRelease: featuregate.Beta},
 
 	JobPodReplacementPolicy: {Default: false, PreRelease: featuregate.Alpha},
 
-	JobReadyPods: {Default: true, PreRelease: featuregate.Beta},
+	JobReadyPods: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.31
 
 	KubeletCgroupDriverFromCRI: {Default: false, PreRelease: featuregate.Alpha},
 
@@ -1000,6 +1008,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	LocalStorageCapacityIsolationFSQuotaMonitoring: {Default: false, PreRelease: featuregate.Alpha},
 
 	LogarithmicScaleDown: {Default: true, PreRelease: featuregate.Beta},
+
+	MatchLabelKeysInPodAffinity: {Default: false, PreRelease: featuregate.Alpha},
 
 	MatchLabelKeysInPodTopologySpread: {Default: true, PreRelease: featuregate.Beta},
 
@@ -1035,7 +1045,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	PodReadyToStartContainersCondition: {Default: true, PreRelease: featuregate.Beta},
 
-	PodHostIPs: {Default: true, PreRelease: featuregate.Beta},
+	PodHostIPs: {Default: false, PreRelease: featuregate.Alpha},
 
 	PodLifecycleSleepAction: {Default: false, PreRelease: featuregate.Alpha},
 
@@ -1047,7 +1057,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	QOSReserved: {Default: false, PreRelease: featuregate.Alpha},
 
-	ReadWriteOncePod: {Default: true, PreRelease: featuregate.Beta},
+	ReadWriteOncePod: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.31
 
 	RecoverVolumeExpansionFailure: {Default: false, PreRelease: featuregate.Alpha},
 
