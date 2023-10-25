@@ -914,10 +914,10 @@ func (jm *Controller) syncJob(ctx context.Context, key string) (rErr error) {
 	}
 
 	needsStatusUpdate := suspendCondChanged || active != job.Status.Active || !ptr.Equal(ready, job.Status.Ready)
+	needsStatusUpdate = needsStatusUpdate || !ptr.Equal(job.Status.Terminating, jobCtx.terminating)
 	job.Status.Active = active
 	job.Status.Ready = ready
 	job.Status.Terminating = jobCtx.terminating
-	needsStatusUpdate = needsStatusUpdate || !ptr.Equal(job.Status.Terminating, jobCtx.terminating)
 	err = jm.trackJobStatusAndRemoveFinalizers(ctx, jobCtx, needsStatusUpdate)
 	if err != nil {
 		return fmt.Errorf("tracking status: %w", err)
@@ -1546,6 +1546,9 @@ func (jm *Controller) manageJob(ctx context.Context, job *batch.Job, jobCtx *syn
 		}
 		podTemplate.Finalizers = appendJobCompletionFinalizerIfNotFound(podTemplate.Finalizers)
 
+		// Counters for pod creation status (used by the job_pods_creation_total metric)
+		var creationsSucceeded, creationsFailed int32 = 0, 0
+
 		// Batch the pod creates. Batch sizes start at SlowStartInitialBatchSize
 		// and double with each successful iteration in a kind of "slow start".
 		// This handles attempts to start large numbers of pods that would
@@ -1595,7 +1598,9 @@ func (jm *Controller) manageJob(ctx context.Context, job *batch.Job, jobCtx *syn
 						jm.expectations.CreationObserved(logger, jobKey)
 						atomic.AddInt32(&active, -1)
 						errCh <- err
+						atomic.AddInt32(&creationsFailed, 1)
 					}
+					atomic.AddInt32(&creationsSucceeded, 1)
 				}()
 			}
 			wait.Wait()
@@ -1614,6 +1619,7 @@ func (jm *Controller) manageJob(ctx context.Context, job *batch.Job, jobCtx *syn
 			}
 			diff -= batchSize
 		}
+		recordJobPodsCreationTotal(job, creationsSucceeded, creationsFailed)
 		return active, metrics.JobSyncActionPodsCreated, errorFromChannel(errCh)
 	}
 
@@ -1909,5 +1915,25 @@ func (jm *Controller) cleanupPodFinalizers(job *batch.Job) {
 		if metav1.IsControlledBy(pod, job) && hasJobTrackingFinalizer(pod) {
 			jm.enqueueOrphanPod(pod)
 		}
+	}
+}
+
+func recordJobPodsCreationTotal(job *batch.Job, succeeded, failed int32) {
+	reason := metrics.PodCreateNew
+	if feature.DefaultFeatureGate.Enabled(features.JobPodReplacementPolicy) {
+		podsTerminating := job.Status.Terminating != nil && *job.Status.Terminating > 0
+		isRecreateAction := podsTerminating || job.Status.Failed > 0
+		if isRecreateAction {
+			reason = metrics.PodRecreateTerminatingOrFailed
+			if *job.Spec.PodReplacementPolicy == batch.Failed {
+				reason = metrics.PodRecreateFailed
+			}
+		}
+	}
+	if succeeded > 0 {
+		metrics.JobPodsCreationTotal.WithLabelValues(reason, metrics.Succeeded).Add(float64(succeeded))
+	}
+	if failed > 0 {
+		metrics.JobPodsCreationTotal.WithLabelValues(reason, metrics.Failed).Add(float64(failed))
 	}
 }

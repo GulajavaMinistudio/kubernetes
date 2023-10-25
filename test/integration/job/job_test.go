@@ -1690,81 +1690,119 @@ func TestIndexedJob(t *testing.T) {
 }
 
 func TestJobPodReplacementPolicy(t *testing.T) {
-	const podCount int32 = 2
 	indexedCompletion := batchv1.IndexedCompletion
 	nonIndexedCompletion := batchv1.NonIndexedCompletion
 	var podReplacementPolicy = func(obj batchv1.PodReplacementPolicy) *batchv1.PodReplacementPolicy {
 		return &obj
 	}
-	jobSpecIndexedDefault := &batchv1.JobSpec{
-		Parallelism:    ptr.To(podCount),
-		Completions:    ptr.To(podCount),
-		CompletionMode: &indexedCompletion,
+	type jobStatus struct {
+		active      int
+		failed      int
+		terminating *int32
+	}
+	type jobPodsCreationMetrics struct {
+		new                         int
+		recreateTerminatingOrFailed int
+		recreateFailed              int
 	}
 	cases := map[string]struct {
 		podReplacementPolicyEnabled bool
-		deletePods                  bool
-		failPods                    bool
-		wantTerminating             *int32
-		wantFailed                  int
-		wantActive                  int
 		jobSpec                     *batchv1.JobSpec
+		wantStatusAfterDeletion     jobStatus
+		wantStatusAfterFailure      jobStatus
+		wantMetrics                 jobPodsCreationMetrics
 	}{
-		"feature flag off, delete pods and verify no terminating status": {
-			deletePods: true,
-			jobSpec:    jobSpecIndexedDefault,
-			wantActive: int(podCount),
-			wantFailed: int(podCount),
-		},
-		"feature flag true, delete pods and verify terminating status": {
-			podReplacementPolicyEnabled: true,
-			deletePods:                  true,
-			jobSpec:                     jobSpecIndexedDefault,
-			wantTerminating:             ptr.To(podCount),
-			wantFailed:                  int(podCount),
-		},
-		"feature flag true, delete pods, verify terminating status and recreate upon terminating": {
-			podReplacementPolicyEnabled: true,
-			deletePods:                  true,
+		"feature flag off, delete & fail pods, recreate terminating pods, and verify job status counters": {
 			jobSpec: &batchv1.JobSpec{
-				Parallelism:          ptr.To(podCount),
-				Completions:          ptr.To(podCount),
+				Parallelism:    ptr.To[int32](2),
+				Completions:    ptr.To[int32](2),
+				CompletionMode: &indexedCompletion,
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Finalizers: []string{"fake.example.com/blockDeletion"},
+					},
+				},
+			},
+			wantStatusAfterDeletion: jobStatus{
+				active: 2,
+				failed: 2,
+			},
+			wantStatusAfterFailure: jobStatus{
+				active: 2,
+				failed: 2,
+			},
+			wantMetrics: jobPodsCreationMetrics{
+				new: 4,
+			},
+		},
+		"feature flag true, TerminatingOrFailed policy, delete & fail pods, recreate terminating pods, and verify job status counters": {
+			podReplacementPolicyEnabled: true,
+			jobSpec: &batchv1.JobSpec{
+				Parallelism:          ptr.To[int32](2),
+				Completions:          ptr.To[int32](2),
 				CompletionMode:       &indexedCompletion,
 				PodReplacementPolicy: podReplacementPolicy(batchv1.TerminatingOrFailed),
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Finalizers: []string{"fake.example.com/blockDeletion"},
+					},
+				},
 			},
-			wantTerminating: ptr.To(podCount),
-			wantFailed:      int(podCount),
+			wantStatusAfterDeletion: jobStatus{
+				active:      2,
+				failed:      2,
+				terminating: ptr.To[int32](2),
+			},
+			wantStatusAfterFailure: jobStatus{
+				active:      2,
+				failed:      2,
+				terminating: ptr.To[int32](0),
+			},
+			wantMetrics: jobPodsCreationMetrics{
+				new:                         2,
+				recreateTerminatingOrFailed: 2,
+			},
 		},
-		"feature flag true, delete pods, verify terminating status and recreate once failed": {
+		"feature flag true with NonIndexedJob, TerminatingOrFailed policy, delete & fail pods, recreate terminating pods, and verify job status counters": {
 			podReplacementPolicyEnabled: true,
-			deletePods:                  true,
 			jobSpec: &batchv1.JobSpec{
-				Parallelism:          ptr.To(podCount),
-				Completions:          ptr.To(podCount),
-				CompletionMode:       &nonIndexedCompletion,
-				PodReplacementPolicy: podReplacementPolicy(batchv1.Failed),
+				Parallelism:          ptr.To[int32](2),
+				Completions:          ptr.To[int32](2),
+				CompletionMode:       &indexedCompletion,
+				PodReplacementPolicy: podReplacementPolicy(batchv1.TerminatingOrFailed),
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Finalizers: []string{"fake.example.com/blockDeletion"},
+					},
+				},
 			},
-			wantTerminating: ptr.To(podCount),
-		},
-		"feature flag true with NonIndexedJob, delete pods, verify terminating status and recreate once failed": {
-			podReplacementPolicyEnabled: true,
-			deletePods:                  true,
-			jobSpec: &batchv1.JobSpec{
-				Parallelism:          ptr.To(podCount),
-				Completions:          ptr.To(podCount),
-				CompletionMode:       &nonIndexedCompletion,
-				PodReplacementPolicy: podReplacementPolicy(batchv1.Failed),
+			wantStatusAfterDeletion: jobStatus{
+				active:      2,
+				failed:      2,
+				terminating: ptr.To[int32](2),
 			},
-			wantTerminating: ptr.To(podCount),
+			wantStatusAfterFailure: jobStatus{
+				active:      2,
+				failed:      2,
+				terminating: ptr.To[int32](0),
+			},
+			wantMetrics: jobPodsCreationMetrics{
+				new:                         2,
+				recreateTerminatingOrFailed: 2,
+			},
 		},
-		"feature flag false, podFailurePolicy enabled, delete pods, verify terminating status and recreate once failed": {
+		"feature flag false, podFailurePolicy enabled, delete & fail pods, recreate failed pods, and verify job status counters": {
 			podReplacementPolicyEnabled: false,
-			deletePods:                  true,
 			jobSpec: &batchv1.JobSpec{
-				Parallelism:          ptr.To(podCount),
-				Completions:          ptr.To(podCount),
+				Parallelism:          ptr.To[int32](2),
+				Completions:          ptr.To[int32](2),
 				CompletionMode:       &nonIndexedCompletion,
 				PodReplacementPolicy: podReplacementPolicy(batchv1.Failed),
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Finalizers: []string{"fake.example.com/blockDeletion"},
+					},
+				},
 				PodFailurePolicy: &batchv1.PodFailurePolicy{
 					Rules: []batchv1.PodFailurePolicyRule{
 						{
@@ -1777,33 +1815,71 @@ func TestJobPodReplacementPolicy(t *testing.T) {
 					},
 				},
 			},
-			wantActive: int(podCount),
+			wantStatusAfterDeletion: jobStatus{
+				active: 2,
+			},
+			wantStatusAfterFailure: jobStatus{
+				active: 2,
+			},
+			wantMetrics: jobPodsCreationMetrics{
+				new: 2,
+			},
 		},
-		"feature flag true, recreate failed pods, and verify active and failed counters": {
+		"feature flag true, Failed policy, delete & fail pods, recreate failed pods, and verify job status counters": {
 			podReplacementPolicyEnabled: true,
-			failPods:                    true,
 			jobSpec: &batchv1.JobSpec{
-				Parallelism:          ptr.To(podCount),
-				Completions:          ptr.To(podCount),
+				Parallelism:          ptr.To[int32](2),
+				Completions:          ptr.To[int32](2),
 				CompletionMode:       &indexedCompletion,
 				PodReplacementPolicy: podReplacementPolicy(batchv1.Failed),
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Finalizers: []string{"fake.example.com/blockDeletion"},
+					},
+				},
 			},
-			wantActive:      int(podCount),
-			wantFailed:      int(podCount),
-			wantTerminating: ptr.To[int32](0),
+			wantStatusAfterDeletion: jobStatus{
+				active:      0,
+				failed:      0,
+				terminating: ptr.To[int32](2),
+			},
+			wantStatusAfterFailure: jobStatus{
+				active:      2,
+				failed:      2,
+				terminating: ptr.To[int32](0),
+			},
+			wantMetrics: jobPodsCreationMetrics{
+				new:            2,
+				recreateFailed: 2,
+			},
 		},
-		"feature flag true with NonIndexedJob, recreate failed pods, and verify active and failed counters": {
+		"feature flag true with NonIndexedJob, Failed policy, delete & fail pods, recreate failed pods, and verify job status counters": {
 			podReplacementPolicyEnabled: true,
-			failPods:                    true,
 			jobSpec: &batchv1.JobSpec{
-				Parallelism:          ptr.To(podCount),
-				Completions:          ptr.To(podCount),
+				Parallelism:          ptr.To[int32](2),
+				Completions:          ptr.To[int32](2),
 				CompletionMode:       &nonIndexedCompletion,
 				PodReplacementPolicy: podReplacementPolicy(batchv1.Failed),
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Finalizers: []string{"fake.example.com/blockDeletion"},
+					},
+				},
 			},
-			wantActive:      int(podCount),
-			wantFailed:      int(podCount),
-			wantTerminating: ptr.To[int32](0),
+			wantStatusAfterDeletion: jobStatus{
+				active:      0,
+				failed:      0,
+				terminating: ptr.To[int32](2),
+			},
+			wantStatusAfterFailure: jobStatus{
+				active:      2,
+				failed:      2,
+				terminating: ptr.To[int32](0),
+			},
+			wantMetrics: jobPodsCreationMetrics{
+				new:            2,
+				recreateFailed: 2,
+			},
 		},
 	}
 	for name, tc := range cases {
@@ -1813,9 +1889,9 @@ func TestJobPodReplacementPolicy(t *testing.T) {
 			defer featuregatetesting.SetFeatureGateDuringTest(t, feature.DefaultFeatureGate, features.JobPodFailurePolicy, tc.jobSpec.PodFailurePolicy != nil)()
 
 			closeFn, restConfig, clientSet, ns := setup(t, "pod-replacement-policy")
-			defer closeFn()
+			t.Cleanup(closeFn)
 			ctx, cancel := startJobControllerAndWaitForCaches(t, restConfig)
-			defer cancel()
+			t.Cleanup(cancel)
 			resetMetrics()
 
 			jobObj, err := createJobWithDefaults(ctx, clientSet, ns.Name, &batchv1.Job{
@@ -1826,45 +1902,109 @@ func TestJobPodReplacementPolicy(t *testing.T) {
 			}
 			jobClient := clientSet.BatchV1().Jobs(jobObj.Namespace)
 
-			// Wait for pods to start up.
-			err = wait.PollUntilContextTimeout(ctx, 5*time.Millisecond, wait.ForeverTestTimeout, true, func(ctx context.Context) (done bool, err error) {
-				job, err := jobClient.Get(ctx, jobObj.Name, metav1.GetOptions{})
-				if err != nil {
-					return false, err
-				}
-				if job.Status.Active == podCount {
-					return true, nil
-				}
-				return false, nil
-			})
-			if err != nil {
-				t.Fatalf("Error waiting for Job pods to become active: %v", err)
-			}
-			if tc.deletePods {
-				err = clientSet.CoreV1().Pods(ns.Name).DeleteCollection(ctx,
-					metav1.DeleteOptions{},
-					metav1.ListOptions{
-						Limit: 1000,
-					})
-				if err != nil {
-					t.Fatalf("Failed to delete Pods: %v", err)
-				}
-			}
-			if tc.failPods {
-				err, _ = setJobPodsPhase(ctx, clientSet, jobObj, v1.PodFailed, int(podCount))
-				if err != nil {
-					t.Fatalf("Failed setting phase %s on Job Pods: %v", v1.PodFailed, err)
-				}
-			}
+			waitForPodsToBeActive(ctx, t, jobClient, 2, jobObj)
+			t.Cleanup(func() { removePodsFinalizer(ctx, t, clientSet, ns.Name) })
+
+			deletePods(ctx, t, clientSet, ns.Name)
 
 			validateJobsPodsStatusOnly(ctx, t, clientSet, jobObj, podsByStatus{
-				Terminating: tc.wantTerminating,
-				Failed:      tc.wantFailed,
-				Active:      tc.wantActive,
+				Terminating: tc.wantStatusAfterDeletion.terminating,
+				Failed:      tc.wantStatusAfterDeletion.failed,
+				Active:      tc.wantStatusAfterDeletion.active,
 				Ready:       ptr.To[int32](0),
 			})
+
+			failTerminatingPods(ctx, t, clientSet, ns.Name)
+			validateJobsPodsStatusOnly(ctx, t, clientSet, jobObj, podsByStatus{
+				Terminating: tc.wantStatusAfterFailure.terminating,
+				Failed:      tc.wantStatusAfterFailure.failed,
+				Active:      tc.wantStatusAfterFailure.active,
+				Ready:       ptr.To[int32](0),
+			})
+
+			validateCounterMetric(
+				ctx,
+				t,
+				metrics.JobPodsCreationTotal,
+				metricLabelsWithValue{Labels: []string{"new", "succeeded"}, Value: tc.wantMetrics.new},
+			)
+			validateCounterMetric(
+				ctx,
+				t,
+				metrics.JobPodsCreationTotal,
+				metricLabelsWithValue{Labels: []string{"recreate_terminating_or_failed", "succeeded"}, Value: tc.wantMetrics.recreateTerminatingOrFailed},
+			)
+			validateCounterMetric(
+				ctx,
+				t,
+				metrics.JobPodsCreationTotal,
+				metricLabelsWithValue{Labels: []string{"recreate_failed", "succeeded"}, Value: tc.wantMetrics.recreateFailed},
+			)
 		})
 	}
+}
+
+// This tests the feature enable -> disable -> enable path for PodReplacementPolicy.
+// We verify that Failed case works as expected when turned on.
+// Disable reverts to previous behavior.
+// Enabling will then match the original failed case.
+func TestJobPodReplacementPolicyFeatureToggling(t *testing.T) {
+	const podCount int32 = 2
+	jobSpec := batchv1.JobSpec{
+		Parallelism:          ptr.To(podCount),
+		Completions:          ptr.To(podCount),
+		CompletionMode:       ptr.To(batchv1.NonIndexedCompletion),
+		PodReplacementPolicy: ptr.To(batchv1.Failed),
+	}
+	wantTerminating := ptr.To(podCount)
+	defer featuregatetesting.SetFeatureGateDuringTest(t, feature.DefaultFeatureGate, features.JobPodReplacementPolicy, true)()
+	closeFn, restConfig, clientSet, ns := setup(t, "pod-replacement-policy")
+	defer closeFn()
+	ctx, cancel := startJobControllerAndWaitForCaches(t, restConfig)
+	defer func() {
+		cancel()
+	}()
+	resetMetrics()
+
+	jobObj, err := createJobWithDefaults(ctx, clientSet, ns.Name, &batchv1.Job{
+		Spec: jobSpec,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create Job: %v", err)
+	}
+	jobClient := clientSet.BatchV1().Jobs(jobObj.Namespace)
+
+	waitForPodsToBeActive(ctx, t, jobClient, 2, jobObj)
+	deletePods(ctx, t, clientSet, jobObj.Namespace)
+	validateJobsPodsStatusOnly(ctx, t, clientSet, jobObj, podsByStatus{
+		Terminating: wantTerminating,
+		Failed:      0,
+		Ready:       ptr.To[int32](0),
+	})
+	// Disable controller and turn feature off.
+	defer featuregatetesting.SetFeatureGateDuringTest(t, feature.DefaultFeatureGate, features.JobPodReplacementPolicy, false)()
+	cancel()
+	ctx, cancel = startJobControllerAndWaitForCaches(t, restConfig)
+
+	validateJobsPodsStatusOnly(ctx, t, clientSet, jobObj, podsByStatus{
+		Terminating: nil,
+		Failed:      int(podCount),
+		Ready:       ptr.To[int32](0),
+		Active:      int(podCount),
+	})
+	// Disable the controller and turn feature on again.
+	defer featuregatetesting.SetFeatureGateDuringTest(t, feature.DefaultFeatureGate, features.JobPodReplacementPolicy, true)()
+	cancel()
+	ctx, cancel = startJobControllerAndWaitForCaches(t, restConfig)
+	waitForPodsToBeActive(ctx, t, jobClient, 2, jobObj)
+	deletePods(ctx, t, clientSet, jobObj.Namespace)
+
+	validateJobsPodsStatusOnly(ctx, t, clientSet, jobObj, podsByStatus{
+		Terminating: wantTerminating,
+		Failed:      int(podCount),
+		Active:      0,
+		Ready:       ptr.To[int32](0),
+	})
 }
 
 func TestElasticIndexedJob(t *testing.T) {
@@ -2971,6 +3111,7 @@ func resetMetrics() {
 	metrics.JobPodsFinished.Reset()
 	metrics.PodFailuresHandledByFailurePolicy.Reset()
 	metrics.JobFinishedIndexesTotal.Reset()
+	metrics.JobPodsCreationTotal.Reset()
 }
 
 func createJobControllerWithSharedInformers(tb testing.TB, restConfig *restclient.Config, informerSet informers.SharedInformerFactory) (*jobcontroller.Controller, context.Context, context.CancelFunc) {
@@ -3021,4 +3162,81 @@ func updateJob(ctx context.Context, jobClient typedv1.JobInterface, jobName stri
 		return err
 	})
 	return job, err
+}
+
+func waitForPodsToBeActive(ctx context.Context, t *testing.T, jobClient typedv1.JobInterface, podCount int32, jobObj *batchv1.Job) {
+	t.Helper()
+	err := wait.PollUntilContextTimeout(ctx, 5*time.Millisecond, wait.ForeverTestTimeout, true, func(context.Context) (done bool, err error) {
+		job, err := jobClient.Get(ctx, jobObj.Name, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		return job.Status.Active == podCount, nil
+	})
+	if err != nil {
+		t.Fatalf("Error waiting for Job pods to become active: %v", err)
+	}
+}
+
+func deletePods(ctx context.Context, t *testing.T, clientSet clientset.Interface, namespace string) {
+	t.Helper()
+	err := clientSet.CoreV1().Pods(namespace).DeleteCollection(ctx,
+		metav1.DeleteOptions{},
+		metav1.ListOptions{
+			Limit: 1000,
+		})
+	if err != nil {
+		t.Fatalf("Failed to cleanup Pods: %v", err)
+	}
+}
+
+func removePodsFinalizer(ctx context.Context, t *testing.T, clientSet clientset.Interface, namespace string) {
+	t.Helper()
+	pods, err := clientSet.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("Failed to list pods: %v", err)
+	}
+	updatePod(ctx, t, clientSet, pods.Items, func(pod *v1.Pod) {
+		for i, finalizer := range pod.Finalizers {
+			if finalizer == "fake.example.com/blockDeletion" {
+				pod.Finalizers = append(pod.Finalizers[:i], pod.Finalizers[i+1:]...)
+			}
+		}
+	})
+}
+
+func updatePod(ctx context.Context, t *testing.T, clientSet clientset.Interface, pods []v1.Pod, updateFunc func(*v1.Pod)) {
+	t.Helper()
+	for _, val := range pods {
+		if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			newPod, err := clientSet.CoreV1().Pods(val.Namespace).Get(ctx, val.Name, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			updateFunc(newPod)
+			_, err = clientSet.CoreV1().Pods(val.Namespace).Update(ctx, newPod, metav1.UpdateOptions{})
+			return err
+		}); err != nil {
+			t.Fatalf("Failed to update pod %s: %v", val.Name, err)
+		}
+	}
+}
+
+func failTerminatingPods(ctx context.Context, t *testing.T, clientSet clientset.Interface, namespace string) {
+	t.Helper()
+	pods, err := clientSet.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("Failed to list pods: %v", err)
+	}
+	var terminatingPods []v1.Pod
+	for _, pod := range pods.Items {
+		if pod.DeletionTimestamp != nil {
+			pod.Status.Phase = v1.PodFailed
+			terminatingPods = append(terminatingPods, pod)
+		}
+	}
+	_, err = updatePodStatuses(ctx, clientSet, terminatingPods)
+	if err != nil {
+		t.Fatalf("Failed to update pod statuses: %v", err)
+	}
 }
