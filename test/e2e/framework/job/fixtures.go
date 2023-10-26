@@ -80,16 +80,30 @@ func NewTestJobOnNode(behavior, name string, rPol v1.RestartPolicy, parallelism,
 							SecurityContext: &v1.SecurityContext{},
 						},
 					},
-					NodeName: nodeName,
 				},
 			},
 		},
+	}
+	if len(nodeName) > 0 {
+		job.Spec.Template.Spec.NodeSelector = map[string]string{
+			"kubernetes.io/hostname": nodeName,
+		}
 	}
 	switch behavior {
 	case "notTerminate":
 		job.Spec.Template.Spec.Containers[0].Command = []string{"sleep", "1000000"}
 	case "fail":
 		job.Spec.Template.Spec.Containers[0].Command = []string{"/bin/sh", "-c", "exit 1"}
+	case "failOddSucceedEven":
+		job.Spec.Template.Spec.Containers[0].Command = []string{"sh", "-c"}
+		job.Spec.Template.Spec.Containers[0].Args = []string{`
+			if [ $(expr ${JOB_COMPLETION_INDEX} % 2) -ne 0 ]; then
+				exit 1
+			else
+				exit 0
+			fi
+			`,
+		}
 	case "succeed":
 		job.Spec.Template.Spec.Containers[0].Command = []string{"/bin/sh", "-c", "exit 0"}
 	case "randomlySucceedOrFail":
@@ -119,7 +133,7 @@ func NewTestJobOnNode(behavior, name string, rPol v1.RestartPolicy, parallelism,
 
 // setup host path directory to pass information between pod restarts
 func setupHostPathDirectory(job *batchv1.Job) {
-	if len(job.Spec.Template.Spec.NodeName) > 0 {
+	if _, nodeNameSpecified := job.Spec.Template.Spec.NodeSelector["kubernetes.io/hostname"]; nodeNameSpecified {
 		randomDir := "/tmp/job-e2e/" + rand.String(10)
 		hostPathType := v1.HostPathDirectoryOrCreate
 		job.Spec.Template.Spec.Volumes[0].VolumeSource = v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: randomDir, Type: &hostPathType}}
