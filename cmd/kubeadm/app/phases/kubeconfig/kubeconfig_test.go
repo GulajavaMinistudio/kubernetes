@@ -902,6 +902,22 @@ func TestEnsureAdminClusterRoleBindingImpl(t *testing.T) {
 			},
 			expectedError: false,
 		},
+		{
+			name: "super-admin.conf: admin.conf cannot create CRB, try to create CRB with super-admin.conf, encounter 'already exists' error",
+			setupAdminClient: func(client *clientsetfake.Clientset) {
+				client.PrependReactor("create", "clusterrolebindings", func(action clientgotesting.Action) (bool, runtime.Object, error) {
+					return true, nil, apierrors.NewForbidden(
+						schema.GroupResource{}, "name", errors.New(""))
+				})
+			},
+			setupSuperAdminClient: func(client *clientsetfake.Clientset) {
+				client.PrependReactor("create", "clusterrolebindings", func(action clientgotesting.Action) (bool, runtime.Object, error) {
+					return true, nil, apierrors.NewAlreadyExists(
+						schema.GroupResource{}, "name")
+				})
+			},
+			expectedError: true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -917,7 +933,7 @@ func TestEnsureAdminClusterRoleBindingImpl(t *testing.T) {
 			}
 
 			client, err := EnsureAdminClusterRoleBindingImpl(
-				context.Background(), adminClient, superAdminClient, time.Millisecond*50, time.Millisecond*1000)
+				context.Background(), adminClient, superAdminClient, 0, 0)
 			if (err != nil) != tc.expectedError {
 				t.Fatalf("expected error: %v, got %v, error: %v", tc.expectedError, err != nil, err)
 			}

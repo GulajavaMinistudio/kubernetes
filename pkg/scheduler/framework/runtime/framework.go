@@ -545,7 +545,22 @@ func (f *frameworkImpl) expandMultiPointPlugins(logger klog.Logger, profile *con
 	return nil
 }
 
+func shouldHaveEnqueueExtensions(p framework.Plugin) bool {
+	switch p.(type) {
+	// Only PreEnqueue, PreFilter, Filter, Reserve, and Permit plugins can (should) have EnqueueExtensions.
+	// See the comment of EnqueueExtensions for more detailed reason here.
+	case framework.PreEnqueuePlugin, framework.PreFilterPlugin, framework.FilterPlugin, framework.ReservePlugin, framework.PermitPlugin:
+		return true
+	}
+	return false
+}
+
 func (f *frameworkImpl) fillEnqueueExtensions(p framework.Plugin) {
+	if !shouldHaveEnqueueExtensions(p) {
+		// Ignore EnqueueExtensions from plugin which isn't PreEnqueue, PreFilter, Filter, Reserve, and Permit.
+		return
+	}
+
 	ext, ok := p.(framework.EnqueueExtensions)
 	if !ok {
 		// If interface EnqueueExtensions is not implemented, register the default enqueue extensions
@@ -1015,7 +1030,7 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, state *framework.Cy
 		metrics.FrameworkExtensionPointDuration.WithLabelValues(metrics.Score, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
 	}()
 	allNodePluginScores := make([]framework.NodePluginScores, len(nodes))
-	numPlugins := len(f.scorePlugins) - state.SkipScorePlugins.Len()
+	numPlugins := len(f.scorePlugins)
 	plugins := make([]framework.ScorePlugin, 0, numPlugins)
 	pluginToNodeScores := make(map[string]framework.NodeScoreList, numPlugins)
 	for _, pl := range f.scorePlugins {

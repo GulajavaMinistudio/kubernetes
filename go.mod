@@ -27,6 +27,7 @@ require (
 	github.com/coreos/go-systemd/v22 v22.5.0
 	github.com/cpuguy83/go-md2man/v2 v2.0.2
 	github.com/cyphar/filepath-securejoin v0.2.4
+	github.com/danwinship/knftables v0.0.13
 	github.com/distribution/reference v0.5.0
 	github.com/docker/go-units v0.5.0
 	github.com/emicklei/go-restful/v3 v3.11.0
@@ -38,10 +39,10 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.3
-	github.com/google/cadvisor v0.47.3
-	github.com/google/cel-go v0.17.6
+	github.com/google/cadvisor v0.48.1
+	github.com/google/cel-go v0.17.7
 	github.com/google/gnostic-models v0.6.8
-	github.com/google/go-cmp v0.5.9
+	github.com/google/go-cmp v0.6.0
 	github.com/google/gofuzz v1.2.0
 	github.com/google/uuid v1.3.0
 	github.com/imdario/mergo v0.3.6
@@ -52,7 +53,7 @@ require (
 	github.com/mrunalp/fileutils v0.5.0
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 	github.com/onsi/ginkgo/v2 v2.13.0
-	github.com/onsi/gomega v1.28.0
+	github.com/onsi/gomega v1.29.0
 	github.com/opencontainers/runc v1.1.9
 	github.com/opencontainers/selinux v1.11.0
 	github.com/pkg/errors v0.9.1
@@ -127,7 +128,7 @@ require (
 	k8s.io/sample-apiserver v0.0.0
 	k8s.io/system-validators v1.8.0
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
-	sigs.k8s.io/structured-merge-diff/v4 v4.3.0
+	sigs.k8s.io/structured-merge-diff/v4 v4.4.1
 	sigs.k8s.io/yaml v1.3.0
 )
 
