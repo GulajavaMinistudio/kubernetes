@@ -163,7 +163,7 @@ const (
 	// kep: https://kep.k8s.io/3171
 	// alpha: v1.25
 	// beta: v1.27
-	//
+	// GA: v1.29
 	// Enables SecretRef field in CSI NodeExpandVolume request.
 	CSINodeExpandSecret featuregate.Feature = "CSINodeExpandSecret"
 
@@ -718,6 +718,13 @@ const (
 	// certificate as expiration approaches.
 	RotateKubeletServerCertificate featuregate.Feature = "RotateKubeletServerCertificate"
 
+	// owner: @kiashok
+	// kep: https://kep.k8s.io/4216
+	// alpha: v1.29
+	//
+	// Adds support to pull images based on the runtime class specified.
+	RuntimeClassInImageCriAPI featuregate.Feature = "RuntimeClassInImageCriApi"
+
 	// owner: @danielvegamyhre
 	// kep: https://kep.k8s.io/2413
 	// beta: v1.27
@@ -999,7 +1006,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	CSIMigrationRBD: {Default: false, PreRelease: featuregate.Deprecated}, //  deprecated in 1.28, remove in 1.31
 
-	CSINodeExpandSecret: {Default: true, PreRelease: featuregate.Beta},
+	CSINodeExpandSecret: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.31
 
 	CSIVolumeHealth: {Default: false, PreRelease: featuregate.Alpha},
 
@@ -1148,6 +1155,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	RecoverVolumeExpansionFailure: {Default: false, PreRelease: featuregate.Alpha},
 
 	RotateKubeletServerCertificate: {Default: true, PreRelease: featuregate.Beta},
+
+	RuntimeClassInImageCriAPI: {Default: false, PreRelease: featuregate.Alpha},
 
 	ElasticIndexedJob: {Default: true, PreRelease: featuregate.Beta},
 
