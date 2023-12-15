@@ -37,6 +37,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/parallelize"
 	"k8s.io/kubernetes/pkg/scheduler/metrics"
+	"k8s.io/kubernetes/pkg/util/slice"
 )
 
 const (
@@ -260,6 +261,14 @@ func NewFramework(ctx context.Context, r Registry, profile *config.KubeScheduler
 		logger:               logger,
 	}
 
+	if len(f.extenders) > 0 {
+		// Extender doesn't support any kind of requeueing feature like EnqueueExtensions in the scheduling framework.
+		// We register a defaultEnqueueExtension to framework.ExtenderName here.
+		// And, in the scheduling cycle, when Extenders reject some Nodes and the pod ends up being unschedulable,
+		// we put framework.ExtenderName to pInfo.UnschedulablePlugins.
+		f.enqueueExtensions = []framework.EnqueueExtensions{&defaultEnqueueExtension{pluginName: framework.ExtenderName}}
+	}
+
 	if profile == nil {
 		return f, nil
 	}
@@ -355,6 +364,8 @@ func NewFramework(ctx context.Context, r Registry, profile *config.KubeScheduler
 		options.captureProfile(outputProfile)
 	}
 
+	// Logs Enabled Plugins at each extension point, taking default plugins, given config, and multipoint into consideration
+	logger.V(2).Info("the scheduler starts to work with those plugins", "Plugins", *f.ListPlugins())
 	f.setInstrumentedPlugins()
 	return f, nil
 }
@@ -526,7 +537,7 @@ func (f *frameworkImpl) expandMultiPointPlugins(logger klog.Logger, profile *con
 		// - part 3: other plugins (excluded by part 1 & 2) in regular extension point.
 		newPlugins := reflect.New(reflect.TypeOf(e.slicePtr).Elem()).Elem()
 		// part 1
-		for _, name := range enabledSet.list {
+		for _, name := range slice.CopyStrings(enabledSet.list) {
 			if overridePlugins.has(name) {
 				newPlugins = reflect.Append(newPlugins, reflect.ValueOf(pluginsMap[name]))
 				enabledSet.delete(name)

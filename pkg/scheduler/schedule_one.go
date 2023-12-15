@@ -28,7 +28,6 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -149,6 +148,9 @@ func (sched *Scheduler) schedulingCycle(
 	pod := podInfo.Pod
 	scheduleResult, err := sched.SchedulePod(ctx, fwk, state, pod)
 	if err != nil {
+		defer func() {
+			metrics.SchedulingAlgorithmLatency.Observe(metrics.SinceInSeconds(start))
+		}()
 		if err == ErrNoNodesAvailable {
 			status := framework.NewStatus(framework.UnschedulableAndUnresolvable).WithError(err)
 			return ScheduleResult{nominatingInfo: clearNominatedNode}, podInfo, status
@@ -500,11 +502,26 @@ func (sched *Scheduler) findNodesThatFitPod(ctx context.Context, fwk framework.F
 		return nil, diagnosis, err
 	}
 
-	feasibleNodes, err = findNodesThatPassExtenders(ctx, sched.Extenders, pod, feasibleNodes, diagnosis.NodeToStatusMap)
+	feasibleNodesAfterExtender, err := findNodesThatPassExtenders(ctx, sched.Extenders, pod, feasibleNodes, diagnosis.NodeToStatusMap)
 	if err != nil {
 		return nil, diagnosis, err
 	}
-	return feasibleNodes, diagnosis, nil
+	if len(feasibleNodesAfterExtender) != len(feasibleNodes) {
+		// Extenders filtered out some nodes.
+		//
+		// Extender doesn't support any kind of requeueing feature like EnqueueExtensions in the scheduling framework.
+		// When Extenders reject some Nodes and the pod ends up being unschedulable,
+		// we put framework.ExtenderName to pInfo.UnschedulablePlugins.
+		// This Pod will be requeued from unschedulable pod pool to activeQ/backoffQ
+		// by any kind of cluster events.
+		// https://github.com/kubernetes/kubernetes/issues/122019
+		if diagnosis.UnschedulablePlugins == nil {
+			diagnosis.UnschedulablePlugins = sets.New[string]()
+		}
+		diagnosis.UnschedulablePlugins.Insert(framework.ExtenderName)
+	}
+
+	return feasibleNodesAfterExtender, diagnosis, nil
 }
 
 func (sched *Scheduler) evaluateNominatedNode(ctx context.Context, pod *v1.Pod, fwk framework.Framework, state *framework.CycleState, diagnosis framework.Diagnosis) ([]*v1.Node, error) {
@@ -985,20 +1002,6 @@ func (sched *Scheduler) handleSchedulingFailure(ctx context.Context, fwk framewo
 		podInfo.UnschedulablePlugins = fitError.Diagnosis.UnschedulablePlugins
 		podInfo.PendingPlugins = fitError.Diagnosis.PendingPlugins
 		logger.V(2).Info("Unable to schedule pod; no fit; waiting", "pod", klog.KObj(pod), "err", errMsg)
-	} else if apierrors.IsNotFound(err) {
-		logger.V(2).Info("Unable to schedule pod, possibly due to node not found; waiting", "pod", klog.KObj(pod), "err", errMsg)
-		if errStatus, ok := err.(apierrors.APIStatus); ok && errStatus.Status().Details.Kind == "node" {
-			nodeName := errStatus.Status().Details.Name
-			// when node is not found, We do not remove the node right away. Trying again to get
-			// the node and if the node is still not found, then remove it from the scheduler cache.
-			_, err := fwk.ClientSet().CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
-			if err != nil && apierrors.IsNotFound(err) {
-				node := v1.Node{ObjectMeta: metav1.ObjectMeta{Name: nodeName}}
-				if err := sched.Cache.RemoveNode(logger, &node); err != nil {
-					logger.V(4).Info("Node is not found; failed to remove it from the cache", "node", node.Name)
-				}
-			}
-		}
 	} else {
 		logger.Error(err, "Error scheduling pod; retrying", "pod", klog.KObj(pod))
 	}
