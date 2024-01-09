@@ -1,3 +1,6 @@
+//go:build linux
+// +build linux
+
 /*
 Copyright 2017 The Kubernetes Authors.
 
@@ -489,10 +492,8 @@ func NewDualStackProxier(
 	initOnly bool,
 ) (proxy.Provider, error) {
 
-	safeIpset := newSafeIpset(ipset)
-
 	// Create an ipv4 instance of the single-stack proxier
-	ipv4Proxier, err := NewProxier(v1.IPv4Protocol, ipt[0], ipvs, safeIpset, sysctl,
+	ipv4Proxier, err := NewProxier(v1.IPv4Protocol, ipt[0], ipvs, ipset, sysctl,
 		exec, syncPeriod, minSyncPeriod, filterCIDRs(false, excludeCIDRs), strictARP,
 		tcpTimeout, tcpFinTimeout, udpTimeout, masqueradeAll, masqueradeBit,
 		localDetectors[0], hostname, nodeIPs[v1.IPv4Protocol], recorder,
@@ -501,7 +502,7 @@ func NewDualStackProxier(
 		return nil, fmt.Errorf("unable to create ipv4 proxier: %v", err)
 	}
 
-	ipv6Proxier, err := NewProxier(v1.IPv6Protocol, ipt[1], ipvs, safeIpset, sysctl,
+	ipv6Proxier, err := NewProxier(v1.IPv6Protocol, ipt[1], ipvs, ipset, sysctl,
 		exec, syncPeriod, minSyncPeriod, filterCIDRs(true, excludeCIDRs), strictARP,
 		tcpTimeout, tcpFinTimeout, udpTimeout, masqueradeAll, masqueradeBit,
 		localDetectors[1], hostname, nodeIPs[v1.IPv6Protocol], recorder,
@@ -1096,10 +1097,10 @@ func (proxier *Proxier) syncProxyRules() {
 		}
 
 		// Capture externalIPs.
-		for _, externalIP := range svcInfo.ExternalIPStrings() {
+		for _, externalIP := range svcInfo.ExternalIPs() {
 			// ipset call
 			entry := &utilipset.Entry{
-				IP:       externalIP,
+				IP:       externalIP.String(),
 				Port:     svcInfo.Port(),
 				Protocol: protocol,
 				SetType:  utilipset.HashIPPort,
@@ -1122,7 +1123,7 @@ func (proxier *Proxier) syncProxyRules() {
 
 			// ipvs call
 			serv := &utilipvs.VirtualServer{
-				Address:   netutils.ParseIPSloppy(externalIP),
+				Address:   externalIP,
 				Port:      uint16(svcInfo.Port()),
 				Protocol:  string(svcInfo.Protocol()),
 				Scheduler: proxier.ipvsScheduler,
@@ -1151,10 +1152,10 @@ func (proxier *Proxier) syncProxyRules() {
 		}
 
 		// Capture load-balancer ingress.
-		for _, ingress := range svcInfo.LoadBalancerVIPStrings() {
+		for _, ingress := range svcInfo.LoadBalancerVIPs() {
 			// ipset call
 			entry = &utilipset.Entry{
-				IP:       ingress,
+				IP:       ingress.String(),
 				Port:     svcInfo.Port(),
 				Protocol: protocol,
 				SetType:  utilipset.HashIPPort,
@@ -1186,13 +1187,13 @@ func (proxier *Proxier) syncProxyRules() {
 				}
 				proxier.ipsetList[kubeLoadBalancerFWSet].activeEntries.Insert(entry.String())
 				allowFromNode := false
-				for _, src := range svcInfo.LoadBalancerSourceRanges() {
+				for _, cidr := range svcInfo.LoadBalancerSourceRanges() {
 					// ipset call
 					entry = &utilipset.Entry{
-						IP:       ingress,
+						IP:       ingress.String(),
 						Port:     svcInfo.Port(),
 						Protocol: protocol,
-						Net:      src,
+						Net:      cidr.String(),
 						SetType:  utilipset.HashIPPortNet,
 					}
 					// enumerate all white list source cidr
@@ -1202,8 +1203,6 @@ func (proxier *Proxier) syncProxyRules() {
 					}
 					proxier.ipsetList[kubeLoadBalancerSourceCIDRSet].activeEntries.Insert(entry.String())
 
-					// ignore error because it has been validated
-					_, cidr, _ := netutils.ParseCIDRSloppy(src)
 					if cidr.Contains(proxier.nodeIP) {
 						allowFromNode = true
 					}
@@ -1213,10 +1212,10 @@ func (proxier *Proxier) syncProxyRules() {
 				// Need to add the following rule to allow request on host.
 				if allowFromNode {
 					entry = &utilipset.Entry{
-						IP:       ingress,
+						IP:       ingress.String(),
 						Port:     svcInfo.Port(),
 						Protocol: protocol,
-						IP2:      ingress,
+						IP2:      ingress.String(),
 						SetType:  utilipset.HashIPPortIP,
 					}
 					// enumerate all white list source ip
@@ -1233,7 +1232,7 @@ func (proxier *Proxier) syncProxyRules() {
 			}
 			// ipvs call
 			serv := &utilipvs.VirtualServer{
-				Address:   netutils.ParseIPSloppy(ingress),
+				Address:   ingress,
 				Port:      uint16(svcInfo.Port()),
 				Protocol:  string(svcInfo.Protocol()),
 				Scheduler: proxier.ipvsScheduler,

@@ -1,8 +1,5 @@
-//go:build !linux
-// +build !linux
-
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2024 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,17 +14,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package iptables
+package features
 
 import (
-	"fmt"
-	"os"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"testing"
 )
 
-func grabIptablesLocks(lock14filePath, lock16filePath string) (iptablesLocker, error) {
-	return nil, fmt.Errorf("iptables unsupported on this platform")
-}
+func TestKubeFeatures(t *testing.T) {
+	features := utilfeature.DefaultFeatureGate.DeepCopy().GetAll()
 
-func grabIptablesFileLock(f *os.File) error {
-	return fmt.Errorf("iptables unsupported on this platform")
+	for i := range features {
+		featureName := string(i)
+
+		if featureName == "AllAlpha" || featureName == "AllBeta" {
+			continue
+		}
+
+		if _, ok := defaultKubernetesFeatureGates[i]; !ok {
+			t.Errorf("The feature gate %q is not registered", featureName)
+		}
+	}
 }

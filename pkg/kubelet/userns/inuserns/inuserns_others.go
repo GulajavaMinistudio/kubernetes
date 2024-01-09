@@ -1,8 +1,8 @@
-//go:build !providerless && linux
-// +build !providerless,linux
+//go:build !linux
+// +build !linux
 
 /*
-Copyright 2019 The Kubernetes Authors.
+Copyright 2024 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,20 +17,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package vsphere_volume
+package inuserns
 
-import (
-	"fmt"
-
-	"k8s.io/mount-utils"
-)
-
-func verifyDevicePath(path string) (string, error) {
-	if pathExists, err := mount.PathExists(path); err != nil {
-		return "", fmt.Errorf("error checking if path exists: %w", err)
-	} else if pathExists {
-		return path, nil
-	}
-
-	return "", nil
+// RunningInUserNS detects whether the current process is running in a user namespace.
+func RunningInUserNS() bool {
+	return false
 }
