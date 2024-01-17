@@ -84,12 +84,7 @@ const (
 	// masquerading
 	kubeMarkMasqChain     = "mark-for-masquerade"
 	kubeMasqueradingChain = "masquerading"
-
-	// chain for special filtering rules
-	kubeForwardChain = "forward"
 )
-
-const sysctlNFConntrackTCPBeLiberal = "net/netfilter/nf_conntrack_tcp_be_liberal"
 
 // internal struct for string service information
 type servicePortInfo struct {
@@ -167,7 +162,7 @@ type Proxier struct {
 	nftables       knftables.Interface
 	masqueradeAll  bool
 	masqueradeMark string
-	exec           utilexec.Interface
+	conntrack      conntrack.Interface
 	localDetector  proxyutiliptables.LocalTrafficDetector
 	hostname       string
 	nodeIP         net.IP
@@ -175,9 +170,6 @@ type Proxier struct {
 
 	serviceHealthServer healthcheck.ServiceHealthServer
 	healthzServer       *healthcheck.ProxierHealthServer
-
-	// conntrackTCPLiberal indicates whether the system sets the kernel nf_conntrack_tcp_be_liberal
-	conntrackTCPLiberal bool
 
 	// nodePortAddresses selects the interfaces where nodePort works.
 	nodePortAddresses *proxyutil.NodePortAddresses
@@ -210,15 +202,6 @@ func NewProxier(ipFamily v1.IPFamily,
 	initOnly bool,
 ) (*Proxier, error) {
 	nodePortAddresses := proxyutil.NewNodePortAddresses(ipFamily, nodePortAddressStrings)
-
-	// Be conservative in what you do, be liberal in what you accept from others.
-	// If it's non-zero, we mark only out of window RST segments as INVALID.
-	// Ref: https://docs.kernel.org/networking/nf_conntrack-sysctl.html
-	conntrackTCPLiberal := false
-	if val, err := sysctl.GetSysctl(sysctlNFConntrackTCPBeLiberal); err == nil && val != 0 {
-		conntrackTCPLiberal = true
-		klog.InfoS("nf_conntrack_tcp_be_liberal set, not installing DROP rules for INVALID packets")
-	}
 
 	if initOnly {
 		klog.InfoS("System initialized and --init-only specified")
@@ -253,7 +236,7 @@ func NewProxier(ipFamily v1.IPFamily,
 		nftables:            nft,
 		masqueradeAll:       masqueradeAll,
 		masqueradeMark:      masqueradeMark,
-		exec:                utilexec.New(),
+		conntrack:           conntrack.NewExec(utilexec.New()),
 		localDetector:       localDetector,
 		hostname:            hostname,
 		nodeIP:              nodeIP,
@@ -262,7 +245,6 @@ func NewProxier(ipFamily v1.IPFamily,
 		healthzServer:       healthzServer,
 		nodePortAddresses:   nodePortAddresses,
 		networkInterfacer:   proxyutil.RealNetwork{},
-		conntrackTCPLiberal: conntrackTCPLiberal,
 		staleChains:         make(map[string]time.Time),
 	}
 
@@ -327,9 +309,10 @@ type nftablesBaseChain struct {
 var nftablesBaseChains = []nftablesBaseChain{
 	// We want our filtering rules to operate on pre-DNAT dest IPs, so our filter
 	// chains have to run before DNAT.
-	{"filter-input", knftables.FilterType, knftables.InputHook, knftables.DNATPriority + "-1"},
-	{"filter-forward", knftables.FilterType, knftables.ForwardHook, knftables.DNATPriority + "-1"},
-	{"filter-output", knftables.FilterType, knftables.OutputHook, knftables.DNATPriority + "-1"},
+	{"filter-prerouting", knftables.FilterType, knftables.PreroutingHook, knftables.DNATPriority + "-10"},
+	{"filter-input", knftables.FilterType, knftables.InputHook, knftables.DNATPriority + "-10"},
+	{"filter-forward", knftables.FilterType, knftables.ForwardHook, knftables.DNATPriority + "-10"},
+	{"filter-output", knftables.FilterType, knftables.OutputHook, knftables.DNATPriority + "-10"},
 	{"nat-prerouting", knftables.NATType, knftables.PreroutingHook, knftables.DNATPriority},
 	{"nat-output", knftables.NATType, knftables.OutputHook, knftables.DNATPriority},
 	{"nat-postrouting", knftables.NATType, knftables.PostroutingHook, knftables.SNATPriority},
@@ -345,15 +328,15 @@ type nftablesJumpChain struct {
 }
 
 var nftablesJumpChains = []nftablesJumpChain{
+	// We can't jump to kubeEndpointsCheckChain from filter-prerouting like
+	// kubeFirewallCheckChain because reject action is only valid in chains using the
+	// input, forward or output hooks.
 	{kubeEndpointsCheckChain, "filter-input", "ct state new"},
 	{kubeEndpointsCheckChain, "filter-forward", "ct state new"},
 	{kubeEndpointsCheckChain, "filter-output", "ct state new"},
 
-	{kubeForwardChain, "filter-forward", ""},
-
-	{kubeFirewallCheckChain, "filter-input", "ct state new"},
+	{kubeFirewallCheckChain, "filter-prerouting", "ct state new"},
 	{kubeFirewallCheckChain, "filter-output", "ct state new"},
-	{kubeFirewallCheckChain, "filter-forward", "ct state new"},
 
 	{kubeServicesChain, "nat-output", ""},
 	{kubeServicesChain, "nat-prerouting", ""},
@@ -416,7 +399,7 @@ func (proxier *Proxier) setupNFTables(tx *knftables.Transaction) {
 	}
 
 	// Ensure all of our other "top-level" chains exist
-	for _, chain := range []string{kubeServicesChain, kubeForwardChain, kubeMasqueradingChain, kubeMarkMasqChain} {
+	for _, chain := range []string{kubeServicesChain, kubeMasqueradingChain, kubeMarkMasqChain} {
 		ensureChain(chain, tx, createdChains)
 	}
 
@@ -445,17 +428,6 @@ func (proxier *Proxier) setupNFTables(tx *knftables.Transaction) {
 		Chain: kubeMasqueradingChain,
 		Rule:  "masquerade fully-random",
 	})
-
-	// Drop the packets in INVALID state, which would potentially cause
-	// unexpected connection reset if nf_conntrack_tcp_be_liberal is not set.
-	// Ref: https://github.com/kubernetes/kubernetes/issues/74839
-	// Ref: https://github.com/kubernetes/kubernetes/issues/117924
-	if !proxier.conntrackTCPLiberal {
-		tx.Add(&knftables.Rule{
-			Chain: kubeForwardChain,
-			Rule:  "ct state invalid drop",
-		})
-	}
 
 	// Fill in nodeport-ips set if needed (or delete it if not). (We do "add+delete"
 	// rather than just "delete" when we want to ensure the set doesn't exist, because
@@ -1576,7 +1548,7 @@ func (proxier *Proxier) syncProxyRules() {
 	}
 
 	// Finish housekeeping, clear stale conntrack entries for UDP Services
-	conntrack.CleanStaleEntries(proxier.ipFamily == v1.IPv6Protocol, proxier.exec, proxier.svcPortMap, serviceUpdateResult, endpointUpdateResult)
+	conntrack.CleanStaleEntries(proxier.conntrack, proxier.svcPortMap, serviceUpdateResult, endpointUpdateResult)
 }
 
 func (proxier *Proxier) writeServiceToEndpointRules(tx *knftables.Transaction, svcPortNameString string, svcInfo *servicePortInfo, svcChain string, endpoints []proxy.Endpoint) {
