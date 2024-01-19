@@ -340,9 +340,12 @@ func GetConfigMapWithShortRetry(client clientset.Interface, namespace, name stri
 	var lastError error
 	err := wait.PollUntilContextTimeout(context.Background(),
 		time.Millisecond*50, time.Millisecond*350,
-		true, func(ctx context.Context) (bool, error) {
+		true, func(_ context.Context) (bool, error) {
 			var err error
-			cm, err = client.CoreV1().ConfigMaps(namespace).Get(ctx, name, metav1.GetOptions{})
+			// Intentionally pass a new context to this API call. This will let the API call run
+			// independently of the parent context timeout, which is quite short and can cause the API
+			// call to return abruptly.
+			cm, err = client.CoreV1().ConfigMaps(namespace).Get(context.Background(), name, metav1.GetOptions{})
 			if err == nil {
 				return true, nil
 			}
