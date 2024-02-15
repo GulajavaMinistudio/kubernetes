@@ -258,6 +258,12 @@ const (
 	// Lock to default and remove after v1.22 based on user feedback that should be reflected in KEP #1972 update
 	ExecProbeTimeout featuregate.Feature = "ExecProbeTimeout"
 
+	// owner: @jpbetz
+	// alpha: v1.30
+	// Resource create requests using generateName are retried automatically by the apiserver
+	// if the generated name conflicts with an existing resource name, up to a maximum number of 7 retries.
+	RetryGenerateName featuregate.Feature = "RetryGenerateName"
+
 	// owner: @bobbypage
 	// alpha: v1.20
 	// beta:  v1.21
@@ -677,14 +683,6 @@ const (
 	// which benefits to reduce the useless requeueing.
 	SchedulerQueueingHints featuregate.Feature = "SchedulerQueueingHints"
 
-	// owner: @mtardy
-	// alpha: v1.0
-	//
-	// Putting this admission plugin behind a feature gate is part of the
-	// deprecation process. For details about the removal see:
-	// https://github.com/kubernetes/kubernetes/issues/111516
-	SecurityContextDeny featuregate.Feature = "SecurityContextDeny"
-
 	// owner: @atosatto @yuanchen8911
 	// kep: http://kep.k8s.io/3902
 	// beta: v1.29
@@ -988,6 +986,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	ExecProbeTimeout: {Default: true, PreRelease: featuregate.GA}, // lock to default and remove after v1.22 based on KEP #1972 update
 
+	RetryGenerateName: {Default: false, PreRelease: featuregate.Alpha},
+
 	GracefulNodeShutdown: {Default: true, PreRelease: featuregate.Beta},
 
 	GracefulNodeShutdownBasedOnPodPriority: {Default: true, PreRelease: featuregate.Beta},
@@ -1097,8 +1097,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	ElasticIndexedJob: {Default: true, PreRelease: featuregate.Beta},
 
 	SchedulerQueueingHints: {Default: false, PreRelease: featuregate.Beta},
-
-	SecurityContextDeny: {Default: false, PreRelease: featuregate.Alpha},
 
 	SeparateTaintEvictionController: {Default: true, PreRelease: featuregate.Beta},
 
@@ -1216,7 +1214,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	// inherited features from apiextensions-apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
 
-	apiextensionsfeatures.CRDValidationRatcheting: {Default: false, PreRelease: featuregate.Alpha},
+	apiextensionsfeatures.CRDValidationRatcheting: {Default: true, PreRelease: featuregate.Beta},
 
 	// features that enable backwards compatibility but are scheduled to be removed
 	// ...
