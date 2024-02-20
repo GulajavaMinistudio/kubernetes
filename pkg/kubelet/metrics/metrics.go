@@ -837,13 +837,14 @@ var (
 		},
 	)
 
-	ImageGarbageCollectedTotal = metrics.NewCounter(
+	ImageGarbageCollectedTotal = metrics.NewCounterVec(
 		&metrics.CounterOpts{
 			Subsystem:      KubeletSubsystem,
 			Name:           ImageGarbageCollectedTotalKey,
 			Help:           "Total number of images garbage collected by the kubelet, whether through disk usage or image age.",
 			StabilityLevel: metrics.ALPHA,
 		},
+		[]string{"reason"},
 	)
 
 	// ImagePullDuration is a Histogram that tracks the duration (in seconds) it takes for an image to be pulled,
@@ -858,6 +859,15 @@ var (
 			StabilityLevel: metrics.ALPHA,
 		},
 		[]string{"image_size_in_bytes"},
+	)
+
+	LifecycleHandlerSleepTerminated = metrics.NewCounter(
+		&metrics.CounterOpts{
+			Subsystem:      KubeletSubsystem,
+			Name:           "sleep_action_terminated_early_total",
+			Help:           "The number of times lifecycle sleep handler got terminated before it finishes",
+			StabilityLevel: metrics.ALPHA,
+		},
 	)
 )
 
@@ -942,6 +952,7 @@ func Register(collectors ...metrics.StableCollector) {
 		}
 
 		legacyregistry.MustRegister(LifecycleHandlerHTTPFallbacks)
+		legacyregistry.MustRegister(LifecycleHandlerSleepTerminated)
 	})
 }
 
