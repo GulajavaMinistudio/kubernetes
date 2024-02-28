@@ -1178,7 +1178,8 @@ type Kubelet struct {
 	updatePodCIDRMux sync.Mutex
 
 	// updateRuntimeMux is a lock on updating runtime, because this path is not thread-safe.
-	// This lock is used by Kubelet.updateRuntimeUp and Kubelet.fastNodeStatusUpdate functions and shouldn't be used anywhere else.
+	// This lock is used by Kubelet.updateRuntimeUp, Kubelet.fastNodeStatusUpdate and
+	// Kubelet.HandlerSupportsUserNamespaces functions and shouldn't be used anywhere else.
 	updateRuntimeMux sync.Mutex
 
 	// nodeLeaseController claims and renews the node lease for this Kubelet
@@ -1433,16 +1434,19 @@ func (kl *Kubelet) StartGarbageCollection() {
 		}
 	}, ContainerGCPeriod, wait.NeverStop)
 
-	// when the high threshold is set to 100, stub the image GC manager
-	if kl.kubeletConfiguration.ImageGCHighThresholdPercent == 100 {
-		klog.V(2).InfoS("ImageGCHighThresholdPercent is set 100, Disable image GC")
+	// when the high threshold is set to 100, and the max age is 0 (or the max age feature is disabled)
+	// stub the image GC manager
+	if kl.kubeletConfiguration.ImageGCHighThresholdPercent == 100 &&
+		(!utilfeature.DefaultFeatureGate.Enabled(features.ImageMaximumGCAge) || kl.kubeletConfiguration.ImageMaximumGCAge.Duration == 0) {
+		klog.V(2).InfoS("ImageGCHighThresholdPercent is set 100 and ImageMaximumGCAge is 0, Disable image GC")
 		return
 	}
 
 	prevImageGCFailed := false
+	beganGC := time.Now()
 	go wait.Until(func() {
 		ctx := context.Background()
-		if err := kl.imageManager.GarbageCollect(ctx); err != nil {
+		if err := kl.imageManager.GarbageCollect(ctx, beganGC); err != nil {
 			if prevImageGCFailed {
 				klog.ErrorS(err, "Image garbage collection failed multiple times in a row")
 				// Only create an event for repeated failures
@@ -1902,7 +1906,9 @@ func (kl *Kubelet) SyncPod(ctx context.Context, updateType kubetypes.SyncPodType
 		}
 		if mirrorPod == nil || deleted {
 			node, err := kl.GetNode()
-			if err != nil || node.DeletionTimestamp != nil {
+			if err != nil {
+				klog.V(4).ErrorS(err, "No need to create a mirror pod, since failed to get node info from the cluster", "node", klog.KRef("", string(kl.nodeName)))
+			} else if node.DeletionTimestamp != nil {
 				klog.V(4).InfoS("No need to create a mirror pod, since node has been removed from the cluster", "node", klog.KRef("", string(kl.nodeName)))
 			} else {
 				klog.V(4).InfoS("Creating a mirror pod for static pod", "pod", klog.KObj(pod))
@@ -2893,7 +2899,9 @@ func (kl *Kubelet) updateRuntimeUp() {
 		kl.runtimeState.setRuntimeState(fmt.Errorf("container runtime not ready: %v", runtimeReady))
 		return
 	}
+
 	kl.runtimeState.setRuntimeState(nil)
+	kl.runtimeState.setRuntimeHandlers(s.Handlers)
 	kl.oneTimeInitializer.Do(kl.initializeRuntimeDependentModules)
 	kl.runtimeState.setRuntimeSync(kl.clock.Now())
 }

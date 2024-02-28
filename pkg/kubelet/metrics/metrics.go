@@ -30,6 +30,7 @@ import (
 
 // This const block defines the metric names for the kubelet metrics.
 const (
+	FirstNetworkPodStartSLIDurationKey = "first_network_pod_start_sli_duration_seconds"
 	KubeletSubsystem                   = "kubelet"
 	NodeNameKey                        = "node_name"
 	NodeLabelKey                       = "node"
@@ -108,6 +109,10 @@ const (
 	// Metrics to track the CPU manager behavior
 	CPUManagerPinningRequestsTotalKey = "cpu_manager_pinning_requests_total"
 	CPUManagerPinningErrorsTotalKey   = "cpu_manager_pinning_errors_total"
+
+	// Metrics to track the Memory manager behavior
+	MemoryManagerPinningRequestsTotalKey = "memory_manager_pinning_requests_total"
+	MemoryManagerPinningErrorsTotalKey   = "memory_manager_pinning_errors_total"
 
 	// Metrics to track the Topology manager behavior
 	TopologyManagerAdmissionRequestsTotalKey = "topology_manager_admission_requests_total"
@@ -232,6 +237,20 @@ var (
 			StabilityLevel: metrics.ALPHA,
 		},
 		[]string{},
+	)
+
+	// FirstNetworkPodStartSLIDuration is a gauge that tracks the duration (in seconds) it takes for the first network pod to run,
+	// excluding the time for image pulling. This is an internal and temporary metric required because of the existing limitations of the
+	// existing networking subsystem and CRI/CNI implementations that will be solved by https://github.com/containernetworking/cni/issues/859
+	// The metric represents the latency observed by an user to run workloads in a new node.
+	// ref: https://github.com/kubernetes/community/blob/master/sig-scalability/slos/pod_startup_latency.md
+	FirstNetworkPodStartSLIDuration = metrics.NewGauge(
+		&metrics.GaugeOpts{
+			Subsystem:      KubeletSubsystem,
+			Name:           FirstNetworkPodStartSLIDurationKey,
+			Help:           "Duration in seconds to start the first network pod, excluding time to pull images and run init containers, measured from pod creation timestamp to when all its containers are reported as started and observed via watch",
+			StabilityLevel: metrics.INTERNAL,
+		},
 	)
 
 	// CgroupManagerDuration is a Histogram that tracks the duration (in seconds) it takes for cgroup manager operations to complete.
@@ -742,6 +761,25 @@ var (
 		},
 	)
 
+	// MemoryManagerPinningRequestTotal tracks the number of times the pod spec required the memory manager to pin memory pages
+	MemoryManagerPinningRequestTotal = metrics.NewCounter(
+		&metrics.CounterOpts{
+			Subsystem:      KubeletSubsystem,
+			Name:           MemoryManagerPinningRequestsTotalKey,
+			Help:           "The number of memory pages allocations which required pinning.",
+			StabilityLevel: metrics.ALPHA,
+		})
+
+	// MemoryManagerPinningErrorsTotal tracks the number of times the pod spec required the memory manager to pin memory pages, but the allocation failed
+	MemoryManagerPinningErrorsTotal = metrics.NewCounter(
+		&metrics.CounterOpts{
+			Subsystem:      KubeletSubsystem,
+			Name:           MemoryManagerPinningErrorsTotalKey,
+			Help:           "The number of memory pages allocations which required pinning that failed.",
+			StabilityLevel: metrics.ALPHA,
+		},
+	)
+
 	// TopologyManagerAdmissionRequestsTotal tracks the number of times the pod spec will cause the topology manager to admit a pod
 	TopologyManagerAdmissionRequestsTotal = metrics.NewCounter(
 		&metrics.CounterOpts{
@@ -877,6 +915,7 @@ var registerMetrics sync.Once
 func Register(collectors ...metrics.StableCollector) {
 	// Register the metrics.
 	registerMetrics.Do(func() {
+		legacyregistry.MustRegister(FirstNetworkPodStartSLIDuration)
 		legacyregistry.MustRegister(NodeName)
 		legacyregistry.MustRegister(PodWorkerDuration)
 		legacyregistry.MustRegister(PodStartDuration)
@@ -935,6 +974,10 @@ func Register(collectors ...metrics.StableCollector) {
 		legacyregistry.MustRegister(RunPodSandboxErrors)
 		legacyregistry.MustRegister(CPUManagerPinningRequestsTotal)
 		legacyregistry.MustRegister(CPUManagerPinningErrorsTotal)
+		if utilfeature.DefaultFeatureGate.Enabled(features.MemoryManager) {
+			legacyregistry.MustRegister(MemoryManagerPinningRequestTotal)
+			legacyregistry.MustRegister(MemoryManagerPinningErrorsTotal)
+		}
 		legacyregistry.MustRegister(TopologyManagerAdmissionRequestsTotal)
 		legacyregistry.MustRegister(TopologyManagerAdmissionErrorsTotal)
 		legacyregistry.MustRegister(TopologyManagerAdmissionDuration)
