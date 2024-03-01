@@ -340,6 +340,8 @@ const (
 	CoreDNS = "CoreDNS"
 	// Kubelet defines variable used internally when referring to the Kubelet
 	Kubelet = "kubelet"
+	// Kubeadm defines variable used internally when referring to the kubeadm component
+	Kubeadm = "kubeadm"
 
 	// KubeCertificatesVolumeName specifies the name for the Volume that is used for injecting certificates to control plane components (can be both a hostPath volume or a projected, all-in-one volume)
 	KubeCertificatesVolumeName = "k8s-certs"
@@ -450,6 +452,8 @@ const (
 	EtcdUserName string = "kubeadm-etcd"
 	// ServiceAccountKeyReadersGroupName is the group of users that are allowed to read the service account private key.
 	ServiceAccountKeyReadersGroupName string = "kubeadm-sa-key-readers"
+	// UpgradeConfigurationKind is the string kind value for the UpgradeConfiguration struct
+	UpgradeConfigurationKind = "UpgradeConfiguration"
 )
 
 var (

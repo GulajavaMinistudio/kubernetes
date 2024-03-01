@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Kubernetes Authors.
+Copyright 2024 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,12 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package replicaset
+package v1alpha2
 
 import (
-	"k8s.io/klog/v2"
+	"k8s.io/apimachinery/pkg/conversion"
+
+	"k8s.io/kubernetes/cmd/kubeadm/app/apis/output"
 )
 
-func init() {
-	klog.InitFlags(nil)
+// Convert_output_UpgradePlan_To_v1alpha2_UpgradePlan converts a private UpgradePlan to public UpgradePlan.
+func Convert_output_UpgradePlan_To_v1alpha2_UpgradePlan(in *output.UpgradePlan, out *UpgradePlan, s conversion.Scope) error {
+	return autoConvert_output_UpgradePlan_To_v1alpha2_UpgradePlan(in, out, s)
 }

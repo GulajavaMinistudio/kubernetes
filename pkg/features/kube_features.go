@@ -165,14 +165,6 @@ const (
 	// Enables kubelet to detect CSI volume condition and send the event of the abnormal volume to the corresponding pod that is using it.
 	CSIVolumeHealth featuregate.Feature = "CSIVolumeHealth"
 
-	// owner: @seans3
-	// kep: http://kep.k8s.io/4006
-	// alpha: v1.29
-	//
-	// Enables StreamTranslator proxy to handle WebSockets upgrade requests for the
-	// version of the RemoteCommand subprotocol that supports the "close" signal.
-	TranslateStreamCloseWebsocketRequests featuregate.Feature = "TranslateStreamCloseWebsocketRequests"
-
 	// owner: @nckturner
 	// kep:  http://kep.k8s.io/2699
 	// alpha: v1.27
@@ -604,6 +596,7 @@ const (
 	// kep: http://kep.k8s.io/2681
 	// alpha: v1.28
 	// beta: v1.29
+	// GA: v1.30
 	//
 	// Adds pod.status.hostIPs and downward API
 	PodHostIPs featuregate.Feature = "PodHostIPs"
@@ -808,6 +801,14 @@ const (
 	// Allow the usage of options to fine-tune the topology manager policies.
 	TopologyManagerPolicyOptions featuregate.Feature = "TopologyManagerPolicyOptions"
 
+	// owner: @seans3
+	// kep: http://kep.k8s.io/4006
+	// beta: v1.30
+	//
+	// Enables StreamTranslator proxy to handle WebSockets upgrade requests for the
+	// version of the RemoteCommand subprotocol that supports the "close" signal.
+	TranslateStreamCloseWebsocketRequests featuregate.Feature = "TranslateStreamCloseWebsocketRequests"
+
 	// owner: @richabanker
 	// alpha: v1.28
 	//
@@ -972,8 +973,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	SkipReadOnlyValidationGCE: {Default: true, PreRelease: featuregate.Deprecated}, // remove in 1.31
 
-	TranslateStreamCloseWebsocketRequests: {Default: false, PreRelease: featuregate.Alpha},
-
 	CloudControllerManagerWebhook: {Default: false, PreRelease: featuregate.Alpha},
 
 	ContainerCheckpoint: {Default: false, PreRelease: featuregate.Alpha},
@@ -1090,7 +1089,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	PodReadyToStartContainersCondition: {Default: true, PreRelease: featuregate.Beta},
 
-	PodHostIPs: {Default: true, PreRelease: featuregate.Beta},
+	PodHostIPs: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.32
 
 	PodLifecycleSleepAction: {Default: true, PreRelease: featuregate.Beta},
 
@@ -1142,6 +1141,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	TopologyManagerPolicyOptions: {Default: true, PreRelease: featuregate.Beta},
 
+	TranslateStreamCloseWebsocketRequests: {Default: true, PreRelease: featuregate.Beta},
+
 	UnknownVersionInteroperabilityProxy: {Default: false, PreRelease: featuregate.Alpha},
 
 	VolumeAttributesClass: {Default: false, PreRelease: featuregate.Alpha},
@@ -1173,7 +1174,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
 
-	genericfeatures.AdmissionWebhookMatchConditions: {Default: true, PreRelease: featuregate.Beta},
+	genericfeatures.AdmissionWebhookMatchConditions: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.33
 
 	genericfeatures.AggregatedDiscoveryEndpoint: {Default: true, PreRelease: featuregate.Beta},
 
@@ -1233,6 +1234,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	// unintentionally on either side:
 
 	apiextensionsfeatures.CRDValidationRatcheting: {Default: true, PreRelease: featuregate.Beta},
+
+	apiextensionsfeatures.CustomResourceFieldSelectors: {Default: false, PreRelease: featuregate.Alpha},
 
 	// features that enable backwards compatibility but are scheduled to be removed
 	// ...
