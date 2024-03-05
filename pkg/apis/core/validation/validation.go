@@ -3974,8 +3974,6 @@ type PodValidationOptions struct {
 	AllowHostIPsField bool
 	// Allow invalid topologySpreadConstraint labelSelector for backward compatibility
 	AllowInvalidTopologySpreadConstraintLabelSelector bool
-	// Allow node selector additions for gated pods.
-	AllowMutableNodeSelectorAndNodeAffinity bool
 	// Allow projected token volumes with non-local paths
 	AllowNonLocalProjectedTokenPath bool
 	// Allow namespaced sysctls in hostNet and hostIPC pods
@@ -5056,7 +5054,7 @@ func ValidatePodUpdate(newPod, oldPod *core.Pod, opts PodValidationOptions) fiel
 
 	// Handle validations specific to gated pods.
 	podIsGated := len(oldPod.Spec.SchedulingGates) > 0
-	if opts.AllowMutableNodeSelectorAndNodeAffinity && podIsGated {
+	if podIsGated {
 		// Additions to spec.nodeSelector are allowed (no deletions or mutations) for gated pods.
 		if !apiequality.Semantic.DeepEqual(mungedPodSpec.NodeSelector, oldPod.Spec.NodeSelector) {
 			allErrs = append(allErrs, validateNodeSelectorMutation(specPath.Child("nodeSelector"), mungedPodSpec.NodeSelector, oldPod.Spec.NodeSelector)...)
@@ -5137,6 +5135,46 @@ func ValidateContainerStateTransition(newStatuses, oldStatuses []core.ContainerS
 	return allErrs
 }
 
+// ValidateInitContainerStateTransition test to if any illegal init container state transitions are being attempted
+func ValidateInitContainerStateTransition(newStatuses, oldStatuses []core.ContainerStatus, fldpath *field.Path, podSpec *core.PodSpec) field.ErrorList {
+	allErrs := field.ErrorList{}
+	// If we should always restart, containers are allowed to leave the terminated state
+	if podSpec.RestartPolicy == core.RestartPolicyAlways {
+		return allErrs
+	}
+	for i, oldStatus := range oldStatuses {
+		// Skip any container that is not terminated
+		if oldStatus.State.Terminated == nil {
+			continue
+		}
+		// Skip any container that failed but is allowed to restart
+		if oldStatus.State.Terminated.ExitCode != 0 && podSpec.RestartPolicy == core.RestartPolicyOnFailure {
+			continue
+		}
+
+		// Skip any restartable init container that is allowed to restart
+		isRestartableInitContainer := false
+		for _, c := range podSpec.InitContainers {
+			if oldStatus.Name == c.Name {
+				if c.RestartPolicy != nil && *c.RestartPolicy == core.ContainerRestartPolicyAlways {
+					isRestartableInitContainer = true
+				}
+				break
+			}
+		}
+		if isRestartableInitContainer {
+			continue
+		}
+
+		for _, newStatus := range newStatuses {
+			if oldStatus.Name == newStatus.Name && newStatus.State.Terminated == nil {
+				allErrs = append(allErrs, field.Forbidden(fldpath.Index(i).Child("state"), "may not be transitioned to non-terminated state"))
+			}
+		}
+	}
+	return allErrs
+}
+
 // ValidatePodStatusUpdate checks for changes to status that shouldn't occur in normal operation.
 func ValidatePodStatusUpdate(newPod, oldPod *core.Pod, opts PodValidationOptions) field.ErrorList {
 	fldPath := field.NewPath("metadata")
@@ -5158,7 +5196,7 @@ func ValidatePodStatusUpdate(newPod, oldPod *core.Pod, opts PodValidationOptions
 	// If pod should not restart, make sure the status update does not transition
 	// any terminated containers to a non-terminated state.
 	allErrs = append(allErrs, ValidateContainerStateTransition(newPod.Status.ContainerStatuses, oldPod.Status.ContainerStatuses, fldPath.Child("containerStatuses"), oldPod.Spec.RestartPolicy)...)
-	allErrs = append(allErrs, ValidateContainerStateTransition(newPod.Status.InitContainerStatuses, oldPod.Status.InitContainerStatuses, fldPath.Child("initContainerStatuses"), oldPod.Spec.RestartPolicy)...)
+	allErrs = append(allErrs, ValidateInitContainerStateTransition(newPod.Status.InitContainerStatuses, oldPod.Status.InitContainerStatuses, fldPath.Child("initContainerStatuses"), &oldPod.Spec)...)
 	// The kubelet will never restart ephemeral containers, so treat them like they have an implicit RestartPolicyNever.
 	allErrs = append(allErrs, ValidateContainerStateTransition(newPod.Status.EphemeralContainerStatuses, oldPod.Status.EphemeralContainerStatuses, fldPath.Child("ephemeralContainerStatuses"), core.RestartPolicyNever)...)
 	allErrs = append(allErrs, validatePodResourceClaimStatuses(newPod.Status.ResourceClaimStatuses, newPod.Spec.ResourceClaims, fldPath.Child("resourceClaimStatuses"))...)
@@ -5496,6 +5534,9 @@ func ValidateService(service *core.Service) field.ErrorList {
 	// internal traffic policy field
 	allErrs = append(allErrs, validateServiceInternalTrafficFieldsValue(service)...)
 
+	// traffic distribution field
+	allErrs = append(allErrs, validateServiceTrafficDistribution(service)...)
+
 	return allErrs
 }
 
@@ -5608,6 +5649,22 @@ func validateServiceInternalTrafficFieldsValue(service *core.Service) field.Erro
 
 	if service.Spec.InternalTrafficPolicy != nil && !supportedServiceInternalTrafficPolicy.Has(*service.Spec.InternalTrafficPolicy) {
 		allErrs = append(allErrs, field.NotSupported(field.NewPath("spec").Child("internalTrafficPolicy"), *service.Spec.InternalTrafficPolicy, sets.List(supportedServiceInternalTrafficPolicy)))
+	}
+
+	return allErrs
+}
+
+// validateServiceTrafficDistribution validates the values for the
+// trafficDistribution field.
+func validateServiceTrafficDistribution(service *core.Service) field.ErrorList {
+	allErrs := field.ErrorList{}
+
+	if service.Spec.TrafficDistribution == nil {
+		return allErrs
+	}
+
+	if *service.Spec.TrafficDistribution != v1.ServiceTrafficDistributionPreferClose {
+		allErrs = append(allErrs, field.NotSupported(field.NewPath("spec").Child("trafficDistribution"), *service.Spec.TrafficDistribution, []string{v1.ServiceTrafficDistributionPreferClose}))
 	}
 
 	return allErrs

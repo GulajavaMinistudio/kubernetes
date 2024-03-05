@@ -382,7 +382,6 @@ func GetValidationOptionsFromPodSpecAndMeta(podSpec, oldPodSpec *api.PodSpec, po
 		AllowIndivisibleHugePagesValues:                   false,
 		AllowInvalidLabelValueInSelector:                  false,
 		AllowInvalidTopologySpreadConstraintLabelSelector: false,
-		AllowMutableNodeSelectorAndNodeAffinity:           utilfeature.DefaultFeatureGate.Enabled(features.PodSchedulingReadiness),
 		AllowNamespacedSysctlsForHostNetAndHostIPC:        false,
 		AllowNonLocalProjectedTokenPath:                   false,
 	}
@@ -558,14 +557,8 @@ func dropDisabledFields(
 		}
 	}
 
-	// If the feature is disabled and not in use, drop the schedulingGates field.
-	if !utilfeature.DefaultFeatureGate.Enabled(features.PodSchedulingReadiness) && !schedulingGatesInUse(oldPodSpec) {
-		podSpec.SchedulingGates = nil
-	}
-
 	dropDisabledProcMountField(podSpec, oldPodSpec)
 
-	dropDisabledTopologySpreadConstraintsFields(podSpec, oldPodSpec)
 	dropDisabledNodeInclusionPolicyFields(podSpec, oldPodSpec)
 	dropDisabledMatchLabelKeysFieldInTopologySpread(podSpec, oldPodSpec)
 	dropDisabledMatchLabelKeysFieldInPodAffinity(podSpec, oldPodSpec)
@@ -741,33 +734,6 @@ func dropEphemeralResourceClaimRequests(containers []api.EphemeralContainer) {
 	for i := range containers {
 		containers[i].Resources.Claims = nil
 	}
-}
-
-// dropDisabledTopologySpreadConstraintsFields removes disabled fields from PodSpec related
-// to TopologySpreadConstraints only if it is not already used by the old spec.
-func dropDisabledTopologySpreadConstraintsFields(podSpec, oldPodSpec *api.PodSpec) {
-	if !utilfeature.DefaultFeatureGate.Enabled(features.MinDomainsInPodTopologySpread) &&
-		!minDomainsInUse(oldPodSpec) &&
-		podSpec != nil {
-		for i := range podSpec.TopologySpreadConstraints {
-			podSpec.TopologySpreadConstraints[i].MinDomains = nil
-		}
-	}
-}
-
-// minDomainsInUse returns true if the pod spec is non-nil
-// and has non-nil MinDomains field in TopologySpreadConstraints.
-func minDomainsInUse(podSpec *api.PodSpec) bool {
-	if podSpec == nil {
-		return false
-	}
-
-	for _, c := range podSpec.TopologySpreadConstraints {
-		if c.MinDomains != nil {
-			return true
-		}
-	}
-	return false
 }
 
 // dropDisabledProcMountField removes disabled fields from PodSpec related
@@ -981,14 +947,6 @@ func appArmorInUse(podAnnotations map[string]string) bool {
 		}
 	}
 	return false
-}
-
-// schedulingGatesInUse returns true if the pod spec is non-nil and it has SchedulingGates field set.
-func schedulingGatesInUse(podSpec *api.PodSpec) bool {
-	if podSpec == nil {
-		return false
-	}
-	return len(podSpec.SchedulingGates) != 0
 }
 
 // restartableInitContainersInUse returns true if the pod spec is non-nil and

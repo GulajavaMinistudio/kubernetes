@@ -2571,13 +2571,6 @@ message NodeProxyOptions {
   optional string path = 1;
 }
 
-// NodeResources is an object for conveying resource information about a node.
-// see https://kubernetes.io/docs/concepts/architecture/nodes/#capacity for more details.
-message NodeResources {
-  // Capacity represents the available resources of a node
-  map<string, k8s.io.apimachinery.pkg.api.resource.Quantity> capacity = 1;
-}
-
 // A node selector represents the union of the results of one or more label queries
 // over a set of nodes; that is, it represents the OR of the selectors represented
 // by the node selector terms.
@@ -4063,7 +4056,7 @@ message PodSpec {
   repeated Toleration tolerations = 22;
 
   // HostAliases is an optional list of hosts and IPs that will be injected into the pod's hosts
-  // file if specified. This is only valid for non-hostNetwork pods.
+  // file if specified.
   // +optional
   // +patchMergeKey=ip
   // +patchStrategy=merge
@@ -4201,13 +4194,10 @@ message PodSpec {
   //
   // SchedulingGates can only be set at pod creation time, and be removed only afterwards.
   //
-  // This is a beta feature enabled by the PodSchedulingReadiness feature gate.
-  //
   // +patchMergeKey=name
   // +patchStrategy=merge
   // +listType=map
   // +listMapKey=name
-  // +featureGate=PodSchedulingReadiness
   // +optional
   repeated PodSchedulingGate schedulingGates = 38;
 
@@ -5774,6 +5764,15 @@ message ServiceSpec {
   // (possibly modified by topology and other features).
   // +optional
   optional string internalTrafficPolicy = 22;
+
+  // TrafficDistribution offers a way to express preferences for how traffic is
+  // distributed to Service endpoints. Implementations can use this field as a
+  // hint, but are not required to guarantee strict adherence. If the field is
+  // not set, the implementation will apply its default routing strategy. If set
+  // to "PreferClose", implementations should prioritize endpoints that are
+  // topologically close (e.g., same zone).
+  // +optional
+  optional string trafficDistribution = 23;
 }
 
 // ServiceStatus represents the current status of a service.
@@ -6056,8 +6055,6 @@ message TopologySpreadConstraint {
   // In this situation, new pod with the same labelSelector cannot be scheduled,
   // because computed skew will be 3(3 - 0) if new Pod is scheduled to any of the three zones,
   // it will violate MaxSkew.
-  //
-  // This is a beta field and requires the MinDomainsInPodTopologySpread feature gate to be enabled (enabled by default).
   // +optional
   optional int32 minDomains = 5;
 

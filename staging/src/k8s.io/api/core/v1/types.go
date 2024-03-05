@@ -3670,7 +3670,7 @@ type PodSpec struct {
 	// +listType=atomic
 	Tolerations []Toleration `json:"tolerations,omitempty" protobuf:"bytes,22,opt,name=tolerations"`
 	// HostAliases is an optional list of hosts and IPs that will be injected into the pod's hosts
-	// file if specified. This is only valid for non-hostNetwork pods.
+	// file if specified.
 	// +optional
 	// +patchMergeKey=ip
 	// +patchStrategy=merge
@@ -3797,13 +3797,10 @@ type PodSpec struct {
 	//
 	// SchedulingGates can only be set at pod creation time, and be removed only afterwards.
 	//
-	// This is a beta feature enabled by the PodSchedulingReadiness feature gate.
-	//
 	// +patchMergeKey=name
 	// +patchStrategy=merge
 	// +listType=map
 	// +listMapKey=name
-	// +featureGate=PodSchedulingReadiness
 	// +optional
 	SchedulingGates []PodSchedulingGate `json:"schedulingGates,omitempty" patchStrategy:"merge" patchMergeKey:"name" protobuf:"bytes,38,opt,name=schedulingGates"`
 	// ResourceClaims defines which ResourceClaims must be allocated
@@ -4010,8 +4007,6 @@ type TopologySpreadConstraint struct {
 	// In this situation, new pod with the same labelSelector cannot be scheduled,
 	// because computed skew will be 3(3 - 0) if new Pod is scheduled to any of the three zones,
 	// it will violate MaxSkew.
-	//
-	// This is a beta field and requires the MinDomainsInPodTopologySpread feature gate to be enabled (enabled by default).
 	// +optional
 	MinDomains *int32 `json:"minDomains,omitempty" protobuf:"varint,5,opt,name=minDomains"`
 	// NodeAffinityPolicy indicates how we will treat Pod's nodeAffinity/nodeSelector
@@ -4911,6 +4906,18 @@ const (
 	ServiceExternalTrafficPolicyTypeCluster = ServiceExternalTrafficPolicyCluster
 )
 
+// These are valid values for the TrafficDistribution field of a Service.
+const (
+	// Indicates a preference for routing traffic to endpoints that are
+	// topologically proximate to the client. The interpretation of "topologically
+	// proximate" may vary across implementations and could encompass endpoints
+	// within the same node, rack, zone, or even region. Setting this value gives
+	// implementations permission to make different tradeoffs, e.g. optimizing for
+	// proximity rather than equal distribution of load. Users should not set this
+	// value if such tradeoffs are not acceptable.
+	ServiceTrafficDistributionPreferClose = "PreferClose"
+)
+
 // These are the valid conditions of a service.
 const (
 	// LoadBalancerPortsError represents the condition of the requested ports
@@ -5255,6 +5262,15 @@ type ServiceSpec struct {
 	// (possibly modified by topology and other features).
 	// +optional
 	InternalTrafficPolicy *ServiceInternalTrafficPolicy `json:"internalTrafficPolicy,omitempty" protobuf:"bytes,22,opt,name=internalTrafficPolicy"`
+
+	// TrafficDistribution offers a way to express preferences for how traffic is
+	// distributed to Service endpoints. Implementations can use this field as a
+	// hint, but are not required to guarantee strict adherence. If the field is
+	// not set, the implementation will apply its default routing strategy. If set
+	// to "PreferClose", implementations should prioritize endpoints that are
+	// topologically close (e.g., same zone).
+	// +optional
+	TrafficDistribution *string `json:"trafficDistribution,omitempty" protobuf:"bytes,23,opt,name=trafficDistribution"`
 }
 
 // ServicePort contains information on service's port.
@@ -7290,13 +7306,6 @@ type Sysctl struct {
 	Name string `json:"name" protobuf:"bytes,1,opt,name=name"`
 	// Value of a property to set
 	Value string `json:"value" protobuf:"bytes,2,opt,name=value"`
-}
-
-// NodeResources is an object for conveying resource information about a node.
-// see https://kubernetes.io/docs/concepts/architecture/nodes/#capacity for more details.
-type NodeResources struct {
-	// Capacity represents the available resources of a node
-	Capacity ResourceList `protobuf:"bytes,1,rep,name=capacity,casttype=ResourceList,castkey=ResourceName"`
 }
 
 const (
