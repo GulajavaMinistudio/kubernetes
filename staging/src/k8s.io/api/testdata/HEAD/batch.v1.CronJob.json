@@ -116,6 +116,14 @@
             }
           ]
         },
+        "successPolicy": {
+          "rules": [
+            {
+              "succeededIndexes": "succeededIndexesValue",
+              "succeededCount": 2
+            }
+          ]
+        },
         "backoffLimit": 7,
         "backoffLimitPerIndex": 12,
         "maxFailedIndexes": 13,
@@ -654,6 +662,7 @@
                   {
                     "name": "nameValue",
                     "readOnly": true,
+                    "recursiveReadOnly": "recursiveReadOnlyValue",
                     "mountPath": "mountPathValue",
                     "subPath": "subPathValue",
                     "mountPropagation": "mountPropagationValue",
@@ -948,6 +957,7 @@
                   {
                     "name": "nameValue",
                     "readOnly": true,
+                    "recursiveReadOnly": "recursiveReadOnlyValue",
                     "mountPath": "mountPathValue",
                     "subPath": "subPathValue",
                     "mountPropagation": "mountPropagationValue",
@@ -1242,6 +1252,7 @@
                   {
                     "name": "nameValue",
                     "readOnly": true,
+                    "recursiveReadOnly": "recursiveReadOnlyValue",
                     "mountPath": "mountPathValue",
                     "subPath": "subPathValue",
                     "mountPropagation": "mountPropagationValue",

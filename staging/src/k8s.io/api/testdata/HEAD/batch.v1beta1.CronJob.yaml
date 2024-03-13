@@ -98,6 +98,10 @@ spec:
           - valuesValue
         matchLabels:
           matchLabelsKey: matchLabelsValue
+      successPolicy:
+        rules:
+        - succeededCount: 2
+          succeededIndexes: succeededIndexesValue
       suspend: true
       template:
         metadata:
@@ -465,6 +469,7 @@ spec:
               mountPropagation: mountPropagationValue
               name: nameValue
               readOnly: true
+              recursiveReadOnly: recursiveReadOnlyValue
               subPath: subPathValue
               subPathExpr: subPathExprValue
             workingDir: workingDirValue
@@ -680,6 +685,7 @@ spec:
               mountPropagation: mountPropagationValue
               name: nameValue
               readOnly: true
+              recursiveReadOnly: recursiveReadOnlyValue
               subPath: subPathValue
               subPathExpr: subPathExprValue
             workingDir: workingDirValue
@@ -895,6 +901,7 @@ spec:
               mountPropagation: mountPropagationValue
               name: nameValue
               readOnly: true
+              recursiveReadOnly: recursiveReadOnlyValue
               subPath: subPathValue
               subPathExpr: subPathExprValue
             workingDir: workingDirValue

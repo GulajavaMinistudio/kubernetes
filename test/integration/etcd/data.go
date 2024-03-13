@@ -224,6 +224,13 @@ func GetEtcdStorageDataForNamespace(namespace string) map[schema.GroupVersionRes
 		},
 		// --
 
+		// k8s.io/kubernetes/pkg/apis/storagemigration/v1alpha1
+		gvr("storagemigration.k8s.io", "v1alpha1", "storageversionmigrations"): {
+			Stub:             `{"metadata": {"name": "test-migration"}, "spec":{"resource": {"group": "test-group", "resource": "test-resource", "version": "test-version"}}}`,
+			ExpectedEtcdPath: "/registry/storageversionmigrations/test-migration",
+		},
+		// --
+
 		// k8s.io/kubernetes/pkg/apis/flowcontrol/v1beta1
 		gvr("flowcontrol.apiserver.k8s.io", "v1beta1", "flowschemas"): {
 			Stub:             `{"metadata": {"name": "va2"}, "spec": {"priorityLevelConfiguration": {"name": "name1"}}}`,
@@ -445,6 +452,18 @@ func GetEtcdStorageDataForNamespace(namespace string) map[schema.GroupVersionRes
 		gvr("resource.k8s.io", "v1alpha2", "podschedulingcontexts"): {
 			Stub:             `{"metadata": {"name": "pod1name"}, "spec": {"selectedNode": "node1name", "potentialNodes": ["node1name", "node2name"]}}`,
 			ExpectedEtcdPath: "/registry/podschedulingcontexts/" + namespace + "/pod1name",
+		},
+		gvr("resource.k8s.io", "v1alpha2", "resourceclassparameters"): {
+			Stub:             `{"metadata": {"name": "class1parameters"}}`,
+			ExpectedEtcdPath: "/registry/resourceclassparameters/" + namespace + "/class1parameters",
+		},
+		gvr("resource.k8s.io", "v1alpha2", "resourceclaimparameters"): {
+			Stub:             `{"metadata": {"name": "claim1parameters"}}`,
+			ExpectedEtcdPath: "/registry/resourceclaimparameters/" + namespace + "/claim1parameters",
+		},
+		gvr("resource.k8s.io", "v1alpha2", "resourceslices"): {
+			Stub:             `{"metadata": {"name": "node1slice"}, "nodeName": "worker1", "driverName": "dra.example.com", "namedResources": {}}`,
+			ExpectedEtcdPath: "/registry/resourceslices/node1slice",
 		},
 		// --
 
