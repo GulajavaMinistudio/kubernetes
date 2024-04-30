@@ -3813,7 +3813,7 @@ message PodResourceClaimStatus {
   optional string name = 1;
 
   // ResourceClaimName is the name of the ResourceClaim that was
-  // generated for the Pod in the namespace of the Pod. It this is
+  // generated for the Pod in the namespace of the Pod. If this is
   // unset, then generating a ResourceClaim was not necessary. The
   // pod.spec.resourceClaims entry can be ignored in this case.
   //
@@ -5840,6 +5840,8 @@ message ServiceSpec {
   // not set, the implementation will apply its default routing strategy. If set
   // to "PreferClose", implementations should prioritize endpoints that are
   // topologically close (e.g., same zone).
+  // This is an alpha field and requires enabling ServiceTrafficDistribution feature.
+  // +featureGate=ServiceTrafficDistribution
   // +optional
   optional string trafficDistribution = 23;
 }

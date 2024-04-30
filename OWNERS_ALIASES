@@ -24,6 +24,7 @@ aliases:
     - mikedanese
     - sttts
     - wojtek-t
+    - aramase
   sig-auth-authorizers-approvers:
     - deads2k
     - liggitt
@@ -283,6 +284,7 @@ aliases:
     - janetkuo
     - soltysh
     - smarterclayton
+    - atiratree
   sig-apps-reviewers:
     - alculquicondor
     - atiratree

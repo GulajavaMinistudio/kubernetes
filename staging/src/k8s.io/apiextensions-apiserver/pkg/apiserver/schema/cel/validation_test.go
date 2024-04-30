@@ -3824,7 +3824,7 @@ func TestRatcheting(t *testing.T) {
 
 // Runs transition rule cases with OptionalOldSelf set to true on the schema
 func TestOptionalOldSelf(t *testing.T) {
-	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, apiextensionsfeatures.CRDValidationRatcheting, true)()
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, apiextensionsfeatures.CRDValidationRatcheting, true)
 
 	tests := []struct {
 		name   string
@@ -3979,7 +3979,7 @@ func TestOptionalOldSelf(t *testing.T) {
 // Shows that type(oldSelf) == null_type works for all supported OpenAPI types
 // both when oldSelf is null and when it is not null
 func TestOptionalOldSelfCheckForNull(t *testing.T) {
-	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, apiextensionsfeatures.CRDValidationRatcheting, true)()
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, apiextensionsfeatures.CRDValidationRatcheting, true)
 
 	tests := []struct {
 		name   string
@@ -4121,7 +4121,7 @@ func TestOptionalOldSelfCheckForNull(t *testing.T) {
 
 // Show that we cant just use oldSelf as if it was unwrapped
 func TestOptionalOldSelfIsOptionalType(t *testing.T) {
-	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, apiextensionsfeatures.CRDValidationRatcheting, true)()
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, apiextensionsfeatures.CRDValidationRatcheting, true)
 
 	cases := []struct {
 		name   string
@@ -4135,7 +4135,7 @@ func TestOptionalOldSelfIsOptionalType(t *testing.T) {
 				oldSelf + self > 5
 			`),
 			obj:    5,
-			errors: []string{"no matching overload for '_+_' applied to '(optional(int), int)"},
+			errors: []string{"no matching overload for '_+_' applied to '(optional_type(int), int)"},
 		},
 		{
 			name: "forbid direct usage of optional string",
@@ -4143,7 +4143,7 @@ func TestOptionalOldSelfIsOptionalType(t *testing.T) {
 				oldSelf == "foo"
 			`),
 			obj:    "bar",
-			errors: []string{"no matching overload for '_==_' applied to '(optional(string), string)"},
+			errors: []string{"no matching overload for '_==_' applied to '(optional_type(string), string)"},
 		},
 		{
 			name: "forbid direct usage of optional array",
@@ -4151,7 +4151,7 @@ func TestOptionalOldSelfIsOptionalType(t *testing.T) {
 				oldSelf.all(x, x == x)
 			`),
 			obj:    []interface{}{"bar"},
-			errors: []string{"expression of type 'optional(list(string))' cannot be range of a comprehension"},
+			errors: []string{"expression of type 'optional_type(list(string))' cannot be range of a comprehension"},
 		},
 		{
 			name: "forbid direct usage of optional array element",
@@ -4159,7 +4159,7 @@ func TestOptionalOldSelfIsOptionalType(t *testing.T) {
 				oldSelf[0] == "foo"
 			`),
 			obj:    []interface{}{"bar"},
-			errors: []string{"found no matching overload for '_==_' applied to '(optional(string), string)"},
+			errors: []string{"found no matching overload for '_==_' applied to '(optional_type(string), string)"},
 		},
 		{
 			name: "forbid direct usage of optional struct",
