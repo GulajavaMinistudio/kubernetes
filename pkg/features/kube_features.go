@@ -640,6 +640,14 @@ const (
 	// Allow almost all printable ASCII characters in environment variables
 	RelaxedEnvironmentVariableValidation featuregate.Feature = "RelaxedEnvironmentVariableValidation"
 
+	// owner: @zhangweikop
+	// beta: v1.31
+	//
+	// Enable kubelet tls server to update certificate if the specified certificate files are changed.
+	// This feature is useful when specifying tlsCertFile & tlsPrivateKeyFile in kubelet Configuration.
+	// No effect for other cases such as using serverTLSbootstap.
+	ReloadKubeletServerCertificateFile featuregate.Feature = "ReloadKubeletServerCertificateFile"
+
 	// owner: @mikedanese
 	// alpha: v1.7
 	// beta: v1.12
@@ -1117,6 +1125,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	RelaxedEnvironmentVariableValidation: {Default: false, PreRelease: featuregate.Alpha},
 
+	ReloadKubeletServerCertificateFile: {Default: true, PreRelease: featuregate.Beta},
+
 	RotateKubeletServerCertificate: {Default: true, PreRelease: featuregate.Beta},
 
 	RuntimeClassInImageCriAPI: {Default: false, PreRelease: featuregate.Alpha},
@@ -1225,6 +1235,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	genericfeatures.OpenAPIEnums: {Default: true, PreRelease: featuregate.Beta},
 
 	genericfeatures.RemainingItemCount: {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
+
+	genericfeatures.ResilientWatchCacheInitialization: {Default: true, PreRelease: featuregate.Beta},
 
 	genericfeatures.SeparateCacheWatchRPC: {Default: true, PreRelease: featuregate.Beta},
 
