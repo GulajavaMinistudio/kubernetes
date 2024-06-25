@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,7 +53,8 @@ import (
 )
 
 var (
-	emptyFunc = func(bool) {}
+	emptyFunc             = func(bool) {}
+	coreNamespaceResource = schema.GroupResource{Group: "", Resource: "namespaces"}
 )
 
 const (
@@ -559,6 +561,12 @@ func (c *Cacher) Watch(ctx context.Context, key string, opts storage.ListOptions
 		scope.name = selectorName
 	}
 
+	// for request like '/api/v1/watch/namespaces/*', set scope.namespace to empty.
+	// namespaces don't populate metadata.namespace in ObjFields.
+	if c.groupResource == coreNamespaceResource && len(scope.namespace) > 0 && scope.namespace == scope.name {
+		scope.namespace = ""
+	}
+
 	triggerValue, triggerSupported := "", false
 	if c.indexedTrigger != nil {
 		for _, field := range pred.IndexFields {
@@ -754,12 +762,26 @@ func shouldDelegateList(opts storage.ListOptions) bool {
 	consistentReadFromStorage := resourceVersion == "" && !(consistentListFromCacheEnabled && requestWatchProgressSupported)
 	// Watch cache doesn't support continuations, so serve them from etcd.
 	hasContinuation := len(pred.Continue) > 0
-	// Serve paginated requests about revision "0" from watch cache to avoid overwhelming etcd.
-	hasLimit := pred.Limit > 0 && resourceVersion != "0"
 	// Watch cache only supports ResourceVersionMatchNotOlderThan (default).
-	unsupportedMatch := match != "" && match != metav1.ResourceVersionMatchNotOlderThan
+	// see https://kubernetes.io/docs/reference/using-api/api-concepts/#semantics-for-get-and-list
+	isLegacyExactMatch := opts.Predicate.Limit > 0 && match == "" && len(resourceVersion) > 0 && resourceVersion != "0"
+	unsupportedMatch := match != "" && match != metav1.ResourceVersionMatchNotOlderThan || isLegacyExactMatch
 
-	return consistentReadFromStorage || hasContinuation || hasLimit || unsupportedMatch
+	return consistentReadFromStorage || hasContinuation || unsupportedMatch
+}
+
+// computeListLimit determines whether the cacher should
+// apply a limit to an incoming LIST request and returns its value.
+//
+// note that this function doesn't check RVM nor the Continuation token.
+// these parameters are validated by the shouldDelegateList function.
+//
+// as of today, the limit is ignored for requests that set RV == 0
+func computeListLimit(opts storage.ListOptions) int64 {
+	if opts.Predicate.Limit <= 0 || opts.ResourceVersion == "0" {
+		return 0
+	}
+	return opts.Predicate.Limit
 }
 
 func shouldDelegateListOnNotReadyCache(opts storage.ListOptions) bool {
@@ -811,6 +833,14 @@ func (c *Cacher) GetList(ctx context.Context, key string, opts storage.ListOptio
 			return c.storage.GetList(ctx, key, opts, listObj)
 		}
 	}
+	// For recursive lists, we need to make sure the key ended with "/" so that we only
+	// get children "directories". e.g. if we have key "/a", "/a/b", "/ab", getting keys
+	// with prefix "/a" will return all three, while with prefix "/a/" will return only
+	// "/a/b" which is the correct answer.
+	preparedKey := key
+	if opts.Recursive && !strings.HasSuffix(key, "/") {
+		preparedKey += "/"
+	}
 	requestWatchProgressSupported := etcdfeature.DefaultFeatureSupportChecker.Supports(storage.RequestWatchProgress)
 	if resourceVersion == "" && utilfeature.DefaultFeatureGate.Enabled(features.ConsistentListFromCache) && requestWatchProgressSupported {
 		listRV, err = storage.GetCurrentResourceVersionFromStorage(ctx, c.storage, c.newListFunc, c.resourcePrefix, c.objectType.String())
@@ -849,9 +879,9 @@ func (c *Cacher) GetList(ctx context.Context, key string, opts storage.ListOptio
 	if listVal.Kind() != reflect.Slice {
 		return fmt.Errorf("need a pointer to slice, got %v", listVal.Kind())
 	}
-	filter := filterWithAttrsFunction(key, pred)
+	filter := filterWithAttrsFunction(preparedKey, pred)
 
-	objs, readResourceVersion, indexUsed, err := c.listItems(ctx, listRV, key, pred, recursive)
+	objs, readResourceVersion, indexUsed, err := c.listItems(ctx, listRV, preparedKey, pred, recursive)
 	if err != nil {
 		return err
 	}
@@ -861,13 +891,21 @@ func (c *Cacher) GetList(ctx context.Context, key string, opts storage.ListOptio
 	//   the elements in ListObject are Struct type, making slice will bring excessive memory consumption.
 	//   so we try to delay this action as much as possible
 	var selectedObjects []runtime.Object
-	for _, obj := range objs {
+	var lastSelectedObjectKey string
+	var hasMoreListItems bool
+	limit := computeListLimit(opts)
+	for i, obj := range objs {
 		elem, ok := obj.(*storeElement)
 		if !ok {
 			return fmt.Errorf("non *storeElement returned from storage: %v", obj)
 		}
 		if filter(elem.Key, elem.Labels, elem.Fields) {
 			selectedObjects = append(selectedObjects, elem.Object)
+			lastSelectedObjectKey = elem.Key
+		}
+		if limit > 0 && int64(len(selectedObjects)) >= limit {
+			hasMoreListItems = i < len(objs)-1
+			break
 		}
 	}
 	if len(selectedObjects) == 0 {
@@ -883,7 +921,12 @@ func (c *Cacher) GetList(ctx context.Context, key string, opts storage.ListOptio
 	}
 	span.AddEvent("Filtered items", attribute.Int("count", listVal.Len()))
 	if c.versioner != nil {
-		if err := c.versioner.UpdateList(listObj, readResourceVersion, "", nil); err != nil {
+		continueValue, remainingItemCount, err := storage.PrepareContinueToken(lastSelectedObjectKey, key, int64(readResourceVersion), int64(len(objs)), hasMoreListItems, opts)
+		if err != nil {
+			return err
+		}
+
+		if err = c.versioner.UpdateList(listObj, readResourceVersion, continueValue, remainingItemCount); err != nil {
 			return err
 		}
 	}

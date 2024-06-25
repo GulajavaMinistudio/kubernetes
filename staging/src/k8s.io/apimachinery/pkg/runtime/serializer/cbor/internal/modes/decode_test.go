@@ -435,92 +435,83 @@ func TestDecode(t *testing.T) {
 		{
 			name: "half precision infinity",
 			in:   hex("f97c00"),
-			assertOnError: func(t *testing.T, e error) {
-				if e == nil {
-					t.Fatal("expected non-nil error")
+			assertOnError: assertOnConcreteError(func(t *testing.T, e *cbor.UnacceptableDataItemError) {
+				if diff := cmp.Diff(&cbor.UnacceptableDataItemError{CBORType: "primitives", Message: "floating-point infinity"}, e); diff != "" {
+					t.Errorf("unexpected error diff:\n%s", diff)
 				}
-			},
-			fixme: "NaN and positive/negative infinities should be rejected",
+			}),
 		},
 		{
 			name: "single precision infinity",
 			in:   hex("fa7f800000"),
-			assertOnError: func(t *testing.T, e error) {
-				if e == nil {
-					t.Fatal("expected non-nil error")
+			assertOnError: assertOnConcreteError(func(t *testing.T, e *cbor.UnacceptableDataItemError) {
+				if diff := cmp.Diff(&cbor.UnacceptableDataItemError{CBORType: "primitives", Message: "floating-point infinity"}, e); diff != "" {
+					t.Errorf("unexpected error diff:\n%s", diff)
 				}
-			},
-			fixme: "NaN and positive/negative infinities should be rejected",
+			}),
 		},
 		{
 			name: "double precision infinity",
 			in:   hex("fb7ff0000000000000"),
-			assertOnError: func(t *testing.T, e error) {
-				if e == nil {
-					t.Fatal("expected non-nil error")
+			assertOnError: assertOnConcreteError(func(t *testing.T, e *cbor.UnacceptableDataItemError) {
+				if diff := cmp.Diff(&cbor.UnacceptableDataItemError{CBORType: "primitives", Message: "floating-point infinity"}, e); diff != "" {
+					t.Errorf("unexpected error diff:\n%s", diff)
 				}
-			},
-			fixme: "NaN and positive/negative infinities should be rejected",
+			}),
 		},
 		{
 			name: "half precision negative infinity",
 			in:   hex("f9fc00"),
-			assertOnError: func(t *testing.T, e error) {
-				if e == nil {
-					t.Fatal("expected non-nil error")
+			assertOnError: assertOnConcreteError(func(t *testing.T, e *cbor.UnacceptableDataItemError) {
+				if diff := cmp.Diff(&cbor.UnacceptableDataItemError{CBORType: "primitives", Message: "floating-point infinity"}, e); diff != "" {
+					t.Errorf("unexpected error diff:\n%s", diff)
 				}
-			},
-			fixme: "NaN and positive/negative infinities should be rejected",
+			}),
 		},
 		{
 			name: "single precision negative infinity",
 			in:   hex("faff800000"),
-			assertOnError: func(t *testing.T, e error) {
-				if e == nil {
-					t.Fatal("expected non-nil error")
+			assertOnError: assertOnConcreteError(func(t *testing.T, e *cbor.UnacceptableDataItemError) {
+				if diff := cmp.Diff(&cbor.UnacceptableDataItemError{CBORType: "primitives", Message: "floating-point infinity"}, e); diff != "" {
+					t.Errorf("unexpected error diff:\n%s", diff)
 				}
-			},
-			fixme: "NaN and positive/negative infinities should be rejected",
+			}),
 		},
 		{
 			name: "double precision negative infinity",
 			in:   hex("fbfff0000000000000"),
-			assertOnError: func(t *testing.T, e error) {
-				if e == nil {
-					t.Fatal("expected non-nil error")
+			assertOnError: assertOnConcreteError(func(t *testing.T, e *cbor.UnacceptableDataItemError) {
+				if diff := cmp.Diff(&cbor.UnacceptableDataItemError{CBORType: "primitives", Message: "floating-point infinity"}, e); diff != "" {
+					t.Errorf("unexpected error diff:\n%s", diff)
 				}
-			},
-			fixme: "NaN and positive/negative infinities should be rejected",
+			}),
 		},
 		{
 			name: "half precision NaN",
 			in:   hex("f97e00"),
-			assertOnError: func(t *testing.T, e error) {
-				if e == nil {
-					t.Fatal("expected non-nil error")
+			assertOnError: assertOnConcreteError(func(t *testing.T, e *cbor.UnacceptableDataItemError) {
+				if diff := cmp.Diff(&cbor.UnacceptableDataItemError{CBORType: "primitives", Message: "floating-point NaN"}, e); diff != "" {
+					t.Errorf("unexpected error diff:\n%s", diff)
 				}
-			},
-			fixme: "NaN and positive/negative infinities should be rejected",
+			}),
 		},
 		{
 			name: "single precision NaN",
 			in:   hex("fa7fc00000"),
-			assertOnError: func(t *testing.T, e error) {
-				if e == nil {
-					t.Fatal("expected non-nil error")
+			assertOnError: assertOnConcreteError(func(t *testing.T, e *cbor.UnacceptableDataItemError) {
+				if diff := cmp.Diff(&cbor.UnacceptableDataItemError{CBORType: "primitives", Message: "floating-point NaN"}, e); diff != "" {
+					t.Errorf("unexpected error diff:\n%s", diff)
 				}
-			},
-			fixme: "NaN and positive/negative infinities should be rejected",
+			}),
 		},
 		{
 			name: "double precision NaN",
 			in:   hex("fb7ff8000000000000"),
-			assertOnError: func(t *testing.T, e error) {
-				if e == nil {
-					t.Fatal("expected non-nil error")
+			assertOnError: assertOnConcreteError(func(t *testing.T, e *cbor.UnacceptableDataItemError) {
+				if diff := cmp.Diff(&cbor.UnacceptableDataItemError{CBORType: "primitives", Message: "floating-point NaN"}, e); diff != "" {
+					t.Errorf("unexpected error diff:\n%s", diff)
 				}
-			},
-			fixme: "NaN and positive/negative infinities should be rejected",
+			}),
 		},
 		{
 			name:          "smallest nonzero float64",
@@ -647,7 +638,6 @@ func TestDecode(t *testing.T) {
 				name:          "tag 0 RFC3339 text string",
 				in:            hex("c074323030362d30312d30325431353a30343a30355a"), // 0("2006-01-02T15:04:05Z")
 				want:          "2006-01-02T15:04:05Z",
-				fixme:         "decoding RFC3339 text string tagged with 0 produces time.Time instead of RFC3339 timestamp string",
 				assertOnError: assertNilError,
 			},
 			{
@@ -668,113 +658,106 @@ func TestDecode(t *testing.T) {
 				name:          "tag 1 timestamp unsigned integer",
 				in:            hex("c11a43b940e5"), // 1(1136214245)
 				want:          "2006-01-02T15:04:05Z",
-				fixme:         "decoding cbor data tagged with 1 produces time.Time instead of RFC3339 timestamp string",
 				assertOnError: assertNilError,
 			},
 			{
 				name:          "tag 1 with float16 value",
 				in:            hex("c1f93c00"), // 1(1.0_1)
 				want:          "1970-01-01T00:00:01Z",
-				fixme:         "decoding cbor data tagged with 1 produces time.Time instead of RFC3339 timestamp string",
 				assertOnError: assertNilError,
 			},
 			{
 				name:          "tag 1 with float32 value",
 				in:            hex("c1fa3f800000"), // 1(1.0_2)
 				want:          "1970-01-01T00:00:01Z",
-				fixme:         "decoding cbor data tagged with 1 produces time.Time instead of RFC3339 timestamp string",
 				assertOnError: assertNilError,
 			},
 			{
 				name:          "tag 1 with float64 value",
 				in:            hex("c1fb3ff0000000000000"), // 1(1.0_3)
 				want:          "1970-01-01T00:00:01Z",
-				fixme:         "decoding cbor data tagged with 1 produces time.Time instead of RFC3339 timestamp string",
 				assertOnError: assertNilError,
 			},
 			{
 				name:          "tag 1 with a five digit year",
 				in:            hex("c11b0000003afff44181"), // 1(253402300801)
 				want:          "10000-01-01T00:00:01Z",
-				fixme:         "decoding cbor data tagged with 1 produces time.Time instead of RFC3339 timestamp string",
-				assertOnError: assertNilError,
+				assertOnError: assertErrorMessage("cbor: decoded time cannot be represented in RFC3339 format with sub-second precision: Time.MarshalText: year outside of range [0,9999]"),
 			},
 			{
 				name:          "tag 1 with a negative integer value",
 				in:            hex("c120"), // 1(-1)
 				want:          "1969-12-31T23:59:59Z",
-				fixme:         "decoding cbor data tagged with 1 produces time.Time instead of RFC3339 timestamp string",
 				assertOnError: assertNilError,
 			},
 			{
 				name:          "tag 1 with a negative float16 value",
 				in:            hex("c1f9bc00"), // 1(-1.0_1)
 				want:          "1969-12-31T23:59:59Z",
-				fixme:         "decoding cbor data tagged with 1 produces time.Time instead of RFC3339 timestamp string",
 				assertOnError: assertNilError,
 			},
 			{
 				name:          "tag 1 with a negative float32 value",
 				in:            hex("c1fabf800000"), // 1(-1.0_2)
 				want:          "1969-12-31T23:59:59Z",
-				fixme:         "decoding cbor data tagged with 1 produces time.Time instead of RFC3339 timestamp string",
 				assertOnError: assertNilError,
 			},
 			{
 				name:          "tag 1 with a negative float64 value",
 				in:            hex("c1fbbff0000000000000"), // 1(-1.0_3)
 				want:          "1969-12-31T23:59:59Z",
-				fixme:         "decoding cbor data tagged with 1 produces time.Time instead of RFC3339 timestamp string",
 				assertOnError: assertNilError,
 			},
 			{
-				name:          "tag 1 with a positive infinity",
-				in:            hex("c1f97c00"), // 1(Infinity)
-				want:          "0001-01-01T00:00:00Z",
-				fixme:         "decoding cbor data tagged with 1 produces time.Time instead of RFC3339 timestamp string",
-				assertOnError: assertNilError,
+				name: "tag 1 with a positive infinity",
+				in:   hex("c1f97c00"), // 1(Infinity)
+				assertOnError: assertOnConcreteError(func(t *testing.T, e *cbor.UnacceptableDataItemError) {
+					if diff := cmp.Diff(&cbor.UnacceptableDataItemError{CBORType: "primitives", Message: "floating-point infinity"}, e); diff != "" {
+						t.Errorf("unexpected error diff:\n%s", diff)
+					}
+				}),
 			},
 			{
-				name:          "tag 1 with a negative infinity",
-				in:            hex("c1f9fc00"), // 1(-Infinity)
-				want:          "0001-01-01T00:00:00Z",
-				fixme:         "decoding cbor data tagged with 1 produces time.Time instead of RFC3339 timestamp string",
-				assertOnError: assertNilError,
+				name: "tag 1 with a negative infinity",
+				in:   hex("c1f9fc00"), // 1(-Infinity)
+				assertOnError: assertOnConcreteError(func(t *testing.T, e *cbor.UnacceptableDataItemError) {
+					if diff := cmp.Diff(&cbor.UnacceptableDataItemError{CBORType: "primitives", Message: "floating-point infinity"}, e); diff != "" {
+						t.Errorf("unexpected error diff:\n%s", diff)
+					}
+				}),
 			},
 			{
-				name:          "tag 1 with NaN",
-				in:            hex("c1f9fc00"), // 1(NaN)
-				want:          "0001-01-01T00:00:00Z",
-				fixme:         "decoding cbor data tagged with 1 produces time.Time instead of RFC3339 timestamp string",
-				assertOnError: assertNilError,
+				name: "tag 1 with NaN",
+				in:   hex("c1f97e00"), // 1(NaN)
+				assertOnError: assertOnConcreteError(func(t *testing.T, e *cbor.UnacceptableDataItemError) {
+					if diff := cmp.Diff(&cbor.UnacceptableDataItemError{CBORType: "primitives", Message: "floating-point NaN"}, e); diff != "" {
+						t.Errorf("unexpected error diff:\n%s", diff)
+					}
+				}),
 			},
 		})
 
 		group(t, "unsigned bignum", []test{
 			{
-				name:  "rejected",
-				in:    hex("c249010000000000000000"), // 2(18446744073709551616)
-				fixme: "decoding cbor data tagged with 2 produces big.Int instead of rejecting",
-				assertOnError: func(t *testing.T, e error) {
-					// TODO: Once this can pass, make the assertion stronger.
-					if e == nil {
-						t.Error("expected non-nil error")
+				name: "rejected",
+				in:   hex("c249010000000000000000"), // 2(18446744073709551616)
+				assertOnError: assertOnConcreteError(func(t *testing.T, e *cbor.UnacceptableDataItemError) {
+					if diff := cmp.Diff(&cbor.UnacceptableDataItemError{CBORType: "tag", Message: "bignum"}, e); diff != "" {
+						t.Errorf("unexpected error diff:\n%s", diff)
 					}
-				},
+				}),
 			},
 		})
 
 		group(t, "negative bignum", []test{
 			{
-				name:  "rejected",
-				in:    hex("c349010000000000000000"), // 3(-18446744073709551617)
-				fixme: "decoding cbor data tagged with 3 produces big.Int instead of rejecting",
-				assertOnError: func(t *testing.T, e error) {
-					// TODO: Once this can pass, make the assertion stronger.
-					if e == nil {
-						t.Error("expected non-nil error")
+				name: "rejected",
+				in:   hex("c349010000000000000000"), // 3(-18446744073709551617)
+				assertOnError: assertOnConcreteError(func(t *testing.T, e *cbor.UnacceptableDataItemError) {
+					if diff := cmp.Diff(&cbor.UnacceptableDataItemError{CBORType: "tag", Message: "bignum"}, e); diff != "" {
+						t.Errorf("unexpected error diff:\n%s", diff)
 					}
-				},
+				}),
 			},
 		})
 
