@@ -26,6 +26,12 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+type int64BinaryMarshaler int64
+
+func (i int64BinaryMarshaler) MarshalBinary() ([]byte, error) {
+	return []byte{}, nil
+}
+
 func TestEncode(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
@@ -34,6 +40,12 @@ func TestEncode(t *testing.T) {
 		want          []byte
 		assertOnError func(t *testing.T, e error)
 	}{
+		{
+			name:          "implementations of BinaryMarshaler are ignored",
+			in:            int64BinaryMarshaler(7),
+			want:          []byte{0x07},
+			assertOnError: assertNilError,
+		},
 		{
 			name: "all duplicate fields are ignored", // Matches behavior of JSON serializer.
 			in: struct {
@@ -63,6 +75,24 @@ func TestEncode(t *testing.T) {
 					t.Errorf("unexpected error, got %#v (%q), want %#v (%q)", got, got.Error(), want, want.Error())
 				}
 			}),
+		},
+		{
+			name:          "byte array encodes to array of integers",
+			in:            [3]byte{0x01, 0x02, 0x03},
+			want:          []byte{0x83, 0x01, 0x02, 0x03}, // [1, 2, 3]
+			assertOnError: assertNilError,
+		},
+		{
+			name:          "string marshalled to byte string",
+			in:            "hello",
+			want:          []byte{0x45, 'h', 'e', 'l', 'l', 'o'},
+			assertOnError: assertNilError,
+		},
+		{
+			name:          "[]byte marshalled to byte string in expected base64 encoding tag",
+			in:            []byte("hello"),
+			want:          []byte{0xd6, 0x45, 'h', 'e', 'l', 'l', 'o'},
+			assertOnError: assertNilError,
 		},
 	} {
 		encModes := tc.modes

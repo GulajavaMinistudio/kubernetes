@@ -644,8 +644,6 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &applyconfigurationscorev1.CinderPersistentVolumeSourceApplyConfiguration{}
 	case corev1.SchemeGroupVersion.WithKind("CinderVolumeSource"):
 		return &applyconfigurationscorev1.CinderVolumeSourceApplyConfiguration{}
-	case corev1.SchemeGroupVersion.WithKind("ClaimSource"):
-		return &applyconfigurationscorev1.ClaimSourceApplyConfiguration{}
 	case corev1.SchemeGroupVersion.WithKind("ClientIPConfig"):
 		return &applyconfigurationscorev1.ClientIPConfigApplyConfiguration{}
 	case corev1.SchemeGroupVersion.WithKind("ClusterTrustBundleProjection"):
@@ -1438,6 +1436,18 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &applyconfigurationsnetworkingv1beta1.IngressStatusApplyConfiguration{}
 	case networkingv1beta1.SchemeGroupVersion.WithKind("IngressTLS"):
 		return &applyconfigurationsnetworkingv1beta1.IngressTLSApplyConfiguration{}
+	case networkingv1beta1.SchemeGroupVersion.WithKind("IPAddress"):
+		return &applyconfigurationsnetworkingv1beta1.IPAddressApplyConfiguration{}
+	case networkingv1beta1.SchemeGroupVersion.WithKind("IPAddressSpec"):
+		return &applyconfigurationsnetworkingv1beta1.IPAddressSpecApplyConfiguration{}
+	case networkingv1beta1.SchemeGroupVersion.WithKind("ParentReference"):
+		return &applyconfigurationsnetworkingv1beta1.ParentReferenceApplyConfiguration{}
+	case networkingv1beta1.SchemeGroupVersion.WithKind("ServiceCIDR"):
+		return &applyconfigurationsnetworkingv1beta1.ServiceCIDRApplyConfiguration{}
+	case networkingv1beta1.SchemeGroupVersion.WithKind("ServiceCIDRSpec"):
+		return &applyconfigurationsnetworkingv1beta1.ServiceCIDRSpecApplyConfiguration{}
+	case networkingv1beta1.SchemeGroupVersion.WithKind("ServiceCIDRStatus"):
+		return &applyconfigurationsnetworkingv1beta1.ServiceCIDRStatusApplyConfiguration{}
 
 		// Group=node.k8s.io, Version=v1
 	case nodev1.SchemeGroupVersion.WithKind("Overhead"):
