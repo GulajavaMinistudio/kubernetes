@@ -567,6 +567,7 @@ const (
 	// kep: https://kep.k8s.io/3329
 	// alpha: v1.25
 	// beta: v1.26
+	// stable: v1.31
 	//
 	// Enables support for appending a dedicated pod condition indicating that
 	// the pod is being deleted due to a disruption.
@@ -733,6 +734,7 @@ const (
 	// owner: @gauravkghildiyal @robscott
 	// kep: https://kep.k8s.io/4444
 	// alpha: v1.30
+	// beta: v1.31
 	//
 	// Enables trafficDistribution field on Services.
 	ServiceTrafficDistribution featuregate.Feature = "ServiceTrafficDistribution"
@@ -1116,7 +1118,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	PodDeletionCost: {Default: true, PreRelease: featuregate.Beta},
 
-	PodDisruptionConditions: {Default: true, PreRelease: featuregate.Beta},
+	PodDisruptionConditions: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.33
 
 	PodReadyToStartContainersCondition: {Default: true, PreRelease: featuregate.Beta},
 
@@ -1156,7 +1158,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	ServiceAccountTokenNodeBindingValidation: {Default: true, PreRelease: featuregate.Beta},
 
-	ServiceTrafficDistribution: {Default: false, PreRelease: featuregate.Alpha},
+	ServiceTrafficDistribution: {Default: true, PreRelease: featuregate.Beta},
 
 	SidecarContainers: {Default: true, PreRelease: featuregate.Beta},
 
@@ -1220,8 +1222,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	genericfeatures.AnonymousAuthConfigurableEndpoints: {Default: false, PreRelease: featuregate.Alpha},
 
 	genericfeatures.APIListChunking: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.32
-
-	genericfeatures.APIPriorityAndFairness: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.31
 
 	genericfeatures.APIResponseCompression: {Default: true, PreRelease: featuregate.Beta},
 

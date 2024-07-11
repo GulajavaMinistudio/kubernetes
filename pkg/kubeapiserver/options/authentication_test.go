@@ -17,6 +17,7 @@ limitations under the License.
 package options
 
 import (
+	"context"
 	"os"
 	"reflect"
 	"strings"
@@ -34,12 +35,17 @@ import (
 	"k8s.io/apiserver/pkg/authentication/authenticatorfactory"
 	"k8s.io/apiserver/pkg/authentication/request/headerrequest"
 	"k8s.io/apiserver/pkg/features"
+	genericapiserver "k8s.io/apiserver/pkg/server"
 	apiserveroptions "k8s.io/apiserver/pkg/server/options"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/component-base/featuregate"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
+	openapicommon "k8s.io/kube-openapi/pkg/common"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
 	kubeauthenticator "k8s.io/kubernetes/pkg/kubeapiserver/authenticator"
+	"k8s.io/kubernetes/pkg/serviceaccount"
 	"k8s.io/utils/pointer"
 )
 
@@ -478,6 +484,39 @@ func TestBuiltInAuthenticationOptionsAddFlags(t *testing.T) {
 	}
 }
 
+func TestWithTokenGetterFunction(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, kubefeatures.ServiceAccountTokenNodeBindingValidation, false)
+	fakeClientset := fake.NewSimpleClientset()
+	versionedInformer := informers.NewSharedInformerFactory(fakeClientset, 0)
+	{
+		var called bool
+		f := func(factory informers.SharedInformerFactory) serviceaccount.ServiceAccountTokenGetter {
+			called = true
+			return nil
+		}
+		opts := NewBuiltInAuthenticationOptions().WithTokenGetterFunction(f)
+		err := opts.ApplyTo(context.Background(), &genericapiserver.AuthenticationInfo{}, nil, nil, &openapicommon.Config{}, nil, fakeClientset, versionedInformer, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if opts.ServiceAccounts.OptionalTokenGetter == nil {
+			t.Fatal("expected token getter function to be set")
+		}
+
+		if !called {
+			t.Fatal("expected token getter function to be called")
+		}
+	}
+	{
+		opts := NewBuiltInAuthenticationOptions().WithServiceAccounts()
+		err := opts.ApplyTo(context.Background(), &genericapiserver.AuthenticationInfo{}, nil, nil, &openapicommon.Config{}, nil, fakeClientset, versionedInformer, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestToAuthenticationConfig_Anonymous(t *testing.T) {
 	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.StructuredAuthenticationConfiguration, true)
 	testCases := []struct {
@@ -524,7 +563,7 @@ anonymous:
   enabled: false
 `),
 			},
-			expectErr: "anonymous is not supported when when AnonymousAuthConfigurableEnpoints feature gate is disabled",
+			expectErr: "anonymous is not supported when AnonymousAuthConfigurableEnpoints feature gate is disabled",
 		},
 		{
 			name:                     "file-anonymous-disabled-AnonymousAuthConfigurableEndpoints-enabled",

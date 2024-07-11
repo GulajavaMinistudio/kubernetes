@@ -845,7 +845,8 @@ func (jm *Controller) syncJob(ctx context.Context, key string) (rErr error) {
 	// Given that the Job already has the SuccessCriteriaMet condition, the termination condition already had confirmed in another cycle.
 	// So, the job-controller evaluates the podFailurePolicy only when the Job doesn't have the SuccessCriteriaMet condition.
 	if jobCtx.finishedCondition == nil && feature.DefaultFeatureGate.Enabled(features.JobPodFailurePolicy) {
-		if failureTargetCondition := findConditionByType(job.Status.Conditions, batch.JobFailureTarget); failureTargetCondition != nil {
+		failureTargetCondition := findConditionByType(job.Status.Conditions, batch.JobFailureTarget)
+		if failureTargetCondition != nil && failureTargetCondition.Status == v1.ConditionTrue {
 			jobCtx.finishedCondition = newFailedConditionForFailureTarget(failureTargetCondition, jm.clock.Now())
 		} else if failJobMessage := getFailJobMessage(&job, pods); failJobMessage != nil {
 			// Prepare the interim FailureTarget condition to record the failure message before the finalizers (allowing removal of the pods) are removed.
@@ -1878,9 +1879,6 @@ func isPodFailed(p *v1.Pod, job *batch.Job) bool {
 	if feature.DefaultFeatureGate.Enabled(features.PodDisruptionConditions) && feature.DefaultFeatureGate.Enabled(features.JobPodFailurePolicy) && job.Spec.PodFailurePolicy != nil {
 		// When PodDisruptionConditions is enabled, orphan Pods and unschedulable
 		// terminating Pods are marked as Failed. So we only need to check the phase.
-		// TODO(#113855): Stop limiting this behavior to Jobs with podFailurePolicy.
-		// For now, we do so to avoid affecting all running Jobs without the
-		// availability to opt-out into the old behavior.
 		return p.Status.Phase == v1.PodFailed
 	}
 	if p.Status.Phase == v1.PodFailed {
