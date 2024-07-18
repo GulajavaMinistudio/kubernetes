@@ -1206,6 +1206,15 @@ func (NodeDaemonEndpoints) SwaggerDoc() map[string]string {
 	return map_NodeDaemonEndpoints
 }
 
+var map_NodeFeatures = map[string]string{
+	"":                         "NodeFeatures describes the set of features implemented by the CRI implementation. The features contained in the NodeFeatures should depend only on the cri implementation independent of runtime handlers.",
+	"supplementalGroupsPolicy": "SupplementalGroupsPolicy is set to true if the runtime supports SupplementalGroupsPolicy and ContainerUser.",
+}
+
+func (NodeFeatures) SwaggerDoc() map[string]string {
+	return map_NodeFeatures
+}
+
 var map_NodeList = map[string]string{
 	"":         "NodeList is the whole list of all Nodes which have been registered with master.",
 	"metadata": "Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
@@ -1236,8 +1245,9 @@ func (NodeRuntimeHandler) SwaggerDoc() map[string]string {
 }
 
 var map_NodeRuntimeHandlerFeatures = map[string]string{
-	"":                        "NodeRuntimeHandlerFeatures is a set of runtime features.",
+	"":                        "NodeRuntimeHandlerFeatures is a set of features implemented by the runtime handler.",
 	"recursiveReadOnlyMounts": "RecursiveReadOnlyMounts is set to true if the runtime handler supports RecursiveReadOnlyMounts.",
+	"userNamespaces":          "UserNamespaces is set to true if the runtime handler supports UserNamespaces, including for volumes.",
 }
 
 func (NodeRuntimeHandlerFeatures) SwaggerDoc() map[string]string {
@@ -1303,6 +1313,7 @@ var map_NodeStatus = map[string]string{
 	"volumesAttached": "List of volumes that are attached to the node.",
 	"config":          "Status of the config assigned to the node via the dynamic Kubelet config feature.",
 	"runtimeHandlers": "The available runtime handlers.",
+	"features":        "Features describes the set of features implemented by the CRI implementation.",
 }
 
 func (NodeStatus) SwaggerDoc() map[string]string {
@@ -1511,7 +1522,7 @@ var map_PersistentVolumeStatus = map[string]string{
 	"phase":                   "phase indicates if a volume is available, bound to a claim, or released by a claim. More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#phase",
 	"message":                 "message is a human-readable message indicating details about why the volume is in this state.",
 	"reason":                  "reason is a brief CamelCase string that describes any failure and is meant for machine parsing and tidy display in the CLI.",
-	"lastPhaseTransitionTime": "lastPhaseTransitionTime is the time the phase transitioned from one to another and automatically resets to current time everytime a volume phase transitions. This is a beta field and requires the PersistentVolumeLastPhaseTransitionTime feature to be enabled (enabled by default).",
+	"lastPhaseTransitionTime": "lastPhaseTransitionTime is the time the phase transitioned from one to another and automatically resets to current time everytime a volume phase transitions.",
 }
 
 func (PersistentVolumeStatus) SwaggerDoc() map[string]string {
@@ -1956,7 +1967,7 @@ func (ProbeHandler) SwaggerDoc() map[string]string {
 
 var map_ProjectedVolumeSource = map[string]string{
 	"":            "Represents a projected volume source",
-	"sources":     "sources is the list of volume projections",
+	"sources":     "sources is the list of volume projections. Each entry in this list handles one source.",
 	"defaultMode": "defaultMode are the mode bits used to set permissions on created files by default. Must be an octal value between 0000 and 0777 or a decimal value between 0 and 511. YAML accepts both octal and decimal values, JSON requires decimal values for mode bits. Directories within the path are not affected by this setting. This might be in conflict with other options that affect the file mode, like fsGroup, and the result can be other mode bits set.",
 }
 
@@ -2652,7 +2663,7 @@ func (VolumeNodeAffinity) SwaggerDoc() map[string]string {
 }
 
 var map_VolumeProjection = map[string]string{
-	"":                    "Projection that may be projected along with other supported volume types",
+	"":                    "Projection that may be projected along with other supported volume types. Exactly one of these fields must be set.",
 	"secret":              "secret information about the secret data to project",
 	"downwardAPI":         "downwardAPI information about the downwardAPI data to project",
 	"configMap":           "configMap information about the configMap data to project",

@@ -497,6 +497,9 @@
           "description": "Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds"
         }
       },
+      "required": [
+        "items"
+      ],
       "type": "object",
       "x-kubernetes-group-version-kind": [
         {
@@ -555,6 +558,9 @@
           "description": "Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds"
         }
       },
+      "required": [
+        "items"
+      ],
       "type": "object",
       "x-kubernetes-group-version-kind": [
         {
@@ -1136,6 +1142,9 @@
           "description": "Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds"
         }
       },
+      "required": [
+        "items"
+      ],
       "type": "object",
       "x-kubernetes-group-version-kind": [
         {
@@ -1194,6 +1203,9 @@
           "description": "Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds"
         }
       },
+      "required": [
+        "items"
+      ],
       "type": "object",
       "x-kubernetes-group-version-kind": [
         {
@@ -1609,6 +1621,9 @@
           "description": "Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds"
         }
       },
+      "required": [
+        "items"
+      ],
       "type": "object",
       "x-kubernetes-group-version-kind": [
         {
@@ -1667,6 +1682,9 @@
           "description": "Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds"
         }
       },
+      "required": [
+        "items"
+      ],
       "type": "object",
       "x-kubernetes-group-version-kind": [
         {
@@ -4771,7 +4789,7 @@
         },
         "podFailurePolicy": {
           "$ref": "#/definitions/io.k8s.api.batch.v1.PodFailurePolicy",
-          "description": "Specifies the policy of handling failed pods. In particular, it allows to specify the set of actions and conditions which need to be satisfied to take the associated action. If empty, the default behaviour applies - the counter of failed pods, represented by the jobs's .status.failed field, is incremented and it is checked against the backoffLimit. This field cannot be used in combination with restartPolicy=OnFailure.\n\nThis field is beta-level. It can be used when the `JobPodFailurePolicy` feature gate is enabled (enabled by default)."
+          "description": "Specifies the policy of handling failed pods. In particular, it allows to specify the set of actions and conditions which need to be satisfied to take the associated action. If empty, the default behaviour applies - the counter of failed pods, represented by the jobs's .status.failed field, is incremented and it is checked against the backoffLimit. This field cannot be used in combination with restartPolicy=OnFailure."
         },
         "podReplacementPolicy": {
           "description": "podReplacementPolicy specifies when to create replacement Pods. Possible values are: - TerminatingOrFailed means that we recreate pods\n  when they are terminating (has a metadata.deletionTimestamp) or failed.\n- Failed means to wait until a previously created Pod is fully terminated (has phase\n  Failed or Succeeded) before creating a replacement Pod.\n\nWhen using podFailurePolicy, Failed is the the only allowed value. TerminatingOrFailed and Failed are allowed values when podFailurePolicy is not in use. This is an beta field. To use this, enable the JobPodReplacementPolicy feature toggle. This is on by default.",
@@ -7482,6 +7500,9 @@
           "type": "string"
         }
       },
+      "required": [
+        "ip"
+      ],
       "type": "object"
     },
     "io.k8s.api.core.v1.HostPathVolumeSource": {
@@ -8222,6 +8243,16 @@
       },
       "type": "object"
     },
+    "io.k8s.api.core.v1.NodeFeatures": {
+      "description": "NodeFeatures describes the set of features implemented by the CRI implementation. The features contained in the NodeFeatures should depend only on the cri implementation independent of runtime handlers.",
+      "properties": {
+        "supplementalGroupsPolicy": {
+          "description": "SupplementalGroupsPolicy is set to true if the runtime supports SupplementalGroupsPolicy and ContainerUser.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "io.k8s.api.core.v1.NodeList": {
       "description": "NodeList is the whole list of all Nodes which have been registered with master.",
       "properties": {
@@ -8272,10 +8303,14 @@
       "type": "object"
     },
     "io.k8s.api.core.v1.NodeRuntimeHandlerFeatures": {
-      "description": "NodeRuntimeHandlerFeatures is a set of runtime features.",
+      "description": "NodeRuntimeHandlerFeatures is a set of features implemented by the runtime handler.",
       "properties": {
         "recursiveReadOnlyMounts": {
           "description": "RecursiveReadOnlyMounts is set to true if the runtime handler supports RecursiveReadOnlyMounts.",
+          "type": "boolean"
+        },
+        "userNamespaces": {
+          "description": "UserNamespaces is set to true if the runtime handler supports UserNamespaces, including for volumes.",
           "type": "boolean"
         }
       },
@@ -8441,6 +8476,10 @@
         "daemonEndpoints": {
           "$ref": "#/definitions/io.k8s.api.core.v1.NodeDaemonEndpoints",
           "description": "Endpoints of daemons running on the Node."
+        },
+        "features": {
+          "$ref": "#/definitions/io.k8s.api.core.v1.NodeFeatures",
+          "description": "Features describes the set of features implemented by the CRI implementation."
         },
         "images": {
           "description": "List of container images on this node",
@@ -9052,7 +9091,7 @@
       "properties": {
         "lastPhaseTransitionTime": {
           "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time",
-          "description": "lastPhaseTransitionTime is the time the phase transitioned from one to another and automatically resets to current time everytime a volume phase transitions. This is a beta field and requires the PersistentVolumeLastPhaseTransitionTime feature to be enabled (enabled by default)."
+          "description": "lastPhaseTransitionTime is the time the phase transitioned from one to another and automatically resets to current time everytime a volume phase transitions."
         },
         "message": {
           "description": "message is a human-readable message indicating details about why the volume is in this state.",
@@ -9293,6 +9332,9 @@
           "type": "string"
         }
       },
+      "required": [
+        "ip"
+      ],
       "type": "object"
     },
     "io.k8s.api.core.v1.PodList": {
@@ -10054,7 +10096,7 @@
           "type": "integer"
         },
         "sources": {
-          "description": "sources is the list of volume projections",
+          "description": "sources is the list of volume projections. Each entry in this list handles one source.",
           "items": {
             "$ref": "#/definitions/io.k8s.api.core.v1.VolumeProjection"
           },
@@ -11841,7 +11883,7 @@
       "type": "object"
     },
     "io.k8s.api.core.v1.VolumeProjection": {
-      "description": "Projection that may be projected along with other supported volume types",
+      "description": "Projection that may be projected along with other supported volume types. Exactly one of these fields must be set.",
       "properties": {
         "clusterTrustBundle": {
           "$ref": "#/definitions/io.k8s.api.core.v1.ClusterTrustBundleProjection",

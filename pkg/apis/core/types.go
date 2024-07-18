@@ -392,8 +392,6 @@ type PersistentVolumeStatus struct {
 	Reason string
 	// LastPhaseTransitionTime is the time the phase transitioned from one to another
 	// and automatically resets to current time everytime a volume phase transitions.
-	// This is a beta field and requires the PersistentVolumeLastPhaseTransitionTime feature to be enabled (enabled by default).
-	// +featureGate=PersistentVolumeLastPhaseTransitionTime
 	// +optional
 	LastPhaseTransitionTime *metav1.Time
 }
@@ -4894,13 +4892,16 @@ type NodeDaemonEndpoints struct {
 	KubeletEndpoint DaemonEndpoint
 }
 
-// NodeRuntimeHandlerFeatures is a set of runtime features.
+// NodeRuntimeHandlerFeatures is a set of features implemented by the runtime handler.
 type NodeRuntimeHandlerFeatures struct {
 	// RecursiveReadOnlyMounts is set to true if the runtime handler supports RecursiveReadOnlyMounts.
 	// +featureGate=RecursiveReadOnlyMounts
 	// +optional
 	RecursiveReadOnlyMounts *bool
-	// Reserved: UserNamespaces *bool
+	// UserNamespaces is set to true if the runtime handler supports UserNamespaces, including for volumes.
+	// +featureGate=UserNamespacesSupport
+	// +optional
+	UserNamespaces *bool
 }
 
 // NodeRuntimeHandler is a set of runtime handler information.
@@ -4912,6 +4913,15 @@ type NodeRuntimeHandler struct {
 	// Supported features.
 	// +optional
 	Features *NodeRuntimeHandlerFeatures
+}
+
+// NodeFeatures describes the set of features implemented by the CRI implementation.
+// The features contained in the NodeFeatures should depend only on the cri implementation
+// independent of runtime handlers.
+type NodeFeatures struct {
+	// SupplementalGroupsPolicy is set to true if the runtime supports SupplementalGroupsPolicy and ContainerUser.
+	// +optional
+	SupplementalGroupsPolicy *bool
 }
 
 // NodeSystemInfo is a set of ids/uuids to uniquely identify the node.
@@ -5026,8 +5036,13 @@ type NodeStatus struct {
 	Config *NodeConfigStatus
 	// The available runtime handlers.
 	// +featureGate=RecursiveReadOnlyMounts
+	// +featureGate=UserNamespacesSupport
 	// +optional
 	RuntimeHandlers []NodeRuntimeHandler
+	// Features describes the set of features implemented by the CRI implementation.
+	// +featureGate=SupplementalGroupsPolicy
+	// +optional
+	Features *NodeFeatures
 }
 
 // UniqueVolumeName defines the name of attached volume

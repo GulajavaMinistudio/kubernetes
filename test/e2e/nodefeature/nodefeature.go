@@ -89,6 +89,9 @@ var (
 	RecursiveReadOnlyMounts = framework.WithNodeFeature(framework.ValidNodeFeatures.Add("RecursiveReadOnlyMounts"))
 
 	// TODO: document the feature (owning SIG, when to use this feature for a test)
+	ProcMountType = framework.WithNodeFeature(framework.ValidNodeFeatures.Add("ProcMountType"))
+
+	// TODO: document the feature (owning SIG, when to use this feature for a test)
 	ResourceMetrics = framework.WithNodeFeature(framework.ValidNodeFeatures.Add("ResourceMetrics"))
 
 	// TODO: document the feature (owning SIG, when to use this feature for a test)
@@ -101,9 +104,14 @@ var (
 	// TODO: document the feature (owning SIG, when to use this feature for a test)
 	SidecarContainers = framework.WithNodeFeature(framework.ValidNodeFeatures.Add("SidecarContainers"))
 
+	// Sig-node: add e2e tests for KEP-4191
+	KubeletSeparateDiskGC = framework.WithNodeFeature(framework.ValidNodeFeatures.Add("KubeletSeparateDiskGC"))
+
 	// TODO: document the feature (owning SIG, when to use this feature for a test)
 	SystemNodeCriticalPod = framework.WithNodeFeature(framework.ValidNodeFeatures.Add("SystemNodeCriticalPod"))
 
+	// TODO: document the feature (owning SIG, when to use this feature for a test)
+	UserNamespacesSupport = framework.WithNodeFeature(framework.ValidNodeFeatures.Add("UserNamespacesSupport"))
 	// Please keep the list in alphabetical order.
 )
 

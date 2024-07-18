@@ -426,8 +426,6 @@ type PersistentVolumeStatus struct {
 	Reason string `json:"reason,omitempty" protobuf:"bytes,3,opt,name=reason"`
 	// lastPhaseTransitionTime is the time the phase transitioned from one to another
 	// and automatically resets to current time everytime a volume phase transitions.
-	// This is a beta field and requires the PersistentVolumeLastPhaseTransitionTime feature to be enabled (enabled by default).
-	// +featureGate=PersistentVolumeLastPhaseTransitionTime
 	// +optional
 	LastPhaseTransitionTime *metav1.Time `json:"lastPhaseTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastPhaseTransitionTime"`
 }
@@ -1911,7 +1909,8 @@ type ClusterTrustBundleProjection struct {
 
 // Represents a projected volume source
 type ProjectedVolumeSource struct {
-	// sources is the list of volume projections
+	// sources is the list of volume projections. Each entry in this list
+	// handles one source.
 	// +optional
 	// +listType=atomic
 	Sources []VolumeProjection `json:"sources" protobuf:"bytes,1,rep,name=sources"`
@@ -1925,10 +1924,9 @@ type ProjectedVolumeSource struct {
 	DefaultMode *int32 `json:"defaultMode,omitempty" protobuf:"varint,2,opt,name=defaultMode"`
 }
 
-// Projection that may be projected along with other supported volume types
+// Projection that may be projected along with other supported volume types.
+// Exactly one of these fields must be set.
 type VolumeProjection struct {
-	// all types below are the supported types for projection into the same volume
-
 	// secret information about the secret data to project
 	// +optional
 	Secret *SecretProjection `json:"secret,omitempty" protobuf:"bytes,1,opt,name=secret"`
@@ -4426,13 +4424,15 @@ type PodDNSConfigOption struct {
 // PodIP represents a single IP address allocated to the pod.
 type PodIP struct {
 	// IP is the IP address assigned to the pod
-	IP string `json:"ip,omitempty" protobuf:"bytes,1,opt,name=ip"`
+	// +required
+	IP string `json:"ip" protobuf:"bytes,1,opt,name=ip"`
 }
 
 // HostIP represents a single IP address allocated to the host.
 type HostIP struct {
 	// IP is the IP address assigned to the host
-	IP string `json:"ip,omitempty" protobuf:"bytes,1,opt,name=ip"`
+	// +required
+	IP string `json:"ip" protobuf:"bytes,1,opt,name=ip"`
 }
 
 // EphemeralContainerCommon is a copy of all fields in Container to be inlined in
@@ -5871,13 +5871,16 @@ type NodeDaemonEndpoints struct {
 	KubeletEndpoint DaemonEndpoint `json:"kubeletEndpoint,omitempty" protobuf:"bytes,1,opt,name=kubeletEndpoint"`
 }
 
-// NodeRuntimeHandlerFeatures is a set of runtime features.
+// NodeRuntimeHandlerFeatures is a set of features implemented by the runtime handler.
 type NodeRuntimeHandlerFeatures struct {
 	// RecursiveReadOnlyMounts is set to true if the runtime handler supports RecursiveReadOnlyMounts.
 	// +featureGate=RecursiveReadOnlyMounts
 	// +optional
 	RecursiveReadOnlyMounts *bool `json:"recursiveReadOnlyMounts,omitempty" protobuf:"varint,1,opt,name=recursiveReadOnlyMounts"`
-	// Reserved: UserNamespaces *bool (varint 2, for consistency with CRI API)
+	// UserNamespaces is set to true if the runtime handler supports UserNamespaces, including for volumes.
+	// +featureGate=UserNamespacesSupport
+	// +optional
+	UserNamespaces *bool `json:"userNamespaces,omitempty" protobuf:"varint,2,opt,name=userNamespaces"`
 }
 
 // NodeRuntimeHandler is a set of runtime handler information.
@@ -5889,6 +5892,15 @@ type NodeRuntimeHandler struct {
 	// Supported features.
 	// +optional
 	Features *NodeRuntimeHandlerFeatures `json:"features,omitempty" protobuf:"bytes,2,opt,name=features"`
+}
+
+// NodeFeatures describes the set of features implemented by the CRI implementation.
+// The features contained in the NodeFeatures should depend only on the cri implementation
+// independent of runtime handlers.
+type NodeFeatures struct {
+	// SupplementalGroupsPolicy is set to true if the runtime supports SupplementalGroupsPolicy and ContainerUser.
+	// +optional
+	SupplementalGroupsPolicy *bool `json:"supplementalGroupsPolicy,omitempty" protobuf:"varint,1,opt,name=supplementalGroupsPolicy"`
 }
 
 // NodeSystemInfo is a set of ids/uuids to uniquely identify the node.
@@ -6029,9 +6041,14 @@ type NodeStatus struct {
 	Config *NodeConfigStatus `json:"config,omitempty" protobuf:"bytes,11,opt,name=config"`
 	// The available runtime handlers.
 	// +featureGate=RecursiveReadOnlyMounts
+	// +featureGate=UserNamespacesSupport
 	// +optional
 	// +listType=atomic
 	RuntimeHandlers []NodeRuntimeHandler `json:"runtimeHandlers,omitempty" protobuf:"bytes,12,rep,name=runtimeHandlers"`
+	// Features describes the set of features implemented by the CRI implementation.
+	// +featureGate=SupplementalGroupsPolicy
+	// +optional
+	Features *NodeFeatures `json:"features,omitempty" protobuf:"bytes,13,rep,name=features"`
 }
 
 type UniqueVolumeName string
