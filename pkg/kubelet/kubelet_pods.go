@@ -61,7 +61,6 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/metrics"
 	"k8s.io/kubernetes/pkg/kubelet/status"
 	kubetypes "k8s.io/kubernetes/pkg/kubelet/types"
-	"k8s.io/kubernetes/pkg/kubelet/util"
 	utilfs "k8s.io/kubernetes/pkg/util/filesystem"
 	utilkernel "k8s.io/kubernetes/pkg/util/kernel"
 	utilpod "k8s.io/kubernetes/pkg/util/pod"
@@ -149,6 +148,7 @@ func (kl *Kubelet) getKubeletMappings() (uint32, uint32, error) {
 		var unknownUserErr user.UnknownUserError
 		if goerrors.As(err, &unknownUserErr) {
 			// if the user is not found, we assume that the user is not configured
+			klog.V(5).InfoS("user namespaces: user not found, using default mappings", "user", kubeletUser)
 			return defaultFirstID, defaultLen, nil
 		}
 		return 0, 0, err
@@ -158,14 +158,14 @@ func (kl *Kubelet) getKubeletMappings() (uint32, uint32, error) {
 	cmd, err := exec.LookPath(execName)
 	if err != nil {
 		if os.IsNotExist(err) {
-			klog.V(2).InfoS("Could not find executable, default mappings will be used for the user namespaces", "executable", execName, "err", err)
+			klog.V(2).InfoS("user namespaces: executable not found, using default mappings", "executable", execName, "err", err)
 			return defaultFirstID, defaultLen, nil
 		}
 		return 0, 0, err
 	}
 	outUids, err := exec.Command(cmd, kubeletUser).Output()
 	if err != nil {
-		return 0, 0, fmt.Errorf("error retrieving additional ids for user %q", kubeletUser)
+		return 0, 0, fmt.Errorf("error retrieving additional uids for user %q: %w", kubeletUser, err)
 	}
 	outGids, err := exec.Command(cmd, "-g", kubeletUser).Output()
 	if err != nil {
@@ -174,6 +174,7 @@ func (kl *Kubelet) getKubeletMappings() (uint32, uint32, error) {
 	if string(outUids) != string(outGids) {
 		return 0, 0, fmt.Errorf("mismatched subuids and subgids for user %q", kubeletUser)
 	}
+	klog.V(5).InfoS("user namespaces: user found, using mappings from getsubids", "user", kubeletUser)
 	return parseGetSubIdsOutput(string(outUids))
 }
 
@@ -587,13 +588,7 @@ func (kl *Kubelet) GenerateRunContainerOptions(ctx context.Context, pod *v1.Pod,
 	if err != nil {
 		return nil, nil, err
 	}
-	// nodename will be equal to hostname if SetHostnameAsFQDN is nil or false. If SetHostnameFQDN
-	// is true and hostDomainName is defined, nodename will be the FQDN (hostname.hostDomainName)
-	nodename, err := util.GetNodenameForKernel(hostname, hostDomainName, pod.Spec.SetHostnameAsFQDN)
-	if err != nil {
-		return nil, nil, err
-	}
-	opts.Hostname = nodename
+
 	podName := volumeutil.GetUniquePodName(pod)
 	volumes := kl.volumeManager.GetMountedVolumesForPod(podName)
 

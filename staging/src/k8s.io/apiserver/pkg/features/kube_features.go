@@ -95,6 +95,13 @@ const (
 	// Enables serving watch requests in separate goroutines.
 	APIServingWithRoutine featuregate.Feature = "APIServingWithRoutine"
 
+	// owner: @deads2k
+	// kep: https://kep.k8s.io/4601
+	// alpha: v1.31
+	//
+	// Allows authorization to use field and label selectors.
+	AuthorizeWithSelectors featuregate.Feature = "AuthorizeWithSelectors"
+
 	// owner: @cici37 @jpbetz
 	// kep: http://kep.k8s.io/3488
 	// alpha: v1.26
@@ -104,15 +111,6 @@ const (
 	// Note: the feature gate can be removed in 1.32
 	// Enables expression validation in Admission Control
 	ValidatingAdmissionPolicy featuregate.Feature = "ValidatingAdmissionPolicy"
-
-	// owner: @cici37
-	// kep: https://kep.k8s.io/2876
-	// alpha: v1.23
-	// beta: v1.25
-	// stable: v1.29
-	//
-	// Enables expression validation for Custom Resource
-	CustomResourceValidationExpressions featuregate.Feature = "CustomResourceValidationExpressions"
 
 	// alpha: v1.20
 	// beta: v1.21
@@ -301,7 +299,6 @@ const (
 
 	// owner: @p0lyn0mial
 	// alpha: v1.27
-	// beta: v1.31
 	//
 	// Allow the API server to stream individual items instead of chunking
 	WatchList featuregate.Feature = "WatchList"
@@ -359,9 +356,9 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	APIServingWithRoutine: {Default: true, PreRelease: featuregate.Beta},
 
-	ValidatingAdmissionPolicy: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.32
+	AuthorizeWithSelectors: {Default: false, PreRelease: featuregate.Alpha},
 
-	CustomResourceValidationExpressions: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.31
+	ValidatingAdmissionPolicy: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.32
 
 	EfficientWatchResumption: {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
 
@@ -407,7 +404,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 
 	InPlacePodVerticalScaling: {Default: false, PreRelease: featuregate.Alpha},
 
-	WatchList: {Default: true, PreRelease: featuregate.Beta},
+	WatchList: {Default: false, PreRelease: featuregate.Alpha},
 
 	ConsistentListFromCache: {Default: false, PreRelease: featuregate.Alpha},
 
