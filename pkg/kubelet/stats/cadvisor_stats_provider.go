@@ -139,6 +139,8 @@ func (p *cadvisorStatsProvider) ListPodStats(_ context.Context) ([]statsapi.PodS
 			}
 			podStats.Containers = append(podStats.Containers, *containerStat)
 		}
+		// Either way, collect process stats
+		podStats.ProcessStats = mergeProcessStats(podStats.ProcessStats, cadvisorInfoToProcessStats(&cinfo))
 	}
 
 	// Add each PodStats to the result.
@@ -154,7 +156,7 @@ func (p *cadvisorStatsProvider) ListPodStats(_ context.Context) ([]statsapi.PodS
 			podStats.CPU = cpu
 			podStats.Memory = memory
 			podStats.Swap = cadvisorInfoToSwapStats(podInfo)
-			podStats.ProcessStats = cadvisorInfoToProcessStats(podInfo)
+			// ProcessStats were accumulated as the containers were iterated.
 		}
 
 		status, found := p.statusProvider.GetPodStatus(podUID)
@@ -267,10 +269,6 @@ func (p *cadvisorStatsProvider) ImageFsStats(ctx context.Context) (imageFsRet *s
 		}
 		return imageFs, imageFs, nil
 	}
-	containerFsInfo, err := p.cadvisor.ContainerFsInfo()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get container fs info: %v", err)
-	}
 	imageStats, err := p.imageService.ImageFsInfo(ctx)
 	if err != nil || imageStats == nil {
 		return nil, nil, fmt.Errorf("failed to get image stats: %v", err)
@@ -296,8 +294,15 @@ func (p *cadvisorStatsProvider) ImageFsStats(ctx context.Context) (imageFsRet *s
 		Inodes:         imageFsInfo.Inodes,
 		InodesUsed:     imageFsInodesUsed,
 	}
+	// We rely on cadvisor to have the crio-containers label for split filesystem case.
+	// We return to avoid checking ContainerFsInfo.
 	if !splitFileSystem {
 		return fsStats, fsStats, nil
+	}
+
+	containerFsInfo, err := p.cadvisor.ContainerFsInfo()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get container fs info: %w", err)
 	}
 
 	containerFs := imageStats.ContainerFilesystems[0]

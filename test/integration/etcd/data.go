@@ -172,6 +172,13 @@ func GetEtcdStorageDataForNamespace(namespace string) map[schema.GroupVersionRes
 		},
 		// --
 
+		// k8s.io/kubernetes/pkg/apis/coordination/v1alpha1
+		gvr("coordination.k8s.io", "v1alpha1", "leasecandidates"): {
+			Stub:             `{"metadata": {"name": "leasecandidatev1alpha1"}, "spec": {"leaseName": "lease", "binaryVersion": "0.1.0", "emulationVersion": "0.1.0", "preferredStrategies": ["OldestEmulationVersion"]}}`,
+			ExpectedEtcdPath: "/registry/leasecandidates/" + namespace + "/leasecandidatev1alpha1",
+		},
+		// --
+
 		// k8s.io/kubernetes/pkg/apis/discovery/v1
 		gvr("discovery.k8s.io", "v1", "endpointslices"): {
 			Stub:             `{"metadata": {"name": "slicev1"}, "addressType": "IPv4", "protocol": "TCP", "ports": [], "endpoints": []}`,
@@ -271,6 +278,14 @@ func GetEtcdStorageDataForNamespace(namespace string) map[schema.GroupVersionRes
 		gvr("storage.k8s.io", "v1alpha1", "volumeattributesclasses"): {
 			Stub:             `{"metadata": {"name": "vac1"}, "driverName": "example.com/driver", "parameters": {"foo": "bar"}}`,
 			ExpectedEtcdPath: "/registry/volumeattributesclasses/vac1",
+			ExpectedGVK:      gvkP("storage.k8s.io", "v1beta1", "VolumeAttributesClass"),
+		},
+		// --
+
+		// k8s.io/kubernetes/pkg/apis/storage/v1beta1
+		gvr("storage.k8s.io", "v1beta1", "volumeattributesclasses"): {
+			Stub:             `{"metadata": {"name": "vac2"}, "driverName": "example.com/driver", "parameters": {"foo": "bar"}}`,
+			ExpectedEtcdPath: "/registry/volumeattributesclasses/vac2",
 		},
 		// --
 

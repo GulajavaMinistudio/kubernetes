@@ -29,9 +29,6 @@ var (
 	APIServerIdentity = framework.WithFeature(framework.ValidFeatures.Add("APIServerIdentity"))
 
 	// TODO: document the feature (owning SIG, when to use this feature for a test)
-	AppArmor = framework.WithFeature(framework.ValidFeatures.Add("AppArmor"))
-
-	// TODO: document the feature (owning SIG, when to use this feature for a test)
 	BootstrapTokens = framework.WithFeature(framework.ValidFeatures.Add("BootstrapTokens"))
 
 	// TODO: document the feature (owning SIG, when to use this feature for a test)
@@ -253,10 +250,6 @@ var (
 
 	// TODO: document the feature (owning SIG, when to use this feature for a test)
 	NodeOutOfServiceVolumeDetach = framework.WithFeature(framework.ValidFeatures.Add("NodeOutOfServiceVolumeDetach"))
-
-	// Owner: sig-network
-	// Marks a single test that tests pod-to-pod connectivity between every pair of nodes.
-	NoSNAT = framework.WithFeature(framework.ValidFeatures.Add("NoSNAT"))
 
 	// Owner: sig-network
 	// Marks a single test that tests cluster DNS performance with many services.

@@ -4356,6 +4356,54 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: leaseTransitions
       type:
         scalar: numeric
+    - name: preferredHolder
+      type:
+        scalar: string
+    - name: renewTime
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.MicroTime
+    - name: strategy
+      type:
+        scalar: string
+- name: io.k8s.api.coordination.v1alpha1.LeaseCandidate
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+      default: {}
+    - name: spec
+      type:
+        namedType: io.k8s.api.coordination.v1alpha1.LeaseCandidateSpec
+      default: {}
+- name: io.k8s.api.coordination.v1alpha1.LeaseCandidateSpec
+  map:
+    fields:
+    - name: binaryVersion
+      type:
+        scalar: string
+    - name: emulationVersion
+      type:
+        scalar: string
+    - name: leaseName
+      type:
+        scalar: string
+      default: ""
+    - name: pingTime
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.MicroTime
+    - name: preferredStrategies
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: atomic
     - name: renewTime
       type:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.MicroTime
@@ -4391,9 +4439,15 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: leaseTransitions
       type:
         scalar: numeric
+    - name: preferredHolder
+      type:
+        scalar: string
     - name: renewTime
       type:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.MicroTime
+    - name: strategy
+      type:
+        scalar: string
 - name: io.k8s.api.core.v1.AWSElasticBlockStoreVolumeSource
   map:
     fields:
@@ -5042,6 +5096,14 @@ var schemaYAML = typed.YAMLObject(`types:
         map:
           elementType:
             namedType: io.k8s.apimachinery.pkg.api.resource.Quantity
+    - name: allocatedResourcesStatus
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.core.v1.ResourceStatus
+          elementRelationship: associative
+          keys:
+          - name
     - name: containerID
       type:
         scalar: string
@@ -7449,6 +7511,16 @@ var schemaYAML = typed.YAMLObject(`types:
         scalar: string
       default: ""
     elementRelationship: atomic
+- name: io.k8s.api.core.v1.ResourceHealth
+  map:
+    fields:
+    - name: health
+      type:
+        scalar: string
+    - name: resourceID
+      type:
+        scalar: string
+      default: ""
 - name: io.k8s.api.core.v1.ResourceQuota
   map:
     fields:
@@ -7521,6 +7593,21 @@ var schemaYAML = typed.YAMLObject(`types:
         map:
           elementType:
             namedType: io.k8s.apimachinery.pkg.api.resource.Quantity
+- name: io.k8s.api.core.v1.ResourceStatus
+  map:
+    fields:
+    - name: name
+      type:
+        scalar: string
+      default: ""
+    - name: resources
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.core.v1.ResourceHealth
+          elementRelationship: associative
+          keys:
+          - resourceID
 - name: io.k8s.api.core.v1.SELinuxOptions
   map:
     fields:
@@ -13296,6 +13383,28 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: detachError
       type:
         namedType: io.k8s.api.storage.v1beta1.VolumeError
+- name: io.k8s.api.storage.v1beta1.VolumeAttributesClass
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: driverName
+      type:
+        scalar: string
+      default: ""
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+      default: {}
+    - name: parameters
+      type:
+        map:
+          elementType:
+            scalar: string
 - name: io.k8s.api.storage.v1beta1.VolumeError
   map:
     fields:

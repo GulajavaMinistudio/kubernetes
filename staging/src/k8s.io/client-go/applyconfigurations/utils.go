@@ -36,6 +36,7 @@ import (
 	certificatesv1alpha1 "k8s.io/api/certificates/v1alpha1"
 	certificatesv1beta1 "k8s.io/api/certificates/v1beta1"
 	coordinationv1 "k8s.io/api/coordination/v1"
+	coordinationv1alpha1 "k8s.io/api/coordination/v1alpha1"
 	coordinationv1beta1 "k8s.io/api/coordination/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
@@ -87,6 +88,7 @@ import (
 	applyconfigurationscertificatesv1alpha1 "k8s.io/client-go/applyconfigurations/certificates/v1alpha1"
 	applyconfigurationscertificatesv1beta1 "k8s.io/client-go/applyconfigurations/certificates/v1beta1"
 	applyconfigurationscoordinationv1 "k8s.io/client-go/applyconfigurations/coordination/v1"
+	applyconfigurationscoordinationv1alpha1 "k8s.io/client-go/applyconfigurations/coordination/v1alpha1"
 	applyconfigurationscoordinationv1beta1 "k8s.io/client-go/applyconfigurations/coordination/v1beta1"
 	applyconfigurationscorev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	applyconfigurationsdiscoveryv1 "k8s.io/client-go/applyconfigurations/discovery/v1"
@@ -613,6 +615,12 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 	case coordinationv1.SchemeGroupVersion.WithKind("LeaseSpec"):
 		return &applyconfigurationscoordinationv1.LeaseSpecApplyConfiguration{}
 
+		// Group=coordination.k8s.io, Version=v1alpha1
+	case coordinationv1alpha1.SchemeGroupVersion.WithKind("LeaseCandidate"):
+		return &applyconfigurationscoordinationv1alpha1.LeaseCandidateApplyConfiguration{}
+	case coordinationv1alpha1.SchemeGroupVersion.WithKind("LeaseCandidateSpec"):
+		return &applyconfigurationscoordinationv1alpha1.LeaseCandidateSpecApplyConfiguration{}
+
 		// Group=coordination.k8s.io, Version=v1beta1
 	case coordinationv1beta1.SchemeGroupVersion.WithKind("Lease"):
 		return &applyconfigurationscoordinationv1beta1.LeaseApplyConfiguration{}
@@ -918,6 +926,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &applyconfigurationscorev1.ResourceClaimApplyConfiguration{}
 	case corev1.SchemeGroupVersion.WithKind("ResourceFieldSelector"):
 		return &applyconfigurationscorev1.ResourceFieldSelectorApplyConfiguration{}
+	case corev1.SchemeGroupVersion.WithKind("ResourceHealth"):
+		return &applyconfigurationscorev1.ResourceHealthApplyConfiguration{}
 	case corev1.SchemeGroupVersion.WithKind("ResourceQuota"):
 		return &applyconfigurationscorev1.ResourceQuotaApplyConfiguration{}
 	case corev1.SchemeGroupVersion.WithKind("ResourceQuotaSpec"):
@@ -926,6 +936,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &applyconfigurationscorev1.ResourceQuotaStatusApplyConfiguration{}
 	case corev1.SchemeGroupVersion.WithKind("ResourceRequirements"):
 		return &applyconfigurationscorev1.ResourceRequirementsApplyConfiguration{}
+	case corev1.SchemeGroupVersion.WithKind("ResourceStatus"):
+		return &applyconfigurationscorev1.ResourceStatusApplyConfiguration{}
 	case corev1.SchemeGroupVersion.WithKind("ScaleIOPersistentVolumeSource"):
 		return &applyconfigurationscorev1.ScaleIOPersistentVolumeSourceApplyConfiguration{}
 	case corev1.SchemeGroupVersion.WithKind("ScaleIOVolumeSource"):
@@ -1700,6 +1712,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &applyconfigurationsstoragev1beta1.VolumeAttachmentSpecApplyConfiguration{}
 	case storagev1beta1.SchemeGroupVersion.WithKind("VolumeAttachmentStatus"):
 		return &applyconfigurationsstoragev1beta1.VolumeAttachmentStatusApplyConfiguration{}
+	case storagev1beta1.SchemeGroupVersion.WithKind("VolumeAttributesClass"):
+		return &applyconfigurationsstoragev1beta1.VolumeAttributesClassApplyConfiguration{}
 	case storagev1beta1.SchemeGroupVersion.WithKind("VolumeError"):
 		return &applyconfigurationsstoragev1beta1.VolumeErrorApplyConfiguration{}
 	case storagev1beta1.SchemeGroupVersion.WithKind("VolumeNodeResources"):

@@ -3007,6 +3007,20 @@ func TestValidatePersistentVolumeClaimUpdate(t *testing.T) {
 			enableVolumeAttributesClass: true,
 			isExpectedFailure:           true,
 		},
+		"invalid-update-volume-attributes-class-when-claim-not-bound": {
+			oldClaim: func() *core.PersistentVolumeClaim {
+				clone := validClaimVolumeAttributesClass1.DeepCopy()
+				clone.Status.Phase = core.ClaimPending
+				return clone
+			}(),
+			newClaim: func() *core.PersistentVolumeClaim {
+				clone := validClaimVolumeAttributesClass2.DeepCopy()
+				clone.Status.Phase = core.ClaimPending
+				return clone
+			}(),
+			enableVolumeAttributesClass: true,
+			isExpectedFailure:           true,
+		},
 		"invalid-update-volume-attributes-class-to-nil-without-featuregate-enabled": {
 			oldClaim:                    validClaimVolumeAttributesClass1,
 			newClaim:                    validClaimNilVolumeAttributesClass,
@@ -19067,7 +19081,7 @@ func TestValidatePersistentVolumeClaimStatusUpdate(t *testing.T) {
 		},
 	}, core.PersistentVolumeClaimStatus{
 		AllocatedResourceStatuses: map[core.ResourceName]core.ClaimResourceStatus{
-			core.ResourceStorage: core.PersistentVolumeClaimControllerResizeFailed,
+			core.ResourceStorage: core.PersistentVolumeClaimControllerResizeInfeasible,
 		},
 	})
 
@@ -19097,7 +19111,7 @@ func TestValidatePersistentVolumeClaimStatusUpdate(t *testing.T) {
 		},
 	}, core.PersistentVolumeClaimStatus{
 		AllocatedResourceStatuses: map[core.ResourceName]core.ClaimResourceStatus{
-			core.ResourceStorage: core.PersistentVolumeClaimNodeResizeFailed,
+			core.ResourceStorage: core.PersistentVolumeClaimNodeResizeInfeasible,
 		},
 	})
 
@@ -19141,7 +19155,7 @@ func TestValidatePersistentVolumeClaimStatusUpdate(t *testing.T) {
 			validResizeKeyCustom: resource.MustParse("10Gi"),
 		},
 		AllocatedResourceStatuses: map[core.ResourceName]core.ClaimResourceStatus{
-			core.ResourceStorage: core.PersistentVolumeClaimControllerResizeFailed,
+			core.ResourceStorage: core.PersistentVolumeClaimControllerResizeInfeasible,
 			validResizeKeyCustom: core.PersistentVolumeClaimControllerResizeInProgress,
 		},
 	})
@@ -19330,6 +19344,10 @@ func TestValidateResourceQuota(t *testing.T) {
 			core.ResourceQuotas:                 resource.MustParse("10"),
 			core.ResourceConfigMaps:             resource.MustParse("10"),
 			core.ResourceSecrets:                resource.MustParse("10"),
+
+			// These are unknown and not enforced unless DRA is enabled, but not invalid.
+			"count/resourceclaims.resource.k8s.io":     resource.MustParse("1"),
+			"gold.deviceclass.resource.k8s.io/devices": resource.MustParse("1"),
 		},
 	}
 
@@ -24403,5 +24421,243 @@ func TestValidatePodStatusUpdateWithSupplementalGroupsPolicy(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+func TestValidateContainerStatusNoAllocatedResourcesStatus(t *testing.T) {
+	containerStatuses := []core.ContainerStatus{
+		{
+			Name: "container-1",
+		},
+		{
+			Name: "container-2",
+			AllocatedResourcesStatus: []core.ResourceStatus{
+				{
+					Name:      "test.device/test",
+					Resources: nil,
+				},
+			},
+		},
+		{
+			Name: "container-3",
+			AllocatedResourcesStatus: []core.ResourceStatus{
+				{
+					Name: "test.device/test",
+					Resources: []core.ResourceHealth{
+						{
+							ResourceID: "resource-1",
+							Health:     core.ResourceHealthStatusHealthy,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	fldPath := field.NewPath("spec", "containers")
+
+	errs := validateContainerStatusNoAllocatedResourcesStatus(containerStatuses, fldPath)
+
+	assert.Len(t, errs, 2)
+	assert.Equal(t, "spec.containers[1].allocatedResourcesStatus", errs[0].Field)
+	assert.Equal(t, "must not be specified in container status", errs[0].Detail)
+	assert.Equal(t, "spec.containers[2].allocatedResourcesStatus", errs[1].Field)
+	assert.Equal(t, "must not be specified in container status", errs[1].Detail)
+}
+
+func TestValidateContainerStatusAllocatedResourcesStatus(t *testing.T) {
+	fldPath := field.NewPath("spec", "containers")
+
+	testCases := map[string]struct {
+		containers        []core.Container
+		containerStatuses []core.ContainerStatus
+		wantFieldErrors   field.ErrorList
+	}{
+		"basic correct status": {
+			containers: []core.Container{
+				{
+					Name: "container-1",
+					Resources: core.ResourceRequirements{
+						Requests: core.ResourceList{
+							"test.device/test": resource.MustParse("1"),
+						},
+					},
+				},
+			},
+			containerStatuses: []core.ContainerStatus{
+				{
+					Name: "container-1",
+					AllocatedResourcesStatus: []core.ResourceStatus{
+						{
+							Name: "test.device/test",
+							Resources: []core.ResourceHealth{
+								{
+									ResourceID: "resource-1",
+									Health:     core.ResourceHealthStatusHealthy,
+								},
+							},
+						},
+					},
+				},
+			},
+			wantFieldErrors: field.ErrorList{},
+		},
+		"ignoring the missing container (see https://github.com/kubernetes/kubernetes/issues/124915)": {
+			containers: []core.Container{
+				{
+					Name: "container-2",
+					Resources: core.ResourceRequirements{
+						Requests: core.ResourceList{
+							"test.device/test": resource.MustParse("1"),
+						},
+					},
+				},
+			},
+			containerStatuses: []core.ContainerStatus{
+				{
+					Name: "container-1",
+					AllocatedResourcesStatus: []core.ResourceStatus{
+						{
+							Name: "test.device/test",
+							Resources: []core.ResourceHealth{
+								{
+									ResourceID: "resource-1",
+									Health:     core.ResourceHealthStatusHealthy,
+								},
+							},
+						},
+					},
+				},
+			},
+			wantFieldErrors: field.ErrorList{},
+		},
+		"allow nil": {
+			containers: []core.Container{
+				{
+					Name: "container-2",
+					Resources: core.ResourceRequirements{
+						Requests: core.ResourceList{
+							"test.device/test": resource.MustParse("1"),
+						},
+					},
+				},
+			},
+			containerStatuses: []core.ContainerStatus{
+				{
+					Name: "container-1",
+				},
+			},
+			wantFieldErrors: field.ErrorList{},
+		},
+		"don't allow non-unique IDs": {
+			containers: []core.Container{
+				{
+					Name: "container-2",
+					Resources: core.ResourceRequirements{
+						Requests: core.ResourceList{
+							"test.device/test": resource.MustParse("1"),
+						},
+					},
+				},
+			},
+			containerStatuses: []core.ContainerStatus{
+				{
+					Name: "container-1",
+					AllocatedResourcesStatus: []core.ResourceStatus{
+						{
+							Name: "test.device/test",
+							Resources: []core.ResourceHealth{
+								{
+									ResourceID: "resource-1",
+									Health:     core.ResourceHealthStatusHealthy,
+								},
+								{
+									ResourceID: "resource-1",
+									Health:     core.ResourceHealthStatusUnhealthy,
+								},
+							},
+						},
+					},
+				},
+			},
+			wantFieldErrors: field.ErrorList{
+				field.Duplicate(fldPath.Index(0).Child("allocatedResourcesStatus").Index(0).Child("resources").Index(1).Child("resourceID"), core.ResourceID("resource-1")),
+			},
+		},
+
+		"don't allow resources that are not in spec": {
+			containers: []core.Container{
+				{
+					Name: "container-1",
+					Resources: core.ResourceRequirements{
+						Requests: core.ResourceList{
+							"test.device/test": resource.MustParse("1"),
+						},
+					},
+				},
+			},
+			containerStatuses: []core.ContainerStatus{
+				{
+					Name: "container-1",
+					AllocatedResourcesStatus: []core.ResourceStatus{
+						{
+							Name: "test.device/test",
+							Resources: []core.ResourceHealth{
+								{
+									ResourceID: "resource-1",
+									Health:     core.ResourceHealthStatusHealthy,
+								},
+							},
+						},
+						{
+							Name:      "test.device/test2",
+							Resources: []core.ResourceHealth{},
+						},
+					},
+				},
+			},
+			wantFieldErrors: field.ErrorList{
+				field.Invalid(fldPath.Index(0).Child("allocatedResourcesStatus").Index(1).Child("name"), core.ResourceName("test.device/test2"), "must match one of the container's resource requirements"),
+			},
+		},
+
+		"don't allow health status outside the known values": {
+			containers: []core.Container{
+				{
+					Name: "container-1",
+					Resources: core.ResourceRequirements{
+						Requests: core.ResourceList{
+							"test.device/test": resource.MustParse("1"),
+						},
+					},
+				},
+			},
+			containerStatuses: []core.ContainerStatus{
+				{
+					Name: "container-1",
+					AllocatedResourcesStatus: []core.ResourceStatus{
+						{
+							Name: "test.device/test",
+							Resources: []core.ResourceHealth{
+								{
+									ResourceID: "resource-1",
+									Health:     "invalid-health-value",
+								},
+							},
+						},
+					},
+				},
+			},
+			wantFieldErrors: field.ErrorList{
+				field.NotSupported(fldPath.Index(0).Child("allocatedResourcesStatus").Index(0).Child("resources").Index(0).Child("health"), core.ResourceHealthStatus("invalid-health-value"), []string{"Healthy", "Unhealthy", "Unknown"}),
+			},
+		},
+	}
+	for name, tt := range testCases {
+		t.Run(name, func(t *testing.T) {
+			errs := validateContainerStatusAllocatedResourcesStatus(tt.containerStatuses, fldPath, tt.containers)
+			if diff := cmp.Diff(tt.wantFieldErrors, errs); diff != "" {
+				t.Errorf("unexpected field errors (-want, +got):\n%s", diff)
+			}
+		})
 	}
 }
