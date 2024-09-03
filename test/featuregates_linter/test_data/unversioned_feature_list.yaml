@@ -22,12 +22,6 @@
     lockToDefault: false
     preRelease: Deprecated
     version: ""
-- name: AllowServiceLBStatusOnNonLB
-  versionedSpecs:
-  - default: false
-    lockToDefault: false
-    preRelease: Deprecated
-    version: ""
 - name: AnonymousAuthConfigurableEndpoints
   versionedSpecs:
   - default: false
@@ -863,12 +857,6 @@
     preRelease: Alpha
     version: ""
 - name: UserNamespacesSupport
-  versionedSpecs:
-  - default: false
-    lockToDefault: false
-    preRelease: Beta
-    version: ""
-- name: VolumeAttributesClass
   versionedSpecs:
   - default: false
     lockToDefault: false
