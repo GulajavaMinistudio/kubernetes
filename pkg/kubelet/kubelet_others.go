@@ -1,8 +1,7 @@
 //go:build !linux
-// +build !linux
 
 /*
-Copyright 2016 The Kubernetes Authors.
+Copyright 2024 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,10 +16,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cm
+package kubelet
 
-type unsupportedPodContainerManager struct {
-	podContainerManagerStub
+// cgroupVersionCheck performs a version check for the cgroup.
+// This method is not applicable for non-Linux operating systems.
+func (kl *Kubelet) cgroupVersionCheck() error {
+	return nil
 }
-
-var _ PodContainerManager = &unsupportedPodContainerManager{}
