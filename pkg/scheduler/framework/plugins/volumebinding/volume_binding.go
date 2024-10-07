@@ -126,7 +126,7 @@ func (pl *VolumeBinding) EventsToRegister(_ context.Context) ([]framework.Cluste
 
 		// When CSIStorageCapacity is enabled, pods may become schedulable
 		// on CSI driver & storage capacity changes.
-		{Event: framework.ClusterEvent{Resource: framework.CSIDriver, ActionType: framework.Add | framework.Update}},
+		{Event: framework.ClusterEvent{Resource: framework.CSIDriver, ActionType: framework.Update}, QueueingHintFn: pl.isSchedulableAfterCSIDriverChange},
 		{Event: framework.ClusterEvent{Resource: framework.CSIStorageCapacity, ActionType: framework.Add | framework.Update}, QueueingHintFn: pl.isSchedulableAfterCSIStorageCapacityChange},
 	}
 	return events, nil
@@ -270,6 +270,33 @@ func (pl *VolumeBinding) isSchedulableAfterCSIStorageCapacityChange(logger klog.
 	return framework.QueueSkip, nil
 }
 
+func (pl *VolumeBinding) isSchedulableAfterCSIDriverChange(logger klog.Logger, pod *v1.Pod, oldObj, newObj interface{}) (framework.QueueingHint, error) {
+	originalCSIDriver, modifiedCSIDriver, err := util.As[*storagev1.CSIDriver](oldObj, newObj)
+	if err != nil {
+		return framework.Queue, err
+	}
+
+	logger = klog.LoggerWithValues(
+		logger,
+		"Pod", klog.KObj(pod),
+		"CSIDriver", klog.KObj(modifiedCSIDriver),
+	)
+
+	for _, vol := range pod.Spec.Volumes {
+		if vol.CSI == nil || vol.CSI.Driver != modifiedCSIDriver.Name {
+			continue
+		}
+		if (originalCSIDriver.Spec.StorageCapacity != nil && *originalCSIDriver.Spec.StorageCapacity) &&
+			(modifiedCSIDriver.Spec.StorageCapacity == nil || !*modifiedCSIDriver.Spec.StorageCapacity) {
+			logger.V(5).Info("CSIDriver was updated and storage capacity got disabled, which may make the pod schedulable")
+			return framework.Queue, nil
+		}
+	}
+
+	logger.V(5).Info("CSIDriver was created or updated but it doesn't make this pod schedulable")
+	return framework.QueueSkip, nil
+}
+
 // podHasPVCs returns 2 values:
 // - the first one to denote if the given "pod" has any PVC defined.
 // - the second one to return any error if the requested PVC is illegal.
@@ -341,14 +368,6 @@ func (pl *VolumeBinding) PreFilter(ctx context.Context, state *framework.CycleSt
 		status.AppendReason("pod has unbound immediate PersistentVolumeClaims")
 		return nil, status
 	}
-	// Attempt to reduce down the number of nodes to consider in subsequent scheduling stages if pod has bound claims.
-	var result *framework.PreFilterResult
-	if eligibleNodes := pl.Binder.GetEligibleNodes(logger, podVolumeClaims.boundClaims); eligibleNodes != nil {
-		result = &framework.PreFilterResult{
-			NodeNames: eligibleNodes,
-		}
-	}
-
 	state.Write(stateKey, &stateData{
 		podVolumesByNode: make(map[string]*PodVolumes),
 		podVolumeClaims: &PodVolumeClaims{
@@ -357,7 +376,7 @@ func (pl *VolumeBinding) PreFilter(ctx context.Context, state *framework.CycleSt
 			unboundVolumesDelayBinding: podVolumeClaims.unboundVolumesDelayBinding,
 		},
 	})
-	return result, nil
+	return nil, nil
 }
 
 // PreFilterExtensions returns prefilter extensions, pod add and remove.

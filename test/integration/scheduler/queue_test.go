@@ -23,9 +23,11 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -38,6 +40,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
+	"k8s.io/component-helpers/storage/volume"
 	"k8s.io/klog/v2"
 	configv1 "k8s.io/kube-scheduler/config/v1"
 	apiservertesting "k8s.io/kubernetes/cmd/kube-apiserver/app/testing"
@@ -188,12 +191,18 @@ func TestSchedulingGates(t *testing.T) {
 func TestCoreResourceEnqueue(t *testing.T) {
 	tests := []struct {
 		name string
-		// initialNode is the Node to be created at first.
+		// initialNodes is the list of Nodes to be created at first.
 		initialNodes []*v1.Node
 		// initialPods is the list of Pods to be created at first if it's not empty.
 		// Note that the scheduler won't schedule those Pods,
 		// meaning, those Pods should be already scheduled basically; they should have .spec.nodename.
 		initialPods []*v1.Pod
+		// initialPVCs are the list of PersistentVolumeClaims to be created at first.
+		// Note that PVs are automatically created following PVCs.
+		// Also, the namespace of pvcs is automatically filled in.
+		initialPVCs []*v1.PersistentVolumeClaim
+		// initialPVs are the list of PersistentVolume to be created at first.
+		initialPVs []*v1.PersistentVolume
 		// pods are the list of Pods to be created.
 		// All of them are expected to be unschedulable at first.
 		pods []*v1.Pod
@@ -271,7 +280,48 @@ func TestCoreResourceEnqueue(t *testing.T) {
 				// It causes pod1 to be requeued.
 				// It causes pod2 not to be requeued.
 				if _, err := testCtx.ClientSet.CoreV1().Nodes().Update(testCtx.Ctx, st.MakeNode().Name("fake-node1").Label("group", "b").Obj(), metav1.UpdateOptions{}); err != nil {
-					return fmt.Errorf("failed to remove taints off the node: %w", err)
+					return fmt.Errorf("failed to update the pod: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods: sets.New("pod1"),
+		},
+		{
+			name: "Pod rejected by the NodeAffinity plugin is not requeued when an updated Node haven't changed the 'match' verdict",
+			initialNodes: []*v1.Node{
+				st.MakeNode().Name("node1").Label("group", "a").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Obj(),
+				st.MakeNode().Name("node2").Label("group", "b").Obj()},
+			pods: []*v1.Pod{
+				// - The initial pod would be accepted by the NodeAffinity plugin for node1, but will be blocked by the NodeResources plugin.
+				// - The pod will be blocked by the NodeAffinity plugin for node2, therefore we know NodeAffinity will be queried for qhint for both testing nodes.
+				st.MakePod().Name("pod1").NodeAffinityIn("group", []string{"a"}, st.NodeSelectorTypeMatchExpressions).Req(map[v1.ResourceName]string{v1.ResourceCPU: "4"}).Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger a NodeUpdate event to add new label.
+				// It won't cause pod to be requeued, because there was a match already before the update, meaning this plugin wasn't blocking the scheduling.
+				if _, err := testCtx.ClientSet.CoreV1().Nodes().Update(testCtx.Ctx, st.MakeNode().Name("node1").Label("group", "a").Label("node", "fake-node").Obj(), metav1.UpdateOptions{}); err != nil {
+					return fmt.Errorf("failed to update the pod: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods:          sets.Set[string]{},
+			enableSchedulingQueueHint: []bool{true},
+		},
+		{
+			name:         "Pod rejected by the NodeAffinity plugin is requeued when a Node is added",
+			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node1").Label("group", "a").Obj()},
+			pods: []*v1.Pod{
+				// - Pod1 will be rejected by the NodeAffinity plugin.
+				st.MakePod().Name("pod1").NodeAffinityIn("group", []string{"b"}, st.NodeSelectorTypeMatchExpressions).Container("image").Obj(),
+				// - Pod2 will be rejected by the NodeAffinity plugin.
+				st.MakePod().Name("pod2").NodeAffinityIn("group", []string{"c"}, st.NodeSelectorTypeMatchExpressions).Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger a NodeAdd event with the awaited label.
+				// It causes pod1 to be requeued.
+				// It causes pod2 not to be requeued.
+				if _, err := testCtx.ClientSet.CoreV1().Nodes().Create(testCtx.Ctx, st.MakeNode().Name("fake-node2").Label("group", "b").Obj(), metav1.CreateOptions{}); err != nil {
+					return fmt.Errorf("failed to update the pod: %w", err)
 				}
 				return nil
 			},
@@ -295,7 +345,7 @@ func TestCoreResourceEnqueue(t *testing.T) {
 			wantRequeuedPods: sets.New("pod1"),
 		},
 		{
-			name:         "Pod got resource scaled down requeued to activeQ",
+			name:         "Pod rejected by the NodeResourcesFit plugin is requeued when the Pod is updated to scale down",
 			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Obj()},
 			pods: []*v1.Pod{
 				// - Pod1 requests a large amount of CPU and will be rejected by the NodeResourcesFit plugin.
@@ -310,6 +360,129 @@ func TestCoreResourceEnqueue(t *testing.T) {
 				return nil
 			},
 			wantRequeuedPods: sets.New("pod1"),
+		},
+		{
+			name:         "Pod rejected by the NodeResourcesFit plugin is requeued when a Pod is deleted",
+			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Obj()},
+			initialPods: []*v1.Pod{
+				st.MakePod().Name("pod1").Req(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Container("image").Node("fake-node").Obj(),
+			},
+			pods: []*v1.Pod{
+				// - Pod2 request will be rejected because there are not enough free resources on the Node
+				st.MakePod().Name("pod2").Req(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger an assigned Pod1 delete event.
+				// It makes Pod2 schedulable.
+				if err := testCtx.ClientSet.CoreV1().Pods(testCtx.NS.Name).Delete(testCtx.Ctx, "pod1", metav1.DeleteOptions{GracePeriodSeconds: new(int64)}); err != nil {
+					return fmt.Errorf("failed to delete pod1: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods: sets.New("pod2"),
+		},
+		{
+			name:         "Pod rejected by the NodeResourcesFit plugin is requeued when a Node is created",
+			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node1").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Obj()},
+			pods: []*v1.Pod{
+				// - Pod1 requests a large amount of CPU and will be rejected by the NodeResourcesFit plugin.
+				st.MakePod().Name("pod1").Req(map[v1.ResourceName]string{v1.ResourceCPU: "4"}).Container("image").Obj(),
+				// - Pod2 requests a large amount of CPU and will be rejected by the NodeResourcesFit plugin.
+				st.MakePod().Name("pod2").Req(map[v1.ResourceName]string{v1.ResourceCPU: "5"}).Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger a NodeCreated event.
+				// It makes Pod1 schedulable. Pod2 is not requeued because of having too high requests.
+				node := st.MakeNode().Name("fake-node2").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "4"}).Obj()
+				if _, err := testCtx.ClientSet.CoreV1().Nodes().Create(testCtx.Ctx, node, metav1.CreateOptions{}); err != nil {
+					return fmt.Errorf("failed to create a new node: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods: sets.New("pod1"),
+		},
+		{
+			name:         "Pod rejected by the NodeResourcesFit plugin is requeued when a Node is updated",
+			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Obj()},
+			pods: []*v1.Pod{
+				// - Pod1 requests a large amount of CPU and will be rejected by the NodeResourcesFit plugin.
+				st.MakePod().Name("pod1").Req(map[v1.ResourceName]string{v1.ResourceCPU: "4"}).Container("image").Obj(),
+				// - Pod2 requests a large amount of CPU and will be rejected by the NodeResourcesFit plugin.
+				st.MakePod().Name("pod2").Req(map[v1.ResourceName]string{v1.ResourceCPU: "5"}).Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger a NodeUpdate event that increases the CPU capacity of fake-node.
+				// It makes Pod1 schedulable. Pod2 is not requeued because of having too high requests.
+				if _, err := testCtx.ClientSet.CoreV1().Nodes().UpdateStatus(testCtx.Ctx, st.MakeNode().Name("fake-node").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "4"}).Obj(), metav1.UpdateOptions{}); err != nil {
+					return fmt.Errorf("failed to update fake-node: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods: sets.New("pod1"),
+		},
+		{
+			name: "Pod rejected by the NodeResourcesFit plugin isn't requeued when a Node is updated without increase in the requested resources",
+			initialNodes: []*v1.Node{
+				st.MakeNode().Name("fake-node1").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "4"}).Obj(),
+				st.MakeNode().Name("fake-node2").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Label("group", "b").Obj(),
+			},
+			pods: []*v1.Pod{
+				// - Pod1 requests available amount of CPU (in fake-node1), but will be rejected by NodeAffinity plugin. Note that the NodeResourceFit plugin will register for QHints because it rejected fake-node2.
+				st.MakePod().Name("pod1").Req(map[v1.ResourceName]string{v1.ResourceCPU: "4"}).NodeAffinityIn("group", []string{"b"}, st.NodeSelectorTypeMatchExpressions).Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger a NodeUpdate event that increases unrealted (not requested) memory capacity of fake-node1, which should not requeue Pod1.
+				if _, err := testCtx.ClientSet.CoreV1().Nodes().UpdateStatus(testCtx.Ctx, st.MakeNode().Name("fake-node1").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "4", v1.ResourceMemory: "4000"}).Obj(), metav1.UpdateOptions{}); err != nil {
+					return fmt.Errorf("failed to update fake-node: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods:          sets.Set[string]{},
+			enableSchedulingQueueHint: []bool{true},
+		},
+		{
+			name: "Pod rejected by the NodeResourcesFit plugin is requeued when a Node is updated with increase in the requested resources",
+			initialNodes: []*v1.Node{
+				st.MakeNode().Name("fake-node1").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "4"}).Obj(),
+				st.MakeNode().Name("fake-node2").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Label("group", "b").Obj(),
+			},
+			pods: []*v1.Pod{
+				// - Pod1 requests available amount of CPU (in fake-node1), but will be rejected by NodeAffinity plugin. Note that the NodeResourceFit plugin will register for QHints because it rejected fake-node2.
+				st.MakePod().Name("pod1").Req(map[v1.ResourceName]string{v1.ResourceCPU: "4"}).NodeAffinityIn("group", []string{"b"}, st.NodeSelectorTypeMatchExpressions).Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger a NodeUpdate event that increases the requested CPU capacity of fake-node1, which should requeue Pod1.
+				if _, err := testCtx.ClientSet.CoreV1().Nodes().UpdateStatus(testCtx.Ctx, st.MakeNode().Name("fake-node1").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "5"}).Obj(), metav1.UpdateOptions{}); err != nil {
+					return fmt.Errorf("failed to update fake-node: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods:          sets.New("pod1"),
+			enableSchedulingQueueHint: []bool{true},
+		},
+		{
+			name: "Pod rejected by the NodeResourcesFit plugin is requeued when a Node is updated with increase in the allowed pods number",
+			initialNodes: []*v1.Node{
+				st.MakeNode().Name("fake-node1").Capacity(map[v1.ResourceName]string{v1.ResourcePods: "2"}).Obj(),
+				st.MakeNode().Name("fake-node2").Capacity(map[v1.ResourceName]string{v1.ResourcePods: "1"}).Label("group", "b").Obj(),
+			},
+			initialPods: []*v1.Pod{
+				// - Pod1 will be scheduled on fake-node2 because of the affinity label.
+				st.MakePod().Name("pod1").NodeAffinityIn("group", []string{"b"}, st.NodeSelectorTypeMatchExpressions).Container("image").Node("fake-node2").Obj(),
+			},
+			pods: []*v1.Pod{
+				// - Pod2 is unschedulable because Pod1 saturated ResourcePods limit in fake-node2. Note that the NodeResourceFit plugin will register for QHints because it rejected fake-node2.
+				st.MakePod().Name("pod2").NodeAffinityIn("group", []string{"b"}, st.NodeSelectorTypeMatchExpressions).Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger a NodeUpdate event that increases the allowed Pods number of fake-node1, which should requeue Pod2.
+				if _, err := testCtx.ClientSet.CoreV1().Nodes().UpdateStatus(testCtx.Ctx, st.MakeNode().Name("fake-node1").Capacity(map[v1.ResourceName]string{v1.ResourcePods: "3"}).Obj(), metav1.UpdateOptions{}); err != nil {
+					return fmt.Errorf("failed to update fake-node: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods:          sets.New("pod2"),
+			enableSchedulingQueueHint: []bool{true},
 		},
 		{
 			name:         "Updating pod condition doesn't retry scheduling if the Pod was rejected by TaintToleration",
@@ -377,27 +550,6 @@ func TestCoreResourceEnqueue(t *testing.T) {
 
 				return nil
 			},
-		},
-		{
-			name:         "Pods with PodTopologySpread should be requeued when a Pod with matching label is scheduled",
-			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node").Label("node", "fake-node").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Obj()},
-			initialPods: []*v1.Pod{
-				st.MakePod().Name("pod1").Label("key", "val").Container("image").Node("fake-node").Obj(),
-			},
-			pods: []*v1.Pod{
-				// - Pod2 will be rejected by the PodTopologySpread plugin.
-				st.MakePod().Name("pod2").Label("key", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key").Obj(), ptr.To(int32(3)), nil, nil, nil).Container("image").Obj(),
-			},
-			triggerFn: func(testCtx *testutils.TestContext) error {
-				// Trigger an assigned Pod add event.
-				pod := st.MakePod().Name("pod3").Label("key", "val").Node("fake-node").Container("image").Obj()
-				if _, err := testCtx.ClientSet.CoreV1().Pods(testCtx.NS.Name).Create(testCtx.Ctx, pod, metav1.CreateOptions{}); err != nil {
-					return fmt.Errorf("failed to create Pod %q: %w", pod.Name, err)
-				}
-
-				return nil
-			},
-			wantRequeuedPods: sets.New("pod2"),
 		},
 		{
 			name:         "Pod rejected by the PodAffinity plugin is requeued when deleting the existed pod's label to make it match the podAntiAffinity",
@@ -507,6 +659,578 @@ func TestCoreResourceEnqueue(t *testing.T) {
 			wantRequeuedPods:          sets.New("pod2"),
 			enableSchedulingQueueHint: []bool{true},
 		},
+		{
+			name:         "Pod rejected by the NodeUnschedulable plugin is requeued when the node is turned to ready",
+			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node").Unschedulable(true).Obj()},
+			pods: []*v1.Pod{
+				st.MakePod().Name("pod1").Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger a NodeUpdate event to change the Node to ready.
+				// It makes Pod1 schedulable.
+				if _, err := testCtx.ClientSet.CoreV1().Nodes().Update(testCtx.Ctx, st.MakeNode().Name("fake-node").Unschedulable(false).Obj(), metav1.UpdateOptions{}); err != nil {
+					return fmt.Errorf("failed to update the node: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods: sets.New("pod1"),
+		},
+		{
+			name:         "Pod rejected by the NodeUnschedulable plugin is requeued when a new node is created",
+			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node1").Unschedulable(true).Obj()},
+			pods: []*v1.Pod{
+				st.MakePod().Name("pod1").Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger a NodeCreated event.
+				// It makes Pod1 schedulable.
+				node := st.MakeNode().Name("fake-node2").Obj()
+				if _, err := testCtx.ClientSet.CoreV1().Nodes().Create(testCtx.Ctx, node, metav1.CreateOptions{}); err != nil {
+					return fmt.Errorf("failed to create a new node: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods: sets.New("pod1"),
+		},
+		{
+			name:         "Pod rejected by the NodeUnschedulable plugin isn't requeued when another unschedulable node is created",
+			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node1").Unschedulable(true).Obj()},
+			pods: []*v1.Pod{
+				st.MakePod().Name("pod1").Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger a NodeCreated event, but with unschedulable node, which wouldn't make Pod1 schedulable.
+				node := st.MakeNode().Name("fake-node2").Unschedulable(true).Obj()
+				if _, err := testCtx.ClientSet.CoreV1().Nodes().Create(testCtx.Ctx, node, metav1.CreateOptions{}); err != nil {
+					return fmt.Errorf("failed to create a new node: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods: sets.Set[string]{},
+			// This test case is valid only when QHint is enabled
+			// because QHint filters out a node creation made in triggerFn.
+			enableSchedulingQueueHint: []bool{true},
+		},
+		{
+			name:         "Pods with PodTopologySpread should be requeued when a Pod with matching label is scheduled",
+			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node").Label("node", "fake-node").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Obj()},
+			initialPods: []*v1.Pod{
+				st.MakePod().Name("pod1").Label("key1", "val").Container("image").Node("fake-node").Obj(),
+				st.MakePod().Name("pod2").Label("key2", "val").Container("image").Node("fake-node").Obj(),
+			},
+			pods: []*v1.Pod{
+				// - Pod3 and Pod4 will be rejected by the PodTopologySpread plugin.
+				st.MakePod().Name("pod3").Label("key1", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), ptr.To(int32(3)), nil, nil, nil).Container("image").Obj(),
+				st.MakePod().Name("pod4").Label("key2", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key2").Obj(), ptr.To(int32(3)), nil, nil, nil).Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger an assigned Pod add event.
+				// It should requeue pod3 only because this pod only has key1 label that pod3's topologyspread checks, and doesn't have key2 label that pod4's one does.
+				pod := st.MakePod().Name("pod5").Label("key1", "val").Node("fake-node").Container("image").Obj()
+				if _, err := testCtx.ClientSet.CoreV1().Pods(testCtx.NS.Name).Create(testCtx.Ctx, pod, metav1.CreateOptions{}); err != nil {
+					return fmt.Errorf("failed to create Pod %q: %w", pod.Name, err)
+				}
+
+				return nil
+			},
+			wantRequeuedPods:          sets.New("pod3"),
+			enableSchedulingQueueHint: []bool{true},
+		},
+		{
+			name:         "Pods with PodTopologySpread should be requeued when a scheduled Pod label is updated to match the selector",
+			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node").Label("node", "fake-node").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Obj()},
+			initialPods: []*v1.Pod{
+				st.MakePod().Name("pod1").Label("key1", "val").Container("image").Node("fake-node").Obj(),
+				st.MakePod().Name("pod2").Label("key2", "val").Container("image").Node("fake-node").Obj(),
+			},
+			pods: []*v1.Pod{
+				// - Pod3 and Pod4 will be rejected by the PodTopologySpread plugin.
+				st.MakePod().Name("pod3").Label("key1", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), ptr.To(int32(3)), nil, nil, nil).Container("image").Obj(),
+				st.MakePod().Name("pod4").Label("key2", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key2").Obj(), ptr.To(int32(3)), nil, nil, nil).Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger an assigned Pod update event.
+				// It should requeue pod3 only because this updated pod had key1 label,
+				// and it's related only to the label selector that pod3's topologyspread has.
+				if _, err := testCtx.ClientSet.CoreV1().Pods(testCtx.NS.Name).Update(testCtx.Ctx, st.MakePod().Name("pod1").Label("key3", "val").Container("image").Node("fake-node").Obj(), metav1.UpdateOptions{}); err != nil {
+					return fmt.Errorf("failed to update the pod: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods:          sets.New("pod3"),
+			enableSchedulingQueueHint: []bool{true},
+		},
+		{
+			name:         "Pods with PodTopologySpread should be requeued when a scheduled Pod with matching label is deleted",
+			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node").Label("node", "fake-node").Capacity(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Obj()},
+			initialPods: []*v1.Pod{
+				st.MakePod().Name("pod1").Label("key1", "val").Container("image").Node("fake-node").Obj(),
+				st.MakePod().Name("pod2").Label("key2", "val").Container("image").Node("fake-node").Obj(),
+			},
+			pods: []*v1.Pod{
+				// - Pod3 and Pod4 will be rejected by the PodTopologySpread plugin.
+				st.MakePod().Name("pod3").Label("key1", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), ptr.To(int32(2)), nil, nil, nil).Container("image").Obj(),
+				st.MakePod().Name("pod4").Label("key2", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key2").Obj(), ptr.To(int32(3)), nil, nil, nil).Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger an assigned Pod delete event.
+				// It should requeue pod3 only because this pod only has key1 label that pod3's topologyspread checks, and doesn't have key2 label that pod4's one does.
+				if err := testCtx.ClientSet.CoreV1().Pods(testCtx.NS.Name).Delete(testCtx.Ctx, "pod1", metav1.DeleteOptions{GracePeriodSeconds: new(int64)}); err != nil {
+					return fmt.Errorf("failed to delete Pod: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods:          sets.New("pod3"),
+			enableSchedulingQueueHint: []bool{true},
+		},
+		{
+			name: "Pods with PodTopologySpread should be requeued when a Node with topology label is created",
+			initialNodes: []*v1.Node{
+				st.MakeNode().Name("fake-node1").Label("node", "fake-node").Obj(),
+				st.MakeNode().Name("fake-node2").Label("zone", "fake-zone").Obj(),
+			},
+			initialPods: []*v1.Pod{
+				st.MakePod().Name("pod1").Label("key1", "val").Container("image").Node("fake-node1").Obj(),
+				st.MakePod().Name("pod2").Label("key1", "val").Container("image").Node("fake-node2").Obj(),
+			},
+			pods: []*v1.Pod{
+				// - Pod3 and Pod4 will be rejected by the PodTopologySpread plugin.
+				st.MakePod().Name("pod3").Label("key1", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), ptr.To(int32(2)), nil, nil, nil).Container("image").Obj(),
+				st.MakePod().Name("pod4").Label("key1", "val").SpreadConstraint(1, "zone", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), ptr.To(int32(2)), nil, nil, nil).Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger an Node add event.
+				// It should requeue pod3 only because this node only has node label, and doesn't have zone label that pod4's topologyspread requires.
+				node := st.MakeNode().Name("fake-node3").Label("node", "fake-node").Obj()
+				if _, err := testCtx.ClientSet.CoreV1().Nodes().Create(testCtx.Ctx, node, metav1.CreateOptions{}); err != nil {
+					return fmt.Errorf("failed to create a new node: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods:          sets.New("pod3"),
+			enableSchedulingQueueHint: []bool{true},
+		},
+		{
+			name: "Pods with PodTopologySpread should be requeued when a Node is updated to have the topology label",
+			initialNodes: []*v1.Node{
+				st.MakeNode().Name("fake-node1").Label("node", "fake-node").Obj(),
+				st.MakeNode().Name("fake-node2").Label("node", "fake-node").Obj(),
+			},
+			initialPods: []*v1.Pod{
+				st.MakePod().Name("pod1").Label("key1", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), nil, nil, nil, nil).Container("image").Node("fake-node1").Obj(),
+				st.MakePod().Name("pod2").Label("key1", "val").SpreadConstraint(1, "zone", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), nil, nil, nil, nil).Container("image").Node("fake-node2").Obj(),
+			},
+			pods: []*v1.Pod{
+				// - Pod3 and Pod4 will be rejected by the PodTopologySpread plugin.
+				st.MakePod().Name("pod3").Label("key1", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), ptr.To(int32(3)), nil, nil, nil).Container("image").Obj(),
+				st.MakePod().Name("pod4").Label("key1", "val").SpreadConstraint(1, "zone", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), ptr.To(int32(3)), nil, nil, nil).Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger an Node update event.
+				// It should requeue pod4 only because this node only has zone label, and doesn't have node label that pod3 requires.
+				node := st.MakeNode().Name("fake-node2").Label("zone", "fake-node").Obj()
+				if _, err := testCtx.ClientSet.CoreV1().Nodes().Update(testCtx.Ctx, node, metav1.UpdateOptions{}); err != nil {
+					return fmt.Errorf("failed to update node: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods:          sets.New("pod4"),
+			enableSchedulingQueueHint: []bool{true},
+		},
+		{
+			name: "Pods with PodTopologySpread should be requeued when a Node with a topology label is deleted (QHint: enabled)",
+			initialNodes: []*v1.Node{
+				st.MakeNode().Name("fake-node1").Label("node", "fake-node").Obj(),
+				st.MakeNode().Name("fake-node2").Label("zone", "fake-node").Obj(),
+			},
+			initialPods: []*v1.Pod{
+				st.MakePod().Name("pod1").Label("key1", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), nil, nil, nil, nil).Container("image").Node("fake-node1").Obj(),
+				st.MakePod().Name("pod2").Label("key1", "val").SpreadConstraint(1, "zone", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), nil, nil, nil, nil).Container("image").Node("fake-node2").Obj(),
+			},
+			pods: []*v1.Pod{
+				// - Pod3 and Pod4 will be rejected by the PodTopologySpread plugin.
+				st.MakePod().Name("pod3").Label("key1", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), ptr.To(int32(3)), nil, nil, nil).Container("image").Obj(),
+				st.MakePod().Name("pod4").Label("key1", "val").SpreadConstraint(1, "zone", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), ptr.To(int32(3)), nil, nil, nil).Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger an NodeTaint delete event.
+				// It should requeue pod4 only because this node only has zone label, and doesn't have node label that pod3 requires.
+				if err := testCtx.ClientSet.CoreV1().Nodes().Delete(testCtx.Ctx, "fake-node2", metav1.DeleteOptions{}); err != nil {
+					return fmt.Errorf("failed to update node: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods:          sets.New("pod4"),
+			enableSchedulingQueueHint: []bool{true},
+		},
+		{
+			name: "Pods with PodTopologySpread should be requeued when a Node with a topology label is deleted (QHint: disabled)",
+			initialNodes: []*v1.Node{
+				st.MakeNode().Name("fake-node1").Label("node", "fake-node").Obj(),
+				st.MakeNode().Name("fake-node2").Label("zone", "fake-node").Obj(),
+			},
+			initialPods: []*v1.Pod{
+				st.MakePod().Name("pod1").Label("key1", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), nil, nil, nil, nil).Container("image").Node("fake-node1").Obj(),
+				st.MakePod().Name("pod2").Label("key1", "val").SpreadConstraint(1, "zone", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), nil, nil, nil, nil).Container("image").Node("fake-node2").Obj(),
+			},
+			pods: []*v1.Pod{
+				// - Pod3 and Pod4 will be rejected by the PodTopologySpread plugin.
+				st.MakePod().Name("pod3").Label("key1", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), ptr.To(int32(3)), nil, nil, nil).Container("image").Obj(),
+				st.MakePod().Name("pod4").Label("key1", "val").SpreadConstraint(1, "zone", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), ptr.To(int32(3)), nil, nil, nil).Container("image").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger an NodeTaint delete event.
+				// It should requeue both pod3 and pod4 only because PodTopologySpread subscribes to Node/delete events.
+				if err := testCtx.ClientSet.CoreV1().Nodes().Delete(testCtx.Ctx, "fake-node2", metav1.DeleteOptions{}); err != nil {
+					return fmt.Errorf("failed to update node: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods:          sets.New("pod3", "pod4"),
+			enableSchedulingQueueHint: []bool{false},
+		},
+		{
+			name: "Pods with PodTopologySpread should be requeued when a NodeTaint of a Node with a topology label has been updated",
+			initialNodes: []*v1.Node{
+				st.MakeNode().Name("fake-node1").Label("node", "fake-node").Obj(),
+				st.MakeNode().Name("fake-node2").Label("zone", "fake-node").Obj(),
+				st.MakeNode().Name("fake-node3").Label("zone", "fake-node").Taints([]v1.Taint{{Key: v1.TaintNodeNotReady, Effect: v1.TaintEffectNoSchedule}}).Obj(),
+			},
+			initialPods: []*v1.Pod{
+				st.MakePod().Name("pod1").Label("key1", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), nil, nil, nil, nil).Container("image").Node("fake-node1").Obj(),
+				st.MakePod().Name("pod2").Label("key1", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), nil, nil, nil, nil).Container("image").Node("fake-node2").Obj(),
+			},
+			pods: []*v1.Pod{
+				// - Pod3 and Pod4 will be rejected by the PodTopologySpread plugin.
+				st.MakePod().Name("pod3").Label("key1", "val").SpreadConstraint(1, "node", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), ptr.To(int32(3)), nil, nil, nil).Container("image").Obj(),
+				st.MakePod().Name("pod4").Label("key1", "val").SpreadConstraint(1, "zone", v1.DoNotSchedule, st.MakeLabelSelector().Exists("key1").Obj(), ptr.To(int32(3)), nil, nil, nil).Container("image").Toleration("aaa").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				// Trigger an NodeTaint update event.
+				// It should requeue pod4 only because this node only has zone label, and doesn't have node label that pod3 requires.
+				node := st.MakeNode().Name("fake-node3").Label("zone", "fake-node").Taints([]v1.Taint{{Key: "aaa", Value: "bbb", Effect: v1.TaintEffectNoSchedule}}).Obj()
+				if _, err := testCtx.ClientSet.CoreV1().Nodes().Update(testCtx.Ctx, node, metav1.UpdateOptions{}); err != nil {
+					return fmt.Errorf("failed to update node: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods: sets.New("pod4"),
+		},
+		{
+			name:         "Pod rejected with node by the VolumeZone plugin is requeued when the PV is added",
+			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node").Label("node", "fake-node").Label(v1.LabelTopologyZone, "us-west1-a").Obj()},
+			initialPVs: []*v1.PersistentVolume{
+				st.MakePersistentVolume().
+					Name("pv1").
+					Labels(map[string]string{v1.LabelTopologyZone: "us-west1-a"}).
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadOnlyMany}).
+					Capacity(v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}).
+					HostPathVolumeSource(&v1.HostPathVolumeSource{Path: "/tmp", Type: ptr.To(v1.HostPathDirectoryOrCreate)}).
+					Obj(),
+			},
+			initialPVCs: []*v1.PersistentVolumeClaim{
+				st.MakePersistentVolumeClaim().
+					Name("pvc1").
+					Annotation(volume.AnnBindCompleted, "true").
+					VolumeName("pv1").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod}).
+					Resources(v1.VolumeResourceRequirements{Requests: v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}}).
+					Obj(),
+				st.MakePersistentVolumeClaim().
+					Name("pvc2").
+					Annotation(volume.AnnBindCompleted, "true").
+					VolumeName("pv2").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod}).
+					Resources(v1.VolumeResourceRequirements{Requests: v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}}).
+					Obj(),
+			},
+			initialPods: []*v1.Pod{
+				st.MakePod().Name("pod1").Container("image").PVC("pvc1").Node("fake-node").Obj(),
+			},
+			pods: []*v1.Pod{
+				st.MakePod().Name("pod2").Container("image").PVC("pvc2").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				pv2 := st.MakePersistentVolume().Name("pv2").Label(v1.LabelTopologyZone, "us-west1-a").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadOnlyMany}).
+					Capacity(v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}).
+					HostPathVolumeSource(&v1.HostPathVolumeSource{Path: "/tmp", Type: ptr.To(v1.HostPathDirectoryOrCreate)}).
+					Obj()
+				if _, err := testCtx.ClientSet.CoreV1().PersistentVolumes().Create(testCtx.Ctx, pv2, metav1.CreateOptions{}); err != nil {
+					return fmt.Errorf("failed to create pv2: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods:          sets.New("pod2"),
+			enableSchedulingQueueHint: []bool{true},
+		},
+		{
+			name:         "Pod rejected with node by the VolumeZone plugin is requeued when the PV is updated",
+			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node").Label("node", "fake-node").Label(v1.LabelTopologyZone, "us-west1-a").Obj()},
+			initialPVs: []*v1.PersistentVolume{
+				st.MakePersistentVolume().
+					Name("pv1").
+					Labels(map[string]string{v1.LabelTopologyZone: "us-west1-a"}).
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadOnlyMany}).
+					Capacity(v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}).
+					HostPathVolumeSource(&v1.HostPathVolumeSource{Path: "/tmp", Type: ptr.To(v1.HostPathDirectoryOrCreate)}).
+					Obj(),
+				st.MakePersistentVolume().
+					Name("pv2").
+					Labels(map[string]string{v1.LabelTopologyZone: "us-east1"}).
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadOnlyMany}).
+					Capacity(v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}).
+					HostPathVolumeSource(&v1.HostPathVolumeSource{Path: "/tmp", Type: ptr.To(v1.HostPathDirectoryOrCreate)}).
+					Obj(),
+			},
+			initialPVCs: []*v1.PersistentVolumeClaim{
+				st.MakePersistentVolumeClaim().
+					Name("pvc1").
+					Annotation(volume.AnnBindCompleted, "true").
+					VolumeName("pv1").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod}).
+					Resources(v1.VolumeResourceRequirements{Requests: v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}}).
+					Obj(),
+				st.MakePersistentVolumeClaim().
+					Name("pvc2").
+					Annotation(volume.AnnBindCompleted, "true").
+					VolumeName("pv2").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod}).
+					Resources(v1.VolumeResourceRequirements{Requests: v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}}).
+					Obj(),
+			},
+			initialPods: []*v1.Pod{
+				st.MakePod().Name("pod1").Container("image").PVC("pvc1").Node("fake-node").Obj(),
+			},
+			pods: []*v1.Pod{
+				st.MakePod().Name("pod2").Container("image").PVC("pvc2").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				pv2 := st.MakePersistentVolume().Name("pv2").Label(v1.LabelTopologyZone, "us-west1-a").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadOnlyMany}).
+					Capacity(v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}).
+					HostPathVolumeSource(&v1.HostPathVolumeSource{Path: "/tmp", Type: ptr.To(v1.HostPathDirectoryOrCreate)}).
+					Obj()
+				if _, err := testCtx.ClientSet.CoreV1().PersistentVolumes().Update(testCtx.Ctx, pv2, metav1.UpdateOptions{}); err != nil {
+					return fmt.Errorf("failed to update pv2: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods:          sets.New("pod2"),
+			enableSchedulingQueueHint: []bool{true},
+		},
+		{
+			name:         "Pod rejected with node by the VolumeZone plugin is requeued when the PVC bound to the pod is added",
+			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node").Label("node", "fake-node").Label(v1.LabelTopologyZone, "us-west1-a").Obj()},
+			initialPVs: []*v1.PersistentVolume{
+				st.MakePersistentVolume().
+					Name("pv1").
+					Labels(map[string]string{v1.LabelTopologyZone: "us-west1-a"}).
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadOnlyMany}).
+					Capacity(v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}).
+					HostPathVolumeSource(&v1.HostPathVolumeSource{Path: "/tmp", Type: ptr.To(v1.HostPathDirectoryOrCreate)}).
+					Obj(),
+				st.MakePersistentVolume().
+					Name("pv2").
+					Labels(map[string]string{v1.LabelTopologyZone: "us-east1"}).
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadOnlyMany}).
+					Capacity(v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}).
+					HostPathVolumeSource(&v1.HostPathVolumeSource{Path: "/tmp", Type: ptr.To(v1.HostPathDirectoryOrCreate)}).
+					Obj(),
+			},
+			initialPVCs: []*v1.PersistentVolumeClaim{
+				st.MakePersistentVolumeClaim().
+					Name("pvc1").
+					Annotation(volume.AnnBindCompleted, "true").
+					VolumeName("pv1").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod}).
+					Resources(v1.VolumeResourceRequirements{Requests: v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}}).
+					Obj(),
+			},
+			initialPods: []*v1.Pod{
+				st.MakePod().Name("pod1").Container("image").PVC("pvc1").Node("fake-node").Obj(),
+			},
+			pods: []*v1.Pod{
+				st.MakePod().Name("pod2").Container("image").PVC("pvc2").Obj(),
+				st.MakePod().Name("pod3").Container("image").PVC("pvc3").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				pvc2 := st.MakePersistentVolumeClaim().
+					Name("pvc2").
+					Annotation(volume.AnnBindCompleted, "true").
+					VolumeName("pv2").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod}).
+					Resources(v1.VolumeResourceRequirements{Requests: v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}}).
+					Obj()
+				if _, err := testCtx.ClientSet.CoreV1().PersistentVolumeClaims(testCtx.NS.Name).Create(testCtx.Ctx, pvc2, metav1.CreateOptions{}); err != nil {
+					return fmt.Errorf("failed to add pvc2: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods:          sets.New("pod2"),
+			enableSchedulingQueueHint: []bool{true},
+		},
+		{
+			name:         "Pod rejected with node by the VolumeZone plugin is requeued when the PVC bound to the pod is updated",
+			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node").Label("node", "fake-node").Label(v1.LabelTopologyZone, "us-west1-a").Obj()},
+			initialPVs: []*v1.PersistentVolume{
+				st.MakePersistentVolume().
+					Name("pv1").
+					Labels(map[string]string{v1.LabelTopologyZone: "us-west1-a"}).
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadOnlyMany}).
+					Capacity(v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}).
+					HostPathVolumeSource(&v1.HostPathVolumeSource{Path: "/tmp", Type: ptr.To(v1.HostPathDirectoryOrCreate)}).
+					Obj(),
+				st.MakePersistentVolume().
+					Name("pv2").
+					Labels(map[string]string{v1.LabelTopologyZone: "us-east1"}).
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadOnlyMany}).
+					Capacity(v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}).
+					HostPathVolumeSource(&v1.HostPathVolumeSource{Path: "/tmp", Type: ptr.To(v1.HostPathDirectoryOrCreate)}).
+					Obj(),
+			},
+			initialPVCs: []*v1.PersistentVolumeClaim{
+				st.MakePersistentVolumeClaim().
+					Name("pvc1").
+					Annotation(volume.AnnBindCompleted, "true").
+					VolumeName("pv1").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod}).
+					Resources(v1.VolumeResourceRequirements{Requests: v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}}).
+					Obj(),
+				st.MakePersistentVolumeClaim().
+					Name("pvc2").
+					Annotation(volume.AnnBindCompleted, "true").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod}).
+					Resources(v1.VolumeResourceRequirements{Requests: v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}}).
+					Obj(),
+			},
+			initialPods: []*v1.Pod{
+				st.MakePod().Name("pod1").Container("image").PVC("pvc1").Node("fake-node").Obj(),
+			},
+			pods: []*v1.Pod{
+				st.MakePod().Name("pod2").Container("image").PVC("pvc2").Obj(),
+				st.MakePod().Name("pod3").Container("image").PVC("pvc3").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				pvc2 := st.MakePersistentVolumeClaim().
+					Name("pvc2").
+					Annotation(volume.AnnBindCompleted, "true").
+					VolumeName("pv2").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod}).
+					Resources(v1.VolumeResourceRequirements{Requests: v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}}).
+					Obj()
+				if _, err := testCtx.ClientSet.CoreV1().PersistentVolumeClaims(testCtx.NS.Name).Update(testCtx.Ctx, pvc2, metav1.UpdateOptions{}); err != nil {
+					return fmt.Errorf("failed to update pvc2: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods:          sets.New("pod2"),
+			enableSchedulingQueueHint: []bool{true},
+		},
+		{
+			name:         "Pod rejected with node by the VolumeZone plugin is requeued when the Storage class is added",
+			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node").Label("node", "fake-node").Label(v1.LabelTopologyZone, "us-west1-a").Obj()},
+			initialPVs: []*v1.PersistentVolume{
+				st.MakePersistentVolume().
+					Name("pv1").
+					Labels(map[string]string{v1.LabelTopologyZone: "us-west1-a"}).
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadOnlyMany}).
+					Capacity(v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}).
+					HostPathVolumeSource(&v1.HostPathVolumeSource{Path: "/tmp", Type: ptr.To(v1.HostPathDirectoryOrCreate)}).
+					Obj(),
+			},
+			initialPVCs: []*v1.PersistentVolumeClaim{
+				st.MakePersistentVolumeClaim().
+					Name("pvc1").
+					Annotation(volume.AnnBindCompleted, "true").
+					VolumeName("pv1").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod}).
+					Resources(v1.VolumeResourceRequirements{Requests: v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}}).
+					Obj(),
+				st.MakePersistentVolumeClaim().
+					Name("pvc2").
+					Annotation(volume.AnnBindCompleted, "true").
+					VolumeName("pv2").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod}).
+					Resources(v1.VolumeResourceRequirements{Requests: v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}}).
+					Obj(),
+			},
+			initialPods: []*v1.Pod{
+				st.MakePod().Name("pod1").Container("image").PVC("pvc1").Node("fake-node").Obj(),
+			},
+			pods: []*v1.Pod{
+				st.MakePod().Name("pod2").Container("image").PVC("pvc2").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				sc1 := st.MakeStorageClass().
+					Name("sc1").
+					VolumeBindingMode(storagev1.VolumeBindingWaitForFirstConsumer).
+					Provisioner("p").
+					Obj()
+				if _, err := testCtx.ClientSet.StorageV1().StorageClasses().Create(testCtx.Ctx, sc1, metav1.CreateOptions{}); err != nil {
+					return fmt.Errorf("failed to create sc1: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods:          sets.New("pod2"),
+			enableSchedulingQueueHint: []bool{true},
+		},
+		{
+			name:         "Pod rejected with node by the VolumeZone plugin is not requeued when the PV is updated but the topology is same",
+			initialNodes: []*v1.Node{st.MakeNode().Name("fake-node").Label("node", "fake-node").Label(v1.LabelTopologyZone, "us-west1-a").Obj()},
+			initialPVs: []*v1.PersistentVolume{
+				st.MakePersistentVolume().
+					Name("pv1").
+					Labels(map[string]string{v1.LabelTopologyZone: "us-west1-a"}).
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadOnlyMany}).
+					Capacity(v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}).
+					HostPathVolumeSource(&v1.HostPathVolumeSource{Path: "/tmp", Type: ptr.To(v1.HostPathDirectoryOrCreate)}).
+					Obj(),
+				st.MakePersistentVolume().
+					Name("pv2").
+					Labels(map[string]string{v1.LabelTopologyZone: "us-east1"}).
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadOnlyMany}).
+					Capacity(v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}).
+					HostPathVolumeSource(&v1.HostPathVolumeSource{Path: "/tmp", Type: ptr.To(v1.HostPathDirectoryOrCreate)}).
+					Obj(),
+			},
+			initialPVCs: []*v1.PersistentVolumeClaim{
+				st.MakePersistentVolumeClaim().
+					Name("pvc1").
+					Annotation(volume.AnnBindCompleted, "true").
+					VolumeName("pv1").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod}).
+					Resources(v1.VolumeResourceRequirements{Requests: v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}}).
+					Obj(),
+				st.MakePersistentVolumeClaim().
+					Name("pvc2").
+					Annotation(volume.AnnBindCompleted, "true").
+					VolumeName("pv2").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod}).
+					Resources(v1.VolumeResourceRequirements{Requests: v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}}).
+					Obj(),
+			},
+			initialPods: []*v1.Pod{
+				st.MakePod().Name("pod1").Container("image").PVC("pvc1").Node("fake-node").Obj(),
+			},
+			pods: []*v1.Pod{
+				st.MakePod().Name("pod2").Container("image").PVC("pvc2").Obj(),
+			},
+			triggerFn: func(testCtx *testutils.TestContext) error {
+				pv2 := st.MakePersistentVolume().Name("pv2").
+					Labels(map[string]string{v1.LabelTopologyZone: "us-east1", "unrelated": "unrelated"}).
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadOnlyMany}).
+					Capacity(v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}).
+					HostPathVolumeSource(&v1.HostPathVolumeSource{Path: "/tmp", Type: ptr.To(v1.HostPathDirectoryOrCreate)}).
+					Obj()
+				if _, err := testCtx.ClientSet.CoreV1().PersistentVolumes().Update(testCtx.Ctx, pv2, metav1.UpdateOptions{}); err != nil {
+					return fmt.Errorf("failed to update pv2: %w", err)
+				}
+				return nil
+			},
+			wantRequeuedPods:          sets.Set[string]{},
+			enableSchedulingQueueHint: []bool{true},
+		},
 	}
 
 	for _, tt := range tests {
@@ -541,6 +1265,19 @@ func TestCoreResourceEnqueue(t *testing.T) {
 					}
 				}
 
+				for _, pv := range tt.initialPVs {
+					if _, err := testutils.CreatePV(cs, pv); err != nil {
+						t.Fatalf("Failed to create a PV %q: %v", pv.Name, err)
+					}
+				}
+
+				for _, pvc := range tt.initialPVCs {
+					pvc.Namespace = ns
+					if _, err := testutils.CreatePVC(cs, pvc); err != nil {
+						t.Fatalf("Failed to create a PVC %q: %v", pvc.Name, err)
+					}
+				}
+
 				for _, pod := range tt.initialPods {
 					if _, err := cs.CoreV1().Pods(ns).Create(ctx, pod, metav1.CreateOptions{}); err != nil {
 						t.Fatalf("Failed to create an initial Pod %q: %v", pod.Name, err)
@@ -553,22 +1290,27 @@ func TestCoreResourceEnqueue(t *testing.T) {
 					}
 				}
 
-				// Wait for the tt.pods to be present in the scheduling queue.
+				// Wait for the tt.pods to be present in the scheduling active queue.
 				if err := wait.PollUntilContextTimeout(ctx, time.Millisecond*200, wait.ForeverTestTimeout, false, func(ctx context.Context) (bool, error) {
 					pendingPods, _ := testCtx.Scheduler.SchedulingQueue.PendingPods()
-					return len(pendingPods) == len(tt.pods), nil
+					return len(pendingPods) == len(tt.pods) && len(testCtx.Scheduler.SchedulingQueue.PodsInActiveQ()) == len(tt.pods), nil
 				}); err != nil {
 					t.Fatal(err)
 				}
 
 				t.Log("Confirmed Pods in the scheduling queue, starting to schedule them")
 
-				// Pop all pods out. They should be unschedulable.
+				// Pop all pods out. They should become unschedulable.
 				for i := 0; i < len(tt.pods); i++ {
 					testCtx.Scheduler.ScheduleOne(testCtx.Ctx)
 				}
-				// Wait for the tt.pods to be still present in the scheduling queue.
+				// Wait for the tt.pods to be still present in the scheduling (unschedulable) queue.
 				if err := wait.PollUntilContextTimeout(ctx, time.Millisecond*200, wait.ForeverTestTimeout, false, func(ctx context.Context) (bool, error) {
+					activePodsCount := len(testCtx.Scheduler.SchedulingQueue.PodsInActiveQ())
+					if activePodsCount > 0 {
+						return false, fmt.Errorf("Active queue was expected to be empty, but found %v Pods", activePodsCount)
+					}
+
 					pendingPods, _ := testCtx.Scheduler.SchedulingQueue.PendingPods()
 					return len(pendingPods) == len(tt.pods), nil
 				}); err != nil {

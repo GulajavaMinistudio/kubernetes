@@ -17,9 +17,7 @@ limitations under the License.
 package features
 
 import (
-	apiextensionsfeatures "k8s.io/apiextensions-apiserver/pkg/features"
 	"k8s.io/apimachinery/pkg/util/runtime"
-	genericfeatures "k8s.io/apiserver/pkg/features"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	clientfeatures "k8s.io/client-go/features"
 	"k8s.io/component-base/featuregate"
@@ -38,19 +36,18 @@ const (
 	// of code conflicts because changes are more likely to be scattered
 	// across the file.
 
-	// owner: @ttakahashi21 @mkimuram
-	// kep: https://kep.k8s.io/3294
-	// alpha: v1.26
-	//
-	// Enable usage of Provision of PVCs from snapshots in other namespaces
-	CrossNamespaceVolumeDataSource featuregate.Feature = "CrossNamespaceVolumeDataSource"
-
 	// owner: @aojea
 	// Deprecated: v1.31
 	//
 	// Allow kubelet to request a certificate without any Node IP available, only
 	// with DNS names.
 	AllowDNSOnlyNodeCSR featuregate.Feature = "AllowDNSOnlyNodeCSR"
+
+	// owner: @HirazawaUi
+	// Deprecated: v1.32
+	//
+	// Allow spec.terminationGracePeriodSeconds to be overridden by MaxPodGracePeriodSeconds in soft evictions.
+	AllowOverwriteTerminationGracePeriodSeconds featuregate.Feature = "AllowOverwriteTerminationGracePeriodSeconds"
 
 	// owner: @bswartz
 	// alpha: v1.18
@@ -159,12 +156,6 @@ const (
 	// Enables kubelet to detect CSI volume condition and send the event of the abnormal volume to the corresponding pod that is using it.
 	CSIVolumeHealth featuregate.Feature = "CSIVolumeHealth"
 
-	// owner: @nckturner
-	// kep:  http://kep.k8s.io/2699
-	// alpha: v1.27
-	// Enable webhooks in cloud controller manager
-	CloudControllerManagerWebhook featuregate.Feature = "CloudControllerManagerWebhook"
-
 	// owner: @adrianreber
 	// kep: https://kep.k8s.io/2008
 	// alpha: v1.25
@@ -177,6 +168,13 @@ const (
 	// beta: v1.28
 	// Set the scheduled time as an annotation in the job.
 	CronJobsScheduledAnnotation featuregate.Feature = "CronJobsScheduledAnnotation"
+
+	// owner: @ttakahashi21 @mkimuram
+	// kep: https://kep.k8s.io/3294
+	// alpha: v1.26
+	//
+	// Enable usage of Provision of PVCs from snapshots in other namespaces
+	CrossNamespaceVolumeDataSource featuregate.Feature = "CrossNamespaceVolumeDataSource"
 
 	// owner: @elezar
 	// kep: http://kep.k8s.io/4009
@@ -228,7 +226,9 @@ const (
 
 	// owner: @HirazawaUi
 	// kep: http://kep.k8s.io/4004
-	// Deprecated: v1.29 (default off)
+	// alpha: v1.29
+	// Deprecated: v1.31 (default off)
+	//
 	// DisableNodeKubeProxyVersion disable the status.nodeInfo.kubeProxyVersion field of v1.Node
 	DisableNodeKubeProxyVersion featuregate.Feature = "DisableNodeKubeProxyVersion"
 
@@ -610,6 +610,14 @@ const (
 	// Allow users to recover from volume expansion failure
 	RecoverVolumeExpansionFailure featuregate.Feature = "RecoverVolumeExpansionFailure"
 
+	// owner: @AkihiroSuda
+	// kep: https://kep.k8s.io/3857
+	// alpha: v1.30
+	// beta: v1.31
+	//
+	// Allows recursive read-only mounts.
+	RecursiveReadOnlyMounts featuregate.Feature = "RecursiveReadOnlyMounts"
+
 	// owner: @adrianmoisey
 	// kep: https://kep.k8s.io/4427
 	// alpha: v1.32
@@ -753,6 +761,12 @@ const (
 	//
 	// Enables a StatefulSet to start from an arbitrary non zero ordinal
 	StatefulSetStartOrdinal featuregate.Feature = "StatefulSetStartOrdinal"
+
+	// owner: @ahutsunshine
+	// beta: v1.30
+	//
+	// Allows namespace indexer for namespace scope resources in apiserver cache to accelerate list operations.
+	StorageNamespaceIndex featuregate.Feature = "StorageNamespaceIndex"
 
 	// owner: @nilekhc
 	// kep: https://kep.k8s.io/4192
@@ -904,26 +918,12 @@ const (
 	// releases.
 	UserNamespacesPodSecurityStandards featuregate.Feature = "UserNamespacesPodSecurityStandards"
 
-	// owner: @ahutsunshine
-	// beta: v1.30
-	//
-	// Allows namespace indexer for namespace scope resources in apiserver cache to accelerate list operations.
-	StorageNamespaceIndex featuregate.Feature = "StorageNamespaceIndex"
-
 	// owner: @jsafrane
 	// kep: https://kep.k8s.io/1710
 	// alpha: v1.30
 	// Speed up container startup by mounting volumes with the correct SELinux label
 	// instead of changing each file on the volumes recursively.
 	SELinuxMount featuregate.Feature = "SELinuxMount"
-
-	// owner: @AkihiroSuda
-	// kep: https://kep.k8s.io/3857
-	// alpha: v1.30
-	// beta: v1.31
-	//
-	// Allows recursive read-only mounts.
-	RecursiveReadOnlyMounts featuregate.Feature = "RecursiveReadOnlyMounts"
 
 	// owner: @everpeace
 	// kep: https://kep.k8s.io/3619
@@ -954,102 +954,9 @@ func init() {
 	clientfeatures.ReplaceFeatureGates(ca)
 }
 
-// defaultKubernetesFeatureGates consists of all known Kubernetes-specific feature keys.
-// To add a new feature, define a key for it above and add it here. The features will be
-// available throughout Kubernetes binaries.
+// defaultKubernetesFeatureGates consists of legacy unversioned Kubernetes-specific feature keys.
+// Please do not add to this file and use pkg/features/versioned_kube_features.go instead.
 //
 // Entries are separated from each other with blank lines to avoid sweeping gofmt changes
 // when adding or removing one entry.
-var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
-	AllowDNSOnlyNodeCSR: {Default: false, PreRelease: featuregate.Deprecated}, // remove after 1.33
-
-	DisableNodeKubeProxyVersion: {Default: false, PreRelease: featuregate.Deprecated}, // default on in 1.33
-
-	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
-	// unintentionally on either side:
-
-	genericfeatures.AdmissionWebhookMatchConditions: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.33
-
-	genericfeatures.AggregatedDiscoveryEndpoint: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.33
-
-	genericfeatures.APIListChunking: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.32
-
-	genericfeatures.APIResponseCompression: {Default: true, PreRelease: featuregate.Beta},
-
-	genericfeatures.APIServerIdentity: {Default: true, PreRelease: featuregate.Beta},
-
-	genericfeatures.APIServerTracing: {Default: true, PreRelease: featuregate.Beta},
-
-	genericfeatures.APIServingWithRoutine: {Default: false, PreRelease: featuregate.Alpha},
-
-	genericfeatures.AuthorizeWithSelectors: {Default: false, PreRelease: featuregate.Alpha},
-
-	genericfeatures.ConcurrentWatchObjectDecode: {Default: false, PreRelease: featuregate.Beta},
-
-	genericfeatures.ConsistentListFromCache: {Default: true, PreRelease: featuregate.Beta},
-
-	genericfeatures.CoordinatedLeaderElection: {Default: false, PreRelease: featuregate.Alpha},
-
-	genericfeatures.EfficientWatchResumption: {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
-
-	genericfeatures.KMSv1: {Default: false, PreRelease: featuregate.Deprecated},
-
-	genericfeatures.MutatingAdmissionPolicy: {Default: false, PreRelease: featuregate.Alpha},
-
-	genericfeatures.OpenAPIEnums: {Default: true, PreRelease: featuregate.Beta},
-
-	genericfeatures.RemainingItemCount: {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
-
-	genericfeatures.ResilientWatchCacheInitialization: {Default: true, PreRelease: featuregate.Beta},
-
-	genericfeatures.RetryGenerateName: {Default: true, PreRelease: featuregate.Beta},
-
-	genericfeatures.SeparateCacheWatchRPC: {Default: true, PreRelease: featuregate.Beta},
-
-	genericfeatures.StorageVersionAPI: {Default: false, PreRelease: featuregate.Alpha},
-
-	genericfeatures.StorageVersionHash: {Default: true, PreRelease: featuregate.Beta},
-
-	genericfeatures.StrictCostEnforcementForVAP: {Default: false, PreRelease: featuregate.Beta},
-
-	genericfeatures.StrictCostEnforcementForWebhooks: {Default: false, PreRelease: featuregate.Beta},
-
-	genericfeatures.StructuredAuthenticationConfiguration: {Default: true, PreRelease: featuregate.Beta},
-
-	genericfeatures.StructuredAuthorizationConfiguration: {Default: true, PreRelease: featuregate.Beta},
-
-	genericfeatures.UnauthenticatedHTTP2DOSMitigation: {Default: true, PreRelease: featuregate.Beta},
-
-	genericfeatures.WatchBookmark: {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
-
-	genericfeatures.WatchCacheInitializationPostStartHook: {Default: false, PreRelease: featuregate.Beta},
-
-	genericfeatures.WatchFromStorageWithoutResourceVersion: {Default: false, PreRelease: featuregate.Beta},
-
-	genericfeatures.WatchList: {Default: false, PreRelease: featuregate.Alpha},
-
-	genericfeatures.ZeroLimitedNominalConcurrencyShares: {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.32
-
-	// inherited features from apiextensions-apiserver, relisted here to get a conflict if it is changed
-	// unintentionally on either side:
-
-	apiextensionsfeatures.CRDValidationRatcheting: {Default: true, PreRelease: featuregate.Beta},
-
-	apiextensionsfeatures.CustomResourceFieldSelectors: {Default: true, PreRelease: featuregate.Beta},
-
-	// features with duplicate definition in apiserver/controller-manager
-
-	CloudControllerManagerWebhook: {Default: false, PreRelease: featuregate.Alpha},
-
-	InPlacePodVerticalScaling: {Default: false, PreRelease: featuregate.Alpha},
-
-	// features that enable backwards compatibility but are scheduled to be removed
-	// ...
-	HPAScaleToZero: {Default: false, PreRelease: featuregate.Alpha},
-
-	AllowInsecureKubeletCertificateSigningRequests: {Default: false, PreRelease: featuregate.Deprecated}, // remove in 1.33
-
-	StorageNamespaceIndex: {Default: true, PreRelease: featuregate.Beta},
-
-	RecursiveReadOnlyMounts: {Default: true, PreRelease: featuregate.Beta},
-}
+var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{}
