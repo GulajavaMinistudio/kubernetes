@@ -639,9 +639,6 @@ func Test_buildQueueingHintMap(t *testing.T) {
 				{Resource: framework.PersistentVolumeClaim, ActionType: framework.All}: {
 					{PluginName: filterWithoutEnqueueExtensions, QueueingHintFn: defaultQueueingHintFn},
 				},
-				{Resource: framework.PodSchedulingContext, ActionType: framework.All}: {
-					{PluginName: filterWithoutEnqueueExtensions, QueueingHintFn: defaultQueueingHintFn},
-				},
 				{Resource: framework.ResourceClaim, ActionType: framework.All}: {
 					{PluginName: filterWithoutEnqueueExtensions, QueueingHintFn: defaultQueueingHintFn},
 				},
@@ -783,7 +780,7 @@ func Test_UnionedGVKs(t *testing.T) {
 	tests := []struct {
 		name                            string
 		plugins                         schedulerapi.PluginSet
-		want                            map[framework.GVK]framework.ActionType
+		want                            map[framework.EventResource]framework.ActionType
 		enableInPlacePodVerticalScaling bool
 		enableSchedulerQueueingHints    bool
 	}{
@@ -797,7 +794,7 @@ func Test_UnionedGVKs(t *testing.T) {
 				},
 				Disabled: []schedulerapi.Plugin{{Name: "*"}}, // disable default plugins
 			},
-			want: map[framework.GVK]framework.ActionType{
+			want: map[framework.EventResource]framework.ActionType{
 				framework.Pod:                   framework.All,
 				framework.Node:                  framework.All,
 				framework.CSINode:               framework.All,
@@ -806,7 +803,6 @@ func Test_UnionedGVKs(t *testing.T) {
 				framework.PersistentVolume:      framework.All,
 				framework.PersistentVolumeClaim: framework.All,
 				framework.StorageClass:          framework.All,
-				framework.PodSchedulingContext:  framework.All,
 				framework.ResourceClaim:         framework.All,
 				framework.DeviceClass:           framework.All,
 			},
@@ -821,7 +817,7 @@ func Test_UnionedGVKs(t *testing.T) {
 				},
 				Disabled: []schedulerapi.Plugin{{Name: "*"}}, // disable default plugins
 			},
-			want: map[framework.GVK]framework.ActionType{
+			want: map[framework.EventResource]framework.ActionType{
 				framework.Node: framework.Add | framework.UpdateNodeTaint, // When Node/Add is registered, Node/UpdateNodeTaint is automatically registered.
 			},
 		},
@@ -835,7 +831,7 @@ func Test_UnionedGVKs(t *testing.T) {
 				},
 				Disabled: []schedulerapi.Plugin{{Name: "*"}}, // disable default plugins
 			},
-			want: map[framework.GVK]framework.ActionType{
+			want: map[framework.EventResource]framework.ActionType{
 				framework.Pod: framework.Add,
 			},
 		},
@@ -850,7 +846,7 @@ func Test_UnionedGVKs(t *testing.T) {
 				},
 				Disabled: []schedulerapi.Plugin{{Name: "*"}}, // disable default plugins
 			},
-			want: map[framework.GVK]framework.ActionType{
+			want: map[framework.EventResource]framework.ActionType{
 				framework.Pod:  framework.Add,
 				framework.Node: framework.Add | framework.UpdateNodeTaint, // When Node/Add is registered, Node/UpdateNodeTaint is automatically registered.
 			},
@@ -865,12 +861,12 @@ func Test_UnionedGVKs(t *testing.T) {
 				},
 				Disabled: []schedulerapi.Plugin{{Name: "*"}}, // disable default plugins
 			},
-			want: map[framework.GVK]framework.ActionType{},
+			want: map[framework.EventResource]framework.ActionType{},
 		},
 		{
 			name:    "plugins with default profile (No feature gate enabled)",
 			plugins: schedulerapi.PluginSet{Enabled: defaults.PluginsV1.MultiPoint.Enabled},
-			want: map[framework.GVK]framework.ActionType{
+			want: map[framework.EventResource]framework.ActionType{
 				framework.Pod:                   framework.Add | framework.UpdatePodLabel | framework.Delete,
 				framework.Node:                  framework.Add | framework.UpdateNodeAllocatable | framework.UpdateNodeLabel | framework.UpdateNodeTaint | framework.Delete,
 				framework.CSINode:               framework.All - framework.Delete,
@@ -884,7 +880,7 @@ func Test_UnionedGVKs(t *testing.T) {
 		{
 			name:    "plugins with default profile (InPlacePodVerticalScaling: enabled)",
 			plugins: schedulerapi.PluginSet{Enabled: defaults.PluginsV1.MultiPoint.Enabled},
-			want: map[framework.GVK]framework.ActionType{
+			want: map[framework.EventResource]framework.ActionType{
 				framework.Pod:                   framework.Add | framework.UpdatePodLabel | framework.UpdatePodScaleDown | framework.Delete,
 				framework.Node:                  framework.Add | framework.UpdateNodeAllocatable | framework.UpdateNodeLabel | framework.UpdateNodeTaint | framework.Delete,
 				framework.CSINode:               framework.All - framework.Delete,
@@ -899,7 +895,7 @@ func Test_UnionedGVKs(t *testing.T) {
 		{
 			name:    "plugins with default profile (queueingHint/InPlacePodVerticalScaling: enabled)",
 			plugins: schedulerapi.PluginSet{Enabled: defaults.PluginsV1.MultiPoint.Enabled},
-			want: map[framework.GVK]framework.ActionType{
+			want: map[framework.EventResource]framework.ActionType{
 				framework.Pod:                   framework.Add | framework.UpdatePodLabel | framework.UpdatePodScaleDown | framework.UpdatePodTolerations | framework.UpdatePodSchedulingGatesEliminated | framework.Delete,
 				framework.Node:                  framework.Add | framework.UpdateNodeAllocatable | framework.UpdateNodeLabel | framework.UpdateNodeTaint | framework.Delete,
 				framework.CSINode:               framework.All - framework.Delete,
