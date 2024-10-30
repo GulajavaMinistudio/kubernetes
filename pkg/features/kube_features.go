@@ -147,6 +147,8 @@ const (
 	ContainerCheckpoint featuregate.Feature = "ContainerCheckpoint"
 
 	// owner: @helayoty
+	// kep: https://kep.k8s.io/4026
+	//
 	// Set the scheduled time as an annotation in the job.
 	CronJobsScheduledAnnotation featuregate.Feature = "CronJobsScheduledAnnotation"
 
@@ -200,6 +202,18 @@ const (
 	//
 	// DisableNodeKubeProxyVersion disable the status.nodeInfo.kubeProxyVersion field of v1.Node
 	DisableNodeKubeProxyVersion featuregate.Feature = "DisableNodeKubeProxyVersion"
+
+	// owner: @pohly
+	// kep: http://kep.k8s.io/4381
+	//
+	// Enables support for requesting admin access in a ResourceClaim.
+	// Admin access is granted even if a device is already in use and,
+	// depending on the DRA driver, may enable additional permissions
+	// when a container uses the allocated device.
+	//
+	// This feature gate is currently defined in KEP #4381. The intent
+	// is to move it into a separate KEP.
+	DRAAdminAccess featuregate.Feature = "DRAAdminAccess"
 
 	// owner: @pohly
 	// kep: http://kep.k8s.io/4381
@@ -600,6 +614,8 @@ const (
 	// owner: @derekwaynecarr
 	//
 	// Enables kubelet support to size memory backed volumes
+	// This is a kubelet only feature gate.
+	// Code can be removed in 1.35 without any consideration for emulated versions.
 	SizeMemoryBackedVolumes featuregate.Feature = "SizeMemoryBackedVolumes"
 
 	// owner: @mattcary

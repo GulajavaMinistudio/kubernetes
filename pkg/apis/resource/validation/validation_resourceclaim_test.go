@@ -18,6 +18,7 @@ package validation
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -26,8 +27,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/apis/resource"
+	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/utils/pointer"
 	"k8s.io/utils/ptr"
 )
@@ -316,6 +320,48 @@ func TestValidateClaim(t *testing.T) {
 				return claim
 			}(),
 		},
+		"CEL-length": {
+			wantFailures: field.ErrorList{
+				field.TooLongMaxLength(field.NewPath("spec", "devices", "requests").Index(1).Child("selectors").Index(1).Child("cel", "expression"), "<value omitted>", resource.CELSelectorExpressionMaxLength),
+			},
+			claim: func() *resource.ResourceClaim {
+				claim := testClaim(goodName, goodNS, validClaimSpec)
+				claim.Spec.Devices.Requests = append(claim.Spec.Devices.Requests, claim.Spec.Devices.Requests[0])
+				claim.Spec.Devices.Requests[1].Name += "-2"
+				expression := `device.driver == ""`
+				claim.Spec.Devices.Requests[1].Selectors = []resource.DeviceSelector{
+					{
+						// Good selector.
+						CEL: &resource.CELDeviceSelector{
+							Expression: strings.ReplaceAll(expression, `""`, `"`+strings.Repeat("x", resource.CELSelectorExpressionMaxLength-len(expression))+`"`),
+						},
+					},
+					{
+						// Too long by one selector.
+						CEL: &resource.CELDeviceSelector{
+							Expression: strings.ReplaceAll(expression, `""`, `"`+strings.Repeat("x", resource.CELSelectorExpressionMaxLength-len(expression)+1)+`"`),
+						},
+					},
+				}
+				return claim
+			}(),
+		},
+		"CEL-cost": {
+			wantFailures: field.ErrorList{
+				field.Forbidden(field.NewPath("spec", "devices", "requests").Index(0).Child("selectors").Index(0).Child("cel", "expression"), "too complex, exceeds cost limit"),
+			},
+			claim: func() *resource.ResourceClaim {
+				claim := testClaim(goodName, goodNS, validClaimSpec)
+				claim.Spec.Devices.Requests[0].Selectors = []resource.DeviceSelector{
+					{
+						CEL: &resource.CELDeviceSelector{
+							Expression: `device.attributes["dra.example.com"].map(s, s.lowerAscii()).map(s, s.size()).sum() == 0`,
+						},
+					},
+				}
+				return claim
+			}(),
+		},
 	}
 
 	for name, scenario := range scenarios {
@@ -365,16 +411,20 @@ func TestValidateClaimStatusUpdate(t *testing.T) {
 		Allocation: &resource.AllocationResult{
 			Devices: resource.DeviceAllocationResult{
 				Results: []resource.DeviceRequestAllocationResult{{
-					Request: goodName,
-					Driver:  goodName,
-					Pool:    goodName,
-					Device:  goodName,
+					Request:     goodName,
+					Driver:      goodName,
+					Pool:        goodName,
+					Device:      goodName,
+					AdminAccess: ptr.To(false), // Required for new allocations.
 				}},
 			},
 		},
 	}
+	validAllocatedClaimOld := validAllocatedClaim.DeepCopy()
+	validAllocatedClaimOld.Status.Allocation.Devices.Results[0].AdminAccess = nil // Not required in 1.31.
 
 	scenarios := map[string]struct {
+		adminAccess  bool
 		oldClaim     *resource.ResourceClaim
 		update       func(claim *resource.ResourceClaim) *resource.ResourceClaim
 		wantFailures field.ErrorList
@@ -396,10 +446,11 @@ func TestValidateClaimStatusUpdate(t *testing.T) {
 				claim.Status.Allocation = &resource.AllocationResult{
 					Devices: resource.DeviceAllocationResult{
 						Results: []resource.DeviceRequestAllocationResult{{
-							Request: goodName,
-							Driver:  goodName,
-							Pool:    goodName,
-							Device:  goodName,
+							Request:     goodName,
+							Driver:      goodName,
+							Pool:        goodName,
+							Device:      goodName,
+							AdminAccess: ptr.To(false),
 						}},
 					},
 				}
@@ -416,10 +467,29 @@ func TestValidateClaimStatusUpdate(t *testing.T) {
 				claim.Status.Allocation = &resource.AllocationResult{
 					Devices: resource.DeviceAllocationResult{
 						Results: []resource.DeviceRequestAllocationResult{{
-							Request: badName,
-							Driver:  goodName,
-							Pool:    goodName,
-							Device:  goodName,
+							Request:     badName,
+							Driver:      goodName,
+							Pool:        goodName,
+							Device:      goodName,
+							AdminAccess: ptr.To(false),
+						}},
+					},
+				}
+				return claim
+			},
+		},
+		"okay-add-allocation-missing-admin-access": {
+			adminAccess: false,
+			oldClaim:    validClaim,
+			update: func(claim *resource.ResourceClaim) *resource.ResourceClaim {
+				claim.Status.Allocation = &resource.AllocationResult{
+					Devices: resource.DeviceAllocationResult{
+						Results: []resource.DeviceRequestAllocationResult{{
+							Request:     goodName,
+							Driver:      goodName,
+							Pool:        goodName,
+							Device:      goodName,
+							AdminAccess: nil, // Intentionally not set.
 						}},
 					},
 				}
@@ -440,6 +510,20 @@ func TestValidateClaimStatusUpdate(t *testing.T) {
 		},
 		"add-reservation": {
 			oldClaim: validAllocatedClaim,
+			update: func(claim *resource.ResourceClaim) *resource.ResourceClaim {
+				for i := 0; i < resource.ResourceClaimReservedForMaxSize; i++ {
+					claim.Status.ReservedFor = append(claim.Status.ReservedFor,
+						resource.ResourceClaimConsumerReference{
+							Resource: "pods",
+							Name:     fmt.Sprintf("foo-%d", i),
+							UID:      types.UID(fmt.Sprintf("%d", i)),
+						})
+				}
+				return claim
+			},
+		},
+		"add-reservation-old-claim": {
+			oldClaim: validAllocatedClaimOld,
 			update: func(claim *resource.ResourceClaim) *resource.ResourceClaim {
 				for i := 0; i < resource.ResourceClaimReservedForMaxSize; i++ {
 					claim.Status.ReservedFor = append(claim.Status.ReservedFor,
@@ -609,6 +693,7 @@ func TestValidateClaimStatusUpdate(t *testing.T) {
 
 	for name, scenario := range scenarios {
 		t.Run(name, func(t *testing.T) {
+			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.DRAAdminAccess, scenario.adminAccess)
 			scenario.oldClaim.ResourceVersion = "1"
 			errs := ValidateResourceClaimStatusUpdate(scenario.update(scenario.oldClaim.DeepCopy()), scenario.oldClaim)
 			assert.Equal(t, scenario.wantFailures, errs)

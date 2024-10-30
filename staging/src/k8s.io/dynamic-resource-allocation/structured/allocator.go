@@ -26,10 +26,10 @@ import (
 	v1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1alpha3"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apiserver/pkg/cel/environment"
 	resourcelisters "k8s.io/client-go/listers/resource/v1alpha3"
 	"k8s.io/dynamic-resource-allocation/cel"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 )
 
 // ClaimLister returns a subset of the claims that a
@@ -46,29 +46,32 @@ type ClaimLister interface {
 // available and the current state of the cluster (claims, classes, resource
 // slices).
 type Allocator struct {
-	claimsToAllocate []*resourceapi.ResourceClaim
-	claimLister      ClaimLister
-	classLister      resourcelisters.DeviceClassLister
-	sliceLister      resourcelisters.ResourceSliceLister
+	adminAccessEnabled bool
+	claimsToAllocate   []*resourceapi.ResourceClaim
+	claimLister        ClaimLister
+	classLister        resourcelisters.DeviceClassLister
+	sliceLister        resourcelisters.ResourceSliceLister
 }
 
 // NewAllocator returns an allocator for a certain set of claims or an error if
 // some problem was detected which makes it impossible to allocate claims.
 func NewAllocator(ctx context.Context,
+	adminAccessEnabled bool,
 	claimsToAllocate []*resourceapi.ResourceClaim,
 	claimLister ClaimLister,
 	classLister resourcelisters.DeviceClassLister,
 	sliceLister resourcelisters.ResourceSliceLister,
 ) (*Allocator, error) {
 	return &Allocator{
-		claimsToAllocate: claimsToAllocate,
-		claimLister:      claimLister,
-		classLister:      classLister,
-		sliceLister:      sliceLister,
+		adminAccessEnabled: adminAccessEnabled,
+		claimsToAllocate:   claimsToAllocate,
+		claimLister:        claimLister,
+		classLister:        classLister,
+		sliceLister:        sliceLister,
 	}, nil
 }
 
-// ClaimsToAllocate returns the claims that the allocated was created for.
+// ClaimsToAllocate returns the claims that the allocator was created for.
 func (a *Allocator) ClaimsToAllocate() []*resourceapi.ResourceClaim {
 	return a.claimsToAllocate
 }
@@ -160,6 +163,10 @@ func (a *Allocator) Allocate(ctx context.Context, node *v1.Node) (finalResult []
 				}
 			}
 
+			if !a.adminAccessEnabled && request.AdminAccess != nil {
+				return nil, fmt.Errorf("claim %s, request %s: admin access is requested, but the feature is disabled", klog.KObj(claim), request.Name)
+			}
+
 			// Should be set. If it isn't, something changed and we should refuse to proceed.
 			if request.DeviceClassName == "" {
 				return nil, fmt.Errorf("claim %s, request %s: missing device class name (unsupported request type?)", klog.KObj(claim), request.Name)
@@ -169,9 +176,13 @@ func (a *Allocator) Allocate(ctx context.Context, node *v1.Node) (finalResult []
 				return nil, fmt.Errorf("claim %s, request %s: could not retrieve device class %s: %w", klog.KObj(claim), request.Name, request.DeviceClassName, err)
 			}
 
+			// Start collecting information about the request.
+			// The class must be set and stored before calling isSelectable.
 			requestData := requestData{
 				class: class,
 			}
+			requestKey := requestIndices{claimIndex: claimIndex, requestIndex: requestIndex}
+			alloc.requestData[requestKey] = requestData
 
 			switch request.AllocationMode {
 			case resourceapi.DeviceAllocationModeExactCount:
@@ -190,7 +201,7 @@ func (a *Allocator) Allocate(ctx context.Context, node *v1.Node) (finalResult []
 
 					for _, slice := range pool.Slices {
 						for deviceIndex := range slice.Spec.Devices {
-							selectable, err := alloc.isSelectable(requestIndices{claimIndex: claimIndex, requestIndex: requestIndex}, slice, deviceIndex)
+							selectable, err := alloc.isSelectable(requestKey, slice, deviceIndex)
 							if err != nil {
 								return nil, err
 							}
@@ -205,7 +216,7 @@ func (a *Allocator) Allocate(ctx context.Context, node *v1.Node) (finalResult []
 			default:
 				return nil, fmt.Errorf("claim %s, request %s: unsupported count mode %s", klog.KObj(claim), request.Name, request.AllocationMode)
 			}
-			alloc.requestData[requestIndices{claimIndex: claimIndex, requestIndex: requestIndex}] = requestData
+			alloc.requestData[requestKey] = requestData
 			numDevices += requestData.numDevices
 		}
 		alloc.logger.V(6).Info("Checked claim", "claim", klog.KObj(claim), "numDevices", numDevices)
@@ -269,6 +280,15 @@ func (a *Allocator) Allocate(ctx context.Context, node *v1.Node) (finalResult []
 			continue
 		}
 		for _, result := range claim.Status.Allocation.Devices.Results {
+			// Kubernetes 1.31 did not set this, 1.32 always does.
+			// Supporting 1.31 is not worth the additional code that
+			// would have to be written (= looking up in request) because
+			// it is extremely unlikely that there really is a result
+			// that still exists in a cluster from 1.31 where this matters.
+			if ptr.Deref(result.AdminAccess, false) {
+				// Ignore, it's not considered allocated.
+				continue
+			}
 			deviceID := DeviceID{Driver: result.Driver, Pool: result.Pool, Device: result.Device}
 			alloc.allocated[deviceID] = true
 			numAllocated++
@@ -290,10 +310,13 @@ func (a *Allocator) Allocate(ctx context.Context, node *v1.Node) (finalResult []
 	// All errors get created such that they can be returned by Allocate
 	// without further wrapping.
 	done, err := alloc.allocateOne(deviceIndices{})
+	if errors.Is(err, errStop) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
-	if errors.Is(err, errStop) || !done {
+	if !done {
 		return nil, nil
 	}
 
@@ -347,7 +370,6 @@ type allocator struct {
 	constraints          [][]constraint                 // one list of constraints per claim
 	requestData          map[requestIndices]requestData // one entry per request
 	allocated            map[DeviceID]bool
-	skippedUnknownDevice bool
 	result               []*resourceapi.AllocationResult
 }
 
@@ -534,20 +556,23 @@ func (alloc *allocator) allocateOne(r deviceIndices) (bool, error) {
 		// For "all" devices we already know which ones we need. We
 		// just need to check whether we can use them.
 		deviceWithID := requestData.allDevices[r.deviceIndex]
-		_, _, err := alloc.allocateDevice(r, deviceWithID.device, deviceWithID.DeviceID, true)
+		success, _, err := alloc.allocateDevice(r, deviceWithID.device, deviceWithID.DeviceID, true)
 		if err != nil {
 			return false, err
+		}
+		if !success {
+			// The order in which we allocate "all" devices doesn't matter,
+			// so we only try with the one which was up next. If we couldn't
+			// get all of them, then there is no solution and we have to stop.
+			return false, errStop
 		}
 		done, err := alloc.allocateOne(deviceIndices{claimIndex: r.claimIndex, requestIndex: r.requestIndex, deviceIndex: r.deviceIndex + 1})
 		if err != nil {
 			return false, err
 		}
-
-		// The order in which we allocate "all" devices doesn't matter,
-		// so we only try with the one which was up next. If we couldn't
-		// get all of them, then there is no solution and we have to stop.
 		if !done {
-			return false, errStop
+			// Backtrack.
+			return false, nil
 		}
 		return done, nil
 	}
@@ -559,7 +584,7 @@ func (alloc *allocator) allocateOne(r deviceIndices) (bool, error) {
 				deviceID := DeviceID{Driver: pool.Driver, Pool: pool.Pool, Device: slice.Spec.Devices[deviceIndex].Name}
 
 				// Checking for "in use" is cheap and thus gets done first.
-				if !request.AdminAccess && alloc.allocated[deviceID] {
+				if !ptr.Deref(request.AdminAccess, false) && alloc.allocated[deviceID] {
 					alloc.logger.V(7).Info("Device in use", "device", deviceID)
 					continue
 				}
@@ -610,9 +635,6 @@ func (alloc *allocator) isSelectable(r requestIndices, slice *resourceapi.Resour
 	device := slice.Spec.Devices[deviceIndex].Basic
 	if device == nil {
 		// Must be some future, unknown device type. We cannot select it.
-		// If we don't find anything else, then this will get reported
-		// in the final result, so remember that we skipped some device.
-		alloc.skippedUnknownDevice = true
 		return false, nil
 	}
 
@@ -652,7 +674,7 @@ func (alloc *allocator) isSelectable(r requestIndices, slice *resourceapi.Resour
 
 func (alloc *allocator) selectorsMatch(r requestIndices, device *resourceapi.BasicDevice, deviceID DeviceID, class *resourceapi.DeviceClass, selectors []resourceapi.DeviceSelector) (bool, error) {
 	for i, selector := range selectors {
-		expr := cel.GetCompiler().CompileCELExpression(selector.CEL.Expression, environment.StoredExpressions)
+		expr := cel.GetCompiler().CompileCELExpression(selector.CEL.Expression, cel.Options{})
 		if expr.Error != nil {
 			// Could happen if some future apiserver accepted some
 			// future expression and then got downgraded. Normally
@@ -665,11 +687,11 @@ func (alloc *allocator) selectorsMatch(r requestIndices, device *resourceapi.Bas
 			return false, fmt.Errorf("claim %s: selector #%d: CEL compile error: %w", klog.KObj(alloc.claimsToAllocate[r.claimIndex]), i, expr.Error)
 		}
 
-		matches, err := expr.DeviceMatches(alloc.ctx, cel.Device{Driver: deviceID.Driver, Attributes: device.Attributes, Capacity: device.Capacity})
+		matches, details, err := expr.DeviceMatches(alloc.ctx, cel.Device{Driver: deviceID.Driver, Attributes: device.Attributes, Capacity: device.Capacity})
 		if class != nil {
-			alloc.logger.V(7).Info("CEL result", "device", deviceID, "class", klog.KObj(class), "selector", i, "expression", selector.CEL.Expression, "matches", matches, "err", err)
+			alloc.logger.V(7).Info("CEL result", "device", deviceID, "class", klog.KObj(class), "selector", i, "expression", selector.CEL.Expression, "matches", matches, "actualCost", ptr.Deref(details.ActualCost(), 0), "err", err)
 		} else {
-			alloc.logger.V(7).Info("CEL result", "device", deviceID, "claim", klog.KObj(alloc.claimsToAllocate[r.claimIndex]), "selector", i, "expression", selector.CEL.Expression, "matches", matches, "err", err)
+			alloc.logger.V(7).Info("CEL result", "device", deviceID, "claim", klog.KObj(alloc.claimsToAllocate[r.claimIndex]), "selector", i, "expression", selector.CEL.Expression, "actualCost", ptr.Deref(details.ActualCost(), 0), "matches", matches, "err", err)
 		}
 
 		if err != nil {
@@ -698,7 +720,7 @@ func (alloc *allocator) selectorsMatch(r requestIndices, device *resourceapi.Bas
 func (alloc *allocator) allocateDevice(r deviceIndices, device *resourceapi.BasicDevice, deviceID DeviceID, must bool) (bool, func(), error) {
 	claim := alloc.claimsToAllocate[r.claimIndex]
 	request := &claim.Spec.Devices.Requests[r.requestIndex]
-	adminAccess := request.AdminAccess
+	adminAccess := ptr.Deref(request.AdminAccess, false)
 	if !adminAccess && alloc.allocated[deviceID] {
 		alloc.logger.V(7).Info("Device in use", "device", deviceID)
 		return false, nil, nil
@@ -733,6 +755,9 @@ func (alloc *allocator) allocateDevice(r deviceIndices, device *resourceapi.Basi
 		Driver:  deviceID.Driver,
 		Pool:    deviceID.Pool,
 		Device:  deviceID.Device,
+	}
+	if adminAccess {
+		result.AdminAccess = &adminAccess
 	}
 	previousNumResults := len(alloc.result[r.claimIndex].Devices.Results)
 	alloc.result[r.claimIndex].Devices.Results = append(alloc.result[r.claimIndex].Devices.Results, result)

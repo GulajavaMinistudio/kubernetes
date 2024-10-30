@@ -33,7 +33,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"k8s.io/apimachinery/pkg/api/resource"
-	resourcehelper "k8s.io/kubernetes/pkg/api/v1/resource"
+	resourcehelper "k8s.io/component-helpers/resource"
 	"k8s.io/kubernetes/pkg/features"
 	schedutil "k8s.io/kubernetes/pkg/scheduler/util"
 )
@@ -189,6 +189,7 @@ const (
 	PersistentVolumeClaim EventResource = "PersistentVolumeClaim"
 	CSINode               EventResource = "storage.k8s.io/CSINode"
 	CSIDriver             EventResource = "storage.k8s.io/CSIDriver"
+	VolumeAttachment      EventResource = "storage.k8s.io/VolumeAttachment"
 	CSIStorageCapacity    EventResource = "storage.k8s.io/CSIStorageCapacity"
 	StorageClass          EventResource = "storage.k8s.io/StorageClass"
 	ResourceClaim         EventResource = "resource.k8s.io/ResourceClaim"
@@ -218,6 +219,7 @@ var (
 		CSIDriver,
 		CSIStorageCapacity,
 		StorageClass,
+		VolumeAttachment,
 		ResourceClaim,
 		DeviceClass,
 	}

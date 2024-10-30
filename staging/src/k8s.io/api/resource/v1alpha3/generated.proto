@@ -112,6 +112,10 @@ message CELDeviceSelector {
   //
   //     cel.bind(dra, device.attributes["dra.example.com"], dra.someBool && dra.anotherBool)
   //
+  // The length of the expression must be smaller or equal to 10 Ki. The
+  // cost of evaluating it is also limited based on the estimated number
+  // of logical steps.
+  //
   // +required
   optional string expression = 1;
 }
@@ -411,8 +415,12 @@ message DeviceRequest {
   // all ordinary claims to the device with respect to access modes and
   // any resource allocations.
   //
+  // This is an alpha field and requires enabling the DRAAdminAccess
+  // feature gate. Admin access is disabled if this field is unset or
+  // set to false, otherwise it is enabled.
+  //
   // +optional
-  // +default=false
+  // +featureGate=DRAAdminAccess
   optional bool adminAccess = 6;
 }
 
@@ -449,6 +457,18 @@ message DeviceRequestAllocationResult {
   //
   // +required
   optional string device = 4;
+
+  // AdminAccess indicates that this device was allocated for
+  // administrative access. See the corresponding request field
+  // for a definition of mode.
+  //
+  // This is an alpha field and requires enabling the DRAAdminAccess
+  // feature gate. Admin access is disabled if this field is unset or
+  // set to false, otherwise it is enabled.
+  //
+  // +optional
+  // +featureGate=DRAAdminAccess
+  optional bool adminAccess = 5;
 }
 
 // DeviceSelector must have exactly one field set.

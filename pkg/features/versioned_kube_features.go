@@ -114,6 +114,7 @@ var defaultVersionedKubernetesFeatureGates = map[featuregate.Feature]featuregate
 
 	CronJobsScheduledAnnotation: {
 		{Version: version.MustParse("1.28"), Default: true, PreRelease: featuregate.Beta},
+		{Version: version.MustParse("1.32"), Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.35
 	},
 
 	// inherited features from apiextensions-apiserver, relisted here to get a conflict if it is changed
@@ -170,6 +171,10 @@ var defaultVersionedKubernetesFeatureGates = map[featuregate.Feature]featuregate
 	DisableNodeKubeProxyVersion: {
 		{Version: version.MustParse("1.29"), Default: false, PreRelease: featuregate.Alpha},
 		{Version: version.MustParse("1.31"), Default: false, PreRelease: featuregate.Deprecated},
+	},
+
+	DRAAdminAccess: {
+		{Version: version.MustParse("1.32"), Default: false, PreRelease: featuregate.Alpha},
 	},
 
 	DynamicResourceAllocation: {
@@ -682,6 +687,7 @@ var defaultVersionedKubernetesFeatureGates = map[featuregate.Feature]featuregate
 	SizeMemoryBackedVolumes: {
 		{Version: version.MustParse("1.20"), Default: false, PreRelease: featuregate.Alpha},
 		{Version: version.MustParse("1.22"), Default: true, PreRelease: featuregate.Beta},
+		{Version: version.MustParse("1.32"), Default: true, LockToDefault: true, PreRelease: featuregate.GA},
 	},
 
 	StatefulSetAutoDeletePVC: {
@@ -725,6 +731,7 @@ var defaultVersionedKubernetesFeatureGates = map[featuregate.Feature]featuregate
 	TopologyManagerPolicyOptions: {
 		{Version: version.MustParse("1.26"), Default: false, PreRelease: featuregate.Alpha},
 		{Version: version.MustParse("1.28"), Default: true, PreRelease: featuregate.Beta},
+		{Version: version.MustParse("1.32"), Default: true, PreRelease: featuregate.GA},
 	},
 
 	TranslateStreamCloseWebsocketRequests: {

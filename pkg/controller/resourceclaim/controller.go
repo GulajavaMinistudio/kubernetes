@@ -71,6 +71,9 @@ const (
 
 // Controller creates ResourceClaims for ResourceClaimTemplates in a pod spec.
 type Controller struct {
+	// adminAccessEnabled matches the DRAAdminAccess feature gate state.
+	adminAccessEnabled bool
+
 	// kubeClient is the kube API client used to communicate with the API
 	// server.
 	kubeClient clientset.Interface
@@ -118,20 +121,22 @@ const (
 // NewController creates a ResourceClaim controller.
 func NewController(
 	logger klog.Logger,
+	adminAccessEnabled bool,
 	kubeClient clientset.Interface,
 	podInformer v1informers.PodInformer,
 	claimInformer resourceinformers.ResourceClaimInformer,
 	templateInformer resourceinformers.ResourceClaimTemplateInformer) (*Controller, error) {
 
 	ec := &Controller{
-		kubeClient:      kubeClient,
-		podLister:       podInformer.Lister(),
-		podIndexer:      podInformer.Informer().GetIndexer(),
-		podSynced:       podInformer.Informer().HasSynced,
-		claimLister:     claimInformer.Lister(),
-		claimsSynced:    claimInformer.Informer().HasSynced,
-		templateLister:  templateInformer.Lister(),
-		templatesSynced: templateInformer.Informer().HasSynced,
+		adminAccessEnabled: adminAccessEnabled,
+		kubeClient:         kubeClient,
+		podLister:          podInformer.Lister(),
+		podIndexer:         podInformer.Informer().GetIndexer(),
+		podSynced:          podInformer.Informer().HasSynced,
+		claimLister:        claimInformer.Lister(),
+		claimsSynced:       claimInformer.Informer().HasSynced,
+		templateLister:     templateInformer.Lister(),
+		templatesSynced:    templateInformer.Informer().HasSynced,
 		queue: workqueue.NewTypedRateLimitingQueueWithConfig(
 			workqueue.DefaultTypedControllerRateLimiter[string](),
 			workqueue.TypedRateLimitingQueueConfig[string]{Name: "resource_claim"},
@@ -157,15 +162,15 @@ func NewController(
 	if _, err := claimInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			logger.V(6).Info("new claim", "claimDump", obj)
-			ec.enqueueResourceClaim(logger, obj, false)
+			ec.enqueueResourceClaim(logger, nil, obj)
 		},
 		UpdateFunc: func(old, updated interface{}) {
 			logger.V(6).Info("updated claim", "claimDump", updated)
-			ec.enqueueResourceClaim(logger, updated, false)
+			ec.enqueueResourceClaim(logger, old, updated)
 		},
 		DeleteFunc: func(obj interface{}) {
 			logger.V(6).Info("deleted claim", "claimDump", obj)
-			ec.enqueueResourceClaim(logger, obj, true)
+			ec.enqueueResourceClaim(logger, obj, nil)
 		},
 	}); err != nil {
 		return nil, err
@@ -326,15 +331,48 @@ func (ec *Controller) podNeedsWork(pod *v1.Pod) (bool, string) {
 	return false, "nothing to do"
 }
 
-func (ec *Controller) enqueueResourceClaim(logger klog.Logger, obj interface{}, deleted bool) {
-	if d, ok := obj.(cache.DeletedFinalStateUnknown); ok {
-		obj = d.Obj
+func (ec *Controller) enqueueResourceClaim(logger klog.Logger, oldObj, newObj interface{}) {
+	deleted := newObj != nil
+	if d, ok := oldObj.(cache.DeletedFinalStateUnknown); ok {
+		oldObj = d.Obj
 	}
-	claim, ok := obj.(*resourceapi.ResourceClaim)
-	if !ok {
+	oldClaim, ok := oldObj.(*resourceapi.ResourceClaim)
+	if oldObj != nil && !ok {
+		return
+	}
+	newClaim, ok := newObj.(*resourceapi.ResourceClaim)
+	if newObj != nil && !ok {
 		return
 	}
 
+	// Maintain metrics based on what was observed.
+	switch {
+	case oldClaim == nil:
+		// Added.
+		metrics.NumResourceClaims.Inc()
+		if newClaim.Status.Allocation != nil {
+			metrics.NumAllocatedResourceClaims.Inc()
+		}
+	case newClaim == nil:
+		// Deleted.
+		metrics.NumResourceClaims.Dec()
+		if oldClaim.Status.Allocation != nil {
+			metrics.NumAllocatedResourceClaims.Dec()
+		}
+	default:
+		// Updated.
+		switch {
+		case oldClaim.Status.Allocation == nil && newClaim.Status.Allocation != nil:
+			metrics.NumAllocatedResourceClaims.Inc()
+		case oldClaim.Status.Allocation != nil && newClaim.Status.Allocation == nil:
+			metrics.NumAllocatedResourceClaims.Dec()
+		}
+	}
+
+	claim := newClaim
+	if claim == nil {
+		claim = oldClaim
+	}
 	if !deleted {
 		// When starting up, we have to check all claims to find those with
 		// stale pods in ReservedFor. During an update, a pod might get added
@@ -579,6 +617,10 @@ func (ec *Controller) handleClaim(ctx context.Context, pod *v1.Pod, podClaim v1.
 			return fmt.Errorf("resource claim template %q: %v", *templateName, err)
 		}
 
+		if !ec.adminAccessEnabled && needsAdminAccess(template) {
+			return errors.New("admin access is requested, but the feature is disabled")
+		}
+
 		// Create the ResourceClaim with pod as owner, with a generated name that uses
 		// <pod>-<claim name> as base.
 		isTrue := true
@@ -635,6 +677,15 @@ func (ec *Controller) handleClaim(ctx context.Context, pod *v1.Pod, podClaim v1.
 	(*newPodClaims)[podClaim.Name] = claim.Name
 
 	return nil
+}
+
+func needsAdminAccess(claimTemplate *resourceapi.ResourceClaimTemplate) bool {
+	for _, request := range claimTemplate.Spec.Spec.Devices.Requests {
+		if ptr.Deref(request.AdminAccess, false) {
+			return true
+		}
+	}
+	return false
 }
 
 // findPodResourceClaim looks for an existing ResourceClaim with the right
