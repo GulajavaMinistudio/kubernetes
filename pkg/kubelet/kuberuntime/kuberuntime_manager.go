@@ -118,6 +118,11 @@ type kubeGenericRuntimeManager struct {
 	readinessManager proberesults.Manager
 	startupManager   proberesults.Manager
 
+	// If false, pass "memory.oom.group" to container cgroups when using cgroups v2 to cause processes
+	// in those cgroups to be killed as a unit by the OOM killer.
+	// It must be nil except for linux
+	singleProcessOOMKill *bool
+
 	// If true, enforce container cpu limits with CFS quota support
 	cpuCFSQuota bool
 
@@ -198,6 +203,7 @@ func NewKubeGenericRuntimeManager(
 	imagePullBurst int,
 	imageCredentialProviderConfigFile string,
 	imageCredentialProviderBinDir string,
+	singleProcessOOMKill *bool,
 	cpuCFSQuota bool,
 	cpuCFSQuotaPeriod metav1.Duration,
 	runtimeService internalapi.RuntimeService,
@@ -218,6 +224,7 @@ func NewKubeGenericRuntimeManager(
 	tracer := tracerProvider.Tracer(instrumentationScope)
 	kubeRuntimeManager := &kubeGenericRuntimeManager{
 		recorder:               recorder,
+		singleProcessOOMKill:   singleProcessOOMKill,
 		cpuCFSQuota:            cpuCFSQuota,
 		cpuCFSQuotaPeriod:      cpuCFSQuotaPeriod,
 		seccompProfileRoot:     filepath.Join(rootDirectory, "seccomp"),
@@ -663,15 +670,16 @@ func (m *kubeGenericRuntimeManager) doPodResizeAction(pod *v1.Pod, podStatus *ku
 		var err error
 		switch rName {
 		case v1.ResourceCPU:
-			podCpuResources := &cm.ResourceConfig{CPUPeriod: podResources.CPUPeriod}
+			podCPUResources := &cm.ResourceConfig{}
 			if setLimitValue {
-				podCpuResources.CPUQuota = podResources.CPUQuota
+				podCPUResources.CPUPeriod = podResources.CPUPeriod
+				podCPUResources.CPUQuota = podResources.CPUQuota
 			} else {
-				podCpuResources.CPUShares = podResources.CPUShares
+				podCPUResources.CPUShares = podResources.CPUShares
 			}
-			err = pcm.SetPodCgroupConfig(pod, rName, podCpuResources)
+			err = pcm.SetPodCgroupConfig(pod, podCPUResources)
 		case v1.ResourceMemory:
-			err = pcm.SetPodCgroupConfig(pod, rName, podResources)
+			err = pcm.SetPodCgroupConfig(pod, podResources)
 		}
 		if err != nil {
 			klog.ErrorS(err, "Failed to set cgroup config", "resource", rName, "pod", pod.Name)

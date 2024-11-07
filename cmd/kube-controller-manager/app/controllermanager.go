@@ -567,6 +567,7 @@ func NewControllerDescriptors() map[string]*ControllerDescriptor {
 	register(newClusterRoleAggregrationControllerDescriptor())
 	register(newPersistentVolumeClaimProtectionControllerDescriptor())
 	register(newPersistentVolumeProtectionControllerDescriptor())
+	register(newVolumeAttributesClassProtectionControllerDescriptor())
 	register(newTTLAfterFinishedControllerDescriptor())
 	register(newRootCACertificatePublisherControllerDescriptor())
 	register(newEphemeralVolumeControllerDescriptor())
@@ -579,6 +580,7 @@ func NewControllerDescriptors() map[string]*ControllerDescriptor {
 	register(newTaintEvictionControllerDescriptor())
 	register(newServiceCIDRsControllerDescriptor())
 	register(newStorageVersionMigratorControllerDescriptor())
+	register(newSELinuxWarningControllerDescriptor())
 
 	for _, alias := range aliases.UnsortedList() {
 		if _, ok := controllers[alias]; ok {

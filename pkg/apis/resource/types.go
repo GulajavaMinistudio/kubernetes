@@ -214,10 +214,21 @@ type BasicDevice struct {
 	// The maximum number of attributes and capacities combined is 32.
 	//
 	// +optional
-	Capacity map[QualifiedName]resource.Quantity
+	Capacity map[QualifiedName]DeviceCapacity
 }
 
-// Limit for the sum of the number of entries in both ResourceSlices.
+// DeviceCapacity describes a quantity associated with a device.
+type DeviceCapacity struct {
+	// Value defines how much of a certain device capacity is available.
+	//
+	// +required
+	Value resource.Quantity
+
+	// potential future addition: fields which define how to "consume"
+	// capacity (= share a single device between different consumers).
+}
+
+// Limit for the sum of the number of entries in both attributes and capacity.
 const ResourceSliceMaxAttributesAndCapacitiesPerDevice = 32
 
 // QualifiedName is the name of a device attribute or capacity.
@@ -240,6 +251,9 @@ type QualifiedName string
 
 // FullyQualifiedName is a QualifiedName where the domain is set.
 type FullyQualifiedName string
+
+// DeviceMaxDomainLength is the maximum length of the domain prefix in a fully-qualified name.
+const DeviceMaxDomainLength = 63
 
 // DeviceMaxIDLength is the maximum length of the identifier in a device attribute or capacity name (`<domain>/<ID>`).
 const DeviceMaxIDLength = 32
@@ -640,9 +654,15 @@ type OpaqueDeviceConfiguration struct {
 	// includes self-identification and a version ("kind" + "apiVersion" for
 	// Kubernetes types), with conversion between different versions.
 	//
+	// The length of the raw data must be smaller or equal to 10 Ki.
+	//
 	// +required
 	Parameters runtime.RawExtension
 }
+
+// OpaqueParametersMaxLength is the maximum length of the raw data in an
+// [OpaqueDeviceConfiguration.Parameters] field.
+const OpaqueParametersMaxLength = 10 * 1024
 
 // ResourceClaimStatus tracks whether the resource has been allocated and what
 // the result of that was.
@@ -888,7 +908,7 @@ type DeviceClassSpec struct {
 	// SuitableNodes is tombstoned since Kubernetes 1.32 where
 	// it got removed. May be reused once decoding v1alpha3 is no longer
 	// supported.
-	// SuitableNodes *v1.NodeSelector `json:"suitableNodes,omitempty" protobuf:"bytes,3,opt,name=suitableNodes"`
+	// SuitableNodes *core.NodeSelector
 }
 
 // DeviceClassConfiguration is used in DeviceClass.

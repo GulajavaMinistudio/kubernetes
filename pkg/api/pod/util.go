@@ -385,12 +385,15 @@ func GetValidationOptionsFromPodSpecAndMeta(podSpec, oldPodSpec *api.PodSpec, po
 		AllowInvalidTopologySpreadConstraintLabelSelector: false,
 		AllowNamespacedSysctlsForHostNetAndHostIPC:        false,
 		AllowNonLocalProjectedTokenPath:                   false,
+		AllowPodLifecycleSleepActionZeroValue:             utilfeature.DefaultFeatureGate.Enabled(features.PodLifecycleSleepActionAllowZero),
 	}
 
 	// If old spec uses relaxed validation or enabled the RelaxedEnvironmentVariableValidation feature gate,
 	// we must allow it
 	opts.AllowRelaxedEnvironmentVariableValidation = useRelaxedEnvironmentVariableValidation(podSpec, oldPodSpec)
 	opts.AllowRelaxedDNSSearchValidation = useRelaxedDNSSearchValidation(oldPodSpec)
+
+	opts.AllowOnlyRecursiveSELinuxChangePolicy = useOnlyRecursiveSELinuxChangePolicy(oldPodSpec)
 
 	if oldPodSpec != nil {
 		// if old spec has status.hostIPs downwardAPI set, we must allow it
@@ -415,6 +418,8 @@ func GetValidationOptionsFromPodSpecAndMeta(podSpec, oldPodSpec *api.PodSpec, po
 				}
 			}
 		}
+
+		opts.AllowPodLifecycleSleepActionZeroValue = opts.AllowPodLifecycleSleepActionZeroValue || podLifecycleSleepActionZeroValueInUse(podSpec)
 	}
 	if oldPodMeta != nil && !opts.AllowInvalidPodDeletionCost {
 		// This is an update, so validate only if the existing object was valid.
@@ -720,6 +725,7 @@ func dropDisabledFields(
 
 	dropPodLifecycleSleepAction(podSpec, oldPodSpec)
 	dropImageVolumes(podSpec, oldPodSpec)
+	dropSELinuxChangePolicy(podSpec, oldPodSpec)
 }
 
 func dropPodLifecycleSleepAction(podSpec, oldPodSpec *api.PodSpec) {
@@ -795,6 +801,28 @@ func podLifecycleSleepActionInUse(podSpec *api.PodSpec) bool {
 	return inUse
 }
 
+func podLifecycleSleepActionZeroValueInUse(podSpec *api.PodSpec) bool {
+	if podSpec == nil {
+		return false
+	}
+	var inUse bool
+	VisitContainers(podSpec, AllContainers, func(c *api.Container, containerType ContainerType) bool {
+		if c.Lifecycle == nil {
+			return true
+		}
+		if c.Lifecycle.PreStop != nil && c.Lifecycle.PreStop.Sleep != nil && c.Lifecycle.PreStop.Sleep.Seconds == 0 {
+			inUse = true
+			return false
+		}
+		if c.Lifecycle.PostStart != nil && c.Lifecycle.PostStart.Sleep != nil && c.Lifecycle.PreStop.Sleep.Seconds == 0 {
+			inUse = true
+			return false
+		}
+		return true
+	})
+	return inUse
+}
+
 // dropDisabledPodStatusFields removes disabled fields from the pod status
 func dropDisabledPodStatusFields(podStatus, oldPodStatus *api.PodStatus, podSpec, oldPodSpec *api.PodSpec) {
 	// the new status is always be non-nil
@@ -803,17 +831,28 @@ func dropDisabledPodStatusFields(podStatus, oldPodStatus *api.PodStatus, podSpec
 	}
 
 	if !utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) && !inPlacePodVerticalScalingInUse(oldPodSpec) {
-		// Drop Resize, AllocatedResources, and Resources fields
-		dropResourcesFields := func(csl []api.ContainerStatus) {
+		// Drop Resize and Resources fields
+		dropResourcesField := func(csl []api.ContainerStatus) {
 			for i := range csl {
-				csl[i].AllocatedResources = nil
 				csl[i].Resources = nil
 			}
 		}
-		dropResourcesFields(podStatus.ContainerStatuses)
-		dropResourcesFields(podStatus.InitContainerStatuses)
-		dropResourcesFields(podStatus.EphemeralContainerStatuses)
+		dropResourcesField(podStatus.ContainerStatuses)
+		dropResourcesField(podStatus.InitContainerStatuses)
+		dropResourcesField(podStatus.EphemeralContainerStatuses)
 		podStatus.Resize = ""
+	}
+	if !utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) ||
+		!utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScalingAllocatedStatus) {
+		// Drop AllocatedResources field
+		dropAllocatedResourcesField := func(csl []api.ContainerStatus) {
+			for i := range csl {
+				csl[i].AllocatedResources = nil
+			}
+		}
+		dropAllocatedResourcesField(podStatus.ContainerStatuses)
+		dropAllocatedResourcesField(podStatus.InitContainerStatuses)
+		dropAllocatedResourcesField(podStatus.EphemeralContainerStatuses)
 	}
 
 	if !utilfeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation) && !dynamicResourceAllocationInUse(oldPodSpec) {
@@ -1261,26 +1300,17 @@ func MarkPodProposedForResize(oldPod, newPod *api.Pod) {
 	}
 
 	for i, c := range newPod.Spec.Containers {
+		if c.Name != oldPod.Spec.Containers[i].Name {
+			return // Update is invalid (container mismatch): let validation handle it.
+		}
 		if c.Resources.Requests == nil {
 			continue
 		}
 		if cmp.Equal(oldPod.Spec.Containers[i].Resources, c.Resources) {
 			continue
 		}
-		findContainerStatus := func(css []api.ContainerStatus, cName string) (api.ContainerStatus, bool) {
-			for i := range css {
-				if css[i].Name == cName {
-					return css[i], true
-				}
-			}
-			return api.ContainerStatus{}, false
-		}
-		if cs, ok := findContainerStatus(newPod.Status.ContainerStatuses, c.Name); ok {
-			if !cmp.Equal(c.Resources.Requests, cs.AllocatedResources) {
-				newPod.Status.Resize = api.PodResizeStatusProposed
-				break
-			}
-		}
+		newPod.Status.Resize = api.PodResizeStatusProposed
+		return
 	}
 }
 
@@ -1335,4 +1365,35 @@ func imageVolumesInUse(podSpec *api.PodSpec) bool {
 	}
 
 	return false
+}
+
+func dropSELinuxChangePolicy(podSpec, oldPodSpec *api.PodSpec) {
+	if utilfeature.DefaultFeatureGate.Enabled(features.SELinuxChangePolicy) || seLinuxChangePolicyInUse(oldPodSpec) {
+		return
+	}
+	if podSpec == nil || podSpec.SecurityContext == nil {
+		return
+	}
+	podSpec.SecurityContext.SELinuxChangePolicy = nil
+}
+
+func seLinuxChangePolicyInUse(podSpec *api.PodSpec) bool {
+	if podSpec == nil || podSpec.SecurityContext == nil {
+		return false
+	}
+	return podSpec.SecurityContext.SELinuxChangePolicy != nil
+}
+
+func useOnlyRecursiveSELinuxChangePolicy(oldPodSpec *api.PodSpec) bool {
+	if utilfeature.DefaultFeatureGate.Enabled(features.SELinuxMount) {
+		// All policies are allowed
+		return false
+	}
+
+	if seLinuxChangePolicyInUse(oldPodSpec) {
+		// The old pod spec has *any* policy: we need to keep that object update-able.
+		return false
+	}
+	// No feature gate + no value in the old object -> only Recursive is allowed
+	return true
 }

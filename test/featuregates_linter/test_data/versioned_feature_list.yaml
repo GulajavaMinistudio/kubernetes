@@ -164,6 +164,18 @@
     lockToDefault: false
     preRelease: Beta
     version: "1.32"
+- name: BtreeWatchCache
+  versionedSpecs:
+  - default: true
+    lockToDefault: false
+    preRelease: Beta
+    version: "1.32"
+- name: CBORServingAndStorage
+  versionedSpecs:
+  - default: false
+    lockToDefault: false
+    preRelease: Alpha
+    version: "1.32"
 - name: CloudControllerManagerWebhook
   versionedSpecs:
   - default: false
@@ -400,6 +412,10 @@
     lockToDefault: false
     preRelease: Alpha
     version: "1.26"
+  - default: false
+    lockToDefault: false
+    preRelease: Beta
+    version: "1.32"
 - name: EfficientWatchResumption
   versionedSpecs:
   - default: false
@@ -436,6 +452,12 @@
     lockToDefault: false
     preRelease: GA
     version: "1.20"
+- name: ExternalServiceAccountTokenSigner
+  versionedSpecs:
+  - default: false
+    lockToDefault: false
+    preRelease: Alpha
+    version: "1.32"
 - name: GracefulNodeShutdown
   versionedSpecs:
   - default: false
@@ -466,20 +488,6 @@
     lockToDefault: false
     preRelease: Beta
     version: "1.31"
-- name: HPAContainerMetrics
-  versionedSpecs:
-  - default: false
-    lockToDefault: false
-    preRelease: Alpha
-    version: "1.20"
-  - default: true
-    lockToDefault: false
-    preRelease: Beta
-    version: "1.27"
-  - default: true
-    lockToDefault: true
-    preRelease: GA
-    version: "1.30"
 - name: HPAScaleToZero
   versionedSpecs:
   - default: false
@@ -508,6 +516,12 @@
     lockToDefault: false
     preRelease: Alpha
     version: "1.27"
+- name: InPlacePodVerticalScalingAllocatedStatus
+  versionedSpecs:
+  - default: false
+    lockToDefault: false
+    preRelease: Alpha
+    version: "1.32"
 - name: InTreePluginPortworxUnregister
   versionedSpecs:
   - default: false
@@ -726,6 +740,10 @@
     lockToDefault: false
     preRelease: Beta
     version: "1.22"
+  - default: true
+    lockToDefault: true
+    preRelease: GA
+    version: "1.32"
 - name: MemoryQoS
   versionedSpecs:
   - default: false
@@ -747,7 +765,7 @@
   - default: false
     lockToDefault: false
     preRelease: Alpha
-    version: "1.30"
+    version: "1.32"
 - name: NFTablesProxyMode
   versionedSpecs:
   - default: false
@@ -880,6 +898,10 @@
     lockToDefault: false
     preRelease: Beta
     version: "1.28"
+  - default: true
+    lockToDefault: true
+    preRelease: GA
+    version: "1.32"
 - name: PodLifecycleSleepAction
   versionedSpecs:
   - default: false
@@ -890,6 +912,12 @@
     lockToDefault: false
     preRelease: Beta
     version: "1.30"
+- name: PodLifecycleSleepActionAllowZero
+  versionedSpecs:
+  - default: false
+    lockToDefault: false
+    preRelease: Alpha
+    version: "1.32"
 - name: PodReadyToStartContainersCondition
   versionedSpecs:
   - default: false
@@ -946,6 +974,10 @@
     lockToDefault: false
     preRelease: Alpha
     version: "1.23"
+  - default: true
+    lockToDefault: false
+    preRelease: Beta
+    version: "1.32"
 - name: RecursiveReadOnlyMounts
   versionedSpecs:
   - default: false
@@ -1040,6 +1072,12 @@
     lockToDefault: false
     preRelease: Beta
     version: "1.28"
+- name: SELinuxChangePolicy
+  versionedSpecs:
+  - default: false
+    lockToDefault: false
+    preRelease: Alpha
+    version: "1.32"
 - name: SELinuxMount
   versionedSpecs:
   - default: false
@@ -1072,6 +1110,12 @@
     lockToDefault: false
     preRelease: Beta
     version: "1.29"
+- name: ServiceAccountNodeAudienceRestriction
+  versionedSpecs:
+  - default: true
+    lockToDefault: false
+    preRelease: Beta
+    version: "1.32"
 - name: ServiceAccountTokenJTI
   versionedSpecs:
   - default: false
@@ -1266,12 +1310,6 @@
     lockToDefault: false
     preRelease: Beta
     version: "1.32"
-- name: TestOnlyCBORServingAndStorage
-  versionedSpecs:
-  - default: false
-    lockToDefault: false
-    preRelease: Alpha
-    version: "1.32"
 - name: TopologyAwareHints
   versionedSpecs:
   - default: false
@@ -1410,6 +1448,18 @@
     lockToDefault: false
     preRelease: Beta
     version: "1.32"
+- name: WindowsCPUAndMemoryAffinity
+  versionedSpecs:
+  - default: false
+    lockToDefault: false
+    preRelease: Alpha
+    version: "1.32"
+- name: WindowsGracefulNodeShutdown
+  versionedSpecs:
+  - default: false
+    lockToDefault: false
+    preRelease: Alpha
+    version: "1.32"
 - name: WindowsHostNetwork
   versionedSpecs:
   - default: true
@@ -1432,13 +1482,3 @@
     lockToDefault: false
     preRelease: Beta
     version: "1.20"
-- name: ZeroLimitedNominalConcurrencyShares
-  versionedSpecs:
-  - default: false
-    lockToDefault: false
-    preRelease: Beta
-    version: "1.29"
-  - default: true
-    lockToDefault: true
-    preRelease: GA
-    version: "1.30"

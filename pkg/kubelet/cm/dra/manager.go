@@ -23,7 +23,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	resourceapi "k8s.io/api/resource/v1alpha3"
+	resourceapi "k8s.io/api/resource/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -31,12 +31,13 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/dynamic-resource-allocation/resourceclaim"
 	"k8s.io/klog/v2"
-	drapb "k8s.io/kubelet/pkg/apis/dra/v1alpha4"
+	drapb "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 	dra "k8s.io/kubernetes/pkg/kubelet/cm/dra/plugin"
 	"k8s.io/kubernetes/pkg/kubelet/cm/dra/state"
 	"k8s.io/kubernetes/pkg/kubelet/config"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/metrics"
+	"k8s.io/kubernetes/pkg/kubelet/pluginmanager/cache"
 )
 
 // draManagerStateFileName is the file name where dra manager stores its state
@@ -47,6 +48,9 @@ const defaultReconcilePeriod = 60 * time.Second
 
 // ActivePodsFunc is a function that returns a list of pods to reconcile.
 type ActivePodsFunc func() []*v1.Pod
+
+// GetNodeFunc is a function that returns the node object using the kubelet's node lister.
+type GetNodeFunc func() (*v1.Node, error)
 
 // ManagerImpl is the structure in charge of managing DRA drivers.
 type ManagerImpl struct {
@@ -66,6 +70,9 @@ type ManagerImpl struct {
 
 	// KubeClient reference
 	kubeClient clientset.Interface
+
+	// getNode is a function that returns the node object using the kubelet's node lister.
+	getNode GetNodeFunc
 }
 
 // NewManagerImpl creates a new manager.
@@ -90,9 +97,14 @@ func NewManagerImpl(kubeClient clientset.Interface, stateFileDirectory string, n
 	return manager, nil
 }
 
+func (m *ManagerImpl) GetWatcherHandler() cache.PluginHandler {
+	return cache.PluginHandler(dra.NewRegistrationHandler(m.kubeClient, m.getNode))
+}
+
 // Start starts the reconcile loop of the manager.
-func (m *ManagerImpl) Start(ctx context.Context, activePods ActivePodsFunc, sourcesReady config.SourcesReady) error {
+func (m *ManagerImpl) Start(ctx context.Context, activePods ActivePodsFunc, getNode GetNodeFunc, sourcesReady config.SourcesReady) error {
 	m.activePods = activePods
+	m.getNode = getNode
 	m.sourcesReady = sourcesReady
 	go wait.UntilWithContext(ctx, func(ctx context.Context) { m.reconcileLoop(ctx) }, m.reconcilePeriod)
 	return nil
@@ -176,7 +188,7 @@ func (m *ManagerImpl) prepareResources(ctx context.Context, pod *v1.Pod) error {
 			continue
 		}
 		// Query claim object from the API server
-		resourceClaim, err := m.kubeClient.ResourceV1alpha3().ResourceClaims(pod.Namespace).Get(
+		resourceClaim, err := m.kubeClient.ResourceV1beta1().ResourceClaims(pod.Namespace).Get(
 			ctx,
 			*claimName,
 			metav1.GetOptions{})

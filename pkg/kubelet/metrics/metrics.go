@@ -149,6 +149,9 @@ const (
 
 	AlignedPhysicalCPU = "physical_cpu"
 	AlignedNUMANode    = "numa_node"
+
+	// Metrics to track kubelet admission rejections.
+	AdmissionRejectionsTotalKey = "admission_rejections_total"
 )
 
 type imageSizeBucket struct {
@@ -751,7 +754,7 @@ var (
 		&metrics.GaugeOpts{
 			Subsystem:      KubeletSubsystem,
 			Name:           "graceful_shutdown_end_time_seconds",
-			Help:           "Last graceful shutdown start time since unix epoch in seconds",
+			Help:           "Last graceful shutdown end time since unix epoch in seconds",
 			StabilityLevel: metrics.ALPHA,
 		},
 	)
@@ -994,6 +997,17 @@ var (
 		},
 		[]string{"driver_name", "method_name", "grpc_status_code"},
 	)
+
+	// AdmissionRejectionsTotal tracks the number of failed admission times, currently, just record it for pod additions
+	AdmissionRejectionsTotal = metrics.NewCounterVec(
+		&metrics.CounterOpts{
+			Subsystem:      KubeletSubsystem,
+			Name:           AdmissionRejectionsTotalKey,
+			Help:           "Cumulative number pod admission rejections by the Kubelet.",
+			StabilityLevel: metrics.ALPHA,
+		},
+		[]string{"reason"},
+	)
 )
 
 var registerMetrics sync.Once
@@ -1065,10 +1079,8 @@ func Register(collectors ...metrics.StableCollector) {
 		legacyregistry.MustRegister(CPUManagerSharedPoolSizeMilliCores)
 		legacyregistry.MustRegister(CPUManagerExclusiveCPUsAllocationCount)
 		legacyregistry.MustRegister(ContainerAlignedComputeResources)
-		if utilfeature.DefaultFeatureGate.Enabled(features.MemoryManager) {
-			legacyregistry.MustRegister(MemoryManagerPinningRequestTotal)
-			legacyregistry.MustRegister(MemoryManagerPinningErrorsTotal)
-		}
+		legacyregistry.MustRegister(MemoryManagerPinningRequestTotal)
+		legacyregistry.MustRegister(MemoryManagerPinningErrorsTotal)
 		legacyregistry.MustRegister(TopologyManagerAdmissionRequestsTotal)
 		legacyregistry.MustRegister(TopologyManagerAdmissionErrorsTotal)
 		legacyregistry.MustRegister(TopologyManagerAdmissionDuration)
@@ -1093,6 +1105,8 @@ func Register(collectors ...metrics.StableCollector) {
 			legacyregistry.MustRegister(DRAOperationsDuration)
 			legacyregistry.MustRegister(DRAGRPCOperationsDuration)
 		}
+
+		legacyregistry.MustRegister(AdmissionRejectionsTotal)
 	})
 }
 

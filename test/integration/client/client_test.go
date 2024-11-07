@@ -46,22 +46,27 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/apiserver/pkg/features"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	appsv1ac "k8s.io/client-go/applyconfigurations/apps/v1"
+	autoscalingv1ac "k8s.io/client-go/applyconfigurations/autoscaling/v1"
 	corev1ac "k8s.io/client-go/applyconfigurations/core/v1"
 	metav1ac "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/discovery"
+	clientfeatures "k8s.io/client-go/features"
+	clientfeaturestesting "k8s.io/client-go/features/testing"
 	"k8s.io/client-go/gentype"
-	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes"
 	clientscheme "k8s.io/client-go/kubernetes/scheme"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/retry"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	utilversion "k8s.io/component-base/version"
 	kubeapiservertesting "k8s.io/kubernetes/cmd/kube-apiserver/app/testing"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/test/integration/framework"
 	imageutils "k8s.io/kubernetes/test/utils/image"
-	"k8s.io/kubernetes/test/utils/ktesting"
 	wardlev1alpha1 "k8s.io/sample-apiserver/pkg/apis/wardle/v1alpha1"
 	wardlev1alpha1client "k8s.io/sample-apiserver/pkg/generated/clientset/versioned/typed/wardle/v1alpha1"
 	"k8s.io/utils/ptr"
@@ -71,7 +76,7 @@ func TestClient(t *testing.T) {
 	result := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
 	defer result.TearDownFn()
 
-	client := clientset.NewForConfigOrDie(result.ClientConfig)
+	client := kubernetes.NewForConfigOrDie(result.ClientConfig)
 
 	info, err := client.Discovery().ServerVersion()
 	if err != nil {
@@ -145,7 +150,7 @@ func TestAtomicPut(t *testing.T) {
 	result := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
 	defer result.TearDownFn()
 
-	c := clientset.NewForConfigOrDie(result.ClientConfig)
+	c := kubernetes.NewForConfigOrDie(result.ClientConfig)
 
 	rcBody := v1.ReplicationController{
 		TypeMeta: metav1.TypeMeta{
@@ -234,7 +239,7 @@ func TestPatch(t *testing.T) {
 	result := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
 	defer result.TearDownFn()
 
-	c := clientset.NewForConfigOrDie(result.ClientConfig)
+	c := kubernetes.NewForConfigOrDie(result.ClientConfig)
 
 	name := "patchpod"
 	resource := "pods"
@@ -353,7 +358,7 @@ func TestPatchWithCreateOnUpdate(t *testing.T) {
 	result := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
 	defer result.TearDownFn()
 
-	c := clientset.NewForConfigOrDie(result.ClientConfig)
+	c := kubernetes.NewForConfigOrDie(result.ClientConfig)
 
 	endpointTemplate := &v1.Endpoints{
 		ObjectMeta: metav1.ObjectMeta{
@@ -461,7 +466,7 @@ func TestAPIVersions(t *testing.T) {
 	result := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
 	defer result.TearDownFn()
 
-	c := clientset.NewForConfigOrDie(result.ClientConfig)
+	c := kubernetes.NewForConfigOrDie(result.ClientConfig)
 
 	clientVersion := c.CoreV1().RESTClient().APIVersion().String()
 	g, err := c.Discovery().ServerGroups()
@@ -483,7 +488,7 @@ func TestEventValidation(t *testing.T) {
 	result := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
 	defer result.TearDownFn()
 
-	client := clientset.NewForConfigOrDie(result.ClientConfig)
+	client := kubernetes.NewForConfigOrDie(result.ClientConfig)
 
 	createNamespace := func(namespace string) string {
 		if namespace == "" {
@@ -591,7 +596,7 @@ func TestEventCompatibility(t *testing.T) {
 	result := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
 	defer result.TearDownFn()
 
-	client := clientset.NewForConfigOrDie(result.ClientConfig)
+	client := kubernetes.NewForConfigOrDie(result.ClientConfig)
 
 	coreevents := []*v1.Event{
 		{
@@ -701,7 +706,7 @@ func TestSingleWatch(t *testing.T) {
 	result := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
 	defer result.TearDownFn()
 
-	client := clientset.NewForConfigOrDie(result.ClientConfig)
+	client := kubernetes.NewForConfigOrDie(result.ClientConfig)
 
 	mkEvent := func(i int) *v1.Event {
 		name := fmt.Sprintf("event-%v", i)
@@ -785,7 +790,7 @@ func TestMultiWatch(t *testing.T) {
 	result := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
 	defer result.TearDownFn()
 
-	client := clientset.NewForConfigOrDie(result.ClientConfig)
+	client := kubernetes.NewForConfigOrDie(result.ClientConfig)
 
 	dummyEvent := func(i int) *v1.Event {
 		name := fmt.Sprintf("unrelated-%v", i)
@@ -1014,7 +1019,7 @@ func TestApplyWithApplyConfiguration(t *testing.T) {
 	testServer := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
 	defer testServer.TearDownFn()
 
-	c := clientset.NewForConfigOrDie(testServer.ClientConfig)
+	c := kubernetes.NewForConfigOrDie(testServer.ClientConfig)
 
 	// Test apply to spec
 	obj, err := c.AppsV1().Deployments("default").Apply(context.TODO(), deployment, metav1.ApplyOptions{FieldManager: "test-mgr", Force: true})
@@ -1172,7 +1177,7 @@ func TestExtractModifyApply(t *testing.T) {
 
 	testServer := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
 	defer testServer.TearDownFn()
-	c := clientset.NewForConfigOrDie(testServer.ClientConfig)
+	c := kubernetes.NewForConfigOrDie(testServer.ClientConfig)
 	deploymentClient := c.AppsV1().Deployments("default")
 	fieldMgr := "test-mgr"
 
@@ -1244,7 +1249,7 @@ func TestExtractModifyApply(t *testing.T) {
 func TestExtractModifyApply_ForceOwnership(t *testing.T) {
 	testServer := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
 	defer testServer.TearDownFn()
-	c := clientset.NewForConfigOrDie(testServer.ClientConfig)
+	c := kubernetes.NewForConfigOrDie(testServer.ClientConfig)
 	deploymentClient := c.AppsV1().Deployments("default")
 
 	// apply an initial state with one field manager
@@ -1364,7 +1369,7 @@ func TestClientCBOREnablement(t *testing.T) {
 	// Generated clients for built-in types force Protobuf by default. They are tested here to
 	// ensure that the CBOR client feature gates do not interfere with this.
 	DoRequestWithProtobufPreferredGeneratedClient := func(t *testing.T, config *rest.Config) error {
-		clientset, err := clientset.NewForConfig(config)
+		clientset, err := kubernetes.NewForConfig(config)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1401,7 +1406,7 @@ func TestClientCBOREnablement(t *testing.T) {
 	}
 
 	DoRequestWithGenericTypedClient := func(t *testing.T, config *rest.Config) error {
-		clientset, err := clientset.NewForConfig(config)
+		clientset, err := kubernetes.NewForConfig(config)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1426,6 +1431,30 @@ func TestClientCBOREnablement(t *testing.T) {
 			metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}},
 		)
 		return err
+	}
+
+	DoWatchRequestWithGenericTypedClient := func(t *testing.T, config *rest.Config) error {
+		clientset, err := kubernetes.NewForConfig(config)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Generated clients for built-in types include the PreferProtobuf option, which
+		// forces Protobuf encoding on a per-request basis.
+		client := gentype.NewClientWithListAndApply[*v1.Namespace, *v1.NamespaceList, *corev1ac.NamespaceApplyConfiguration](
+			"namespaces",
+			clientset.CoreV1().RESTClient(),
+			clientscheme.ParameterCodec,
+			"",
+			func() *v1.Namespace { return &v1.Namespace{} },
+			func() *v1.NamespaceList { return &v1.NamespaceList{} },
+		)
+		w, err := client.Watch(context.TODO(), metav1.ListOptions{LabelSelector: "a,!a"})
+		if err != nil {
+			return err
+		}
+		w.Stop()
+		return nil
 	}
 
 	type testCase struct {
@@ -1649,6 +1678,20 @@ func TestClientCBOREnablement(t *testing.T) {
 			doRequest:               DoRequestWithGenericTypedClient,
 		},
 		{
+			name:                    "generated client watch accept cbor and json get cbor-seq",
+			served:                  true,
+			allowed:                 true,
+			preferred:               false,
+			configuredContentType:   "application/json",
+			configuredAccept:        "application/cbor;q=1,application/json;q=0.9",
+			wantRequestContentType:  "",
+			wantRequestAccept:       "application/cbor;q=1,application/json;q=0.9",
+			wantResponseContentType: "application/cbor-seq",
+			wantResponseStatus:      http.StatusOK,
+			wantStatusError:         false,
+			doRequest:               DoWatchRequestWithGenericTypedClient,
+		},
+		{
 			name:                    "generated client accept cbor and json get json cbor not served",
 			served:                  false,
 			allowed:                 true,
@@ -1683,7 +1726,7 @@ func TestClientCBOREnablement(t *testing.T) {
 			// Batch test cases with their server configuration instead of starting and stopping
 			// a new apiserver for each test case.
 			if served {
-				framework.EnableCBORServingAndStorageForTest(t)
+				featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CBORServingAndStorage, true)
 			}
 
 			server := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
@@ -1754,7 +1797,8 @@ func TestClientCBOREnablement(t *testing.T) {
 				}
 
 				t.Run(tc.name, func(t *testing.T) {
-					framework.SetTestOnlyCBORClientFeatureGatesForTest(t, tc.allowed, tc.preferred)
+					clientfeaturestesting.SetFeatureDuringTest(t, clientfeatures.ClientsAllowCBOR, tc.allowed)
+					clientfeaturestesting.SetFeatureDuringTest(t, clientfeatures.ClientsPreferCBOR, tc.preferred)
 
 					config := rest.CopyConfig(server.ClientConfig)
 					config.ContentType = tc.configuredContentType
@@ -1794,10 +1838,9 @@ func TestClientCBOREnablement(t *testing.T) {
 }
 
 func TestCBORWithTypedClient(t *testing.T) {
-	ktesting.SetDefaultVerbosity(10) // todo
-
-	framework.EnableCBORServingAndStorageForTest(t)
-	framework.SetTestOnlyCBORClientFeatureGatesForTest(t, true, true)
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CBORServingAndStorage, true)
+	clientfeaturestesting.SetFeatureDuringTest(t, clientfeatures.ClientsAllowCBOR, true)
+	clientfeaturestesting.SetFeatureDuringTest(t, clientfeatures.ClientsPreferCBOR, true)
 
 	server := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
 	t.Cleanup(server.TearDownFn)
@@ -1806,7 +1849,7 @@ func TestCBORWithTypedClient(t *testing.T) {
 
 	{
 		// Setup using client with default config.
-		clientset, err := clientset.NewForConfig(server.ClientConfig)
+		clientset, err := kubernetes.NewForConfig(server.ClientConfig)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1825,7 +1868,7 @@ func TestCBORWithTypedClient(t *testing.T) {
 	config.ContentType = ""
 	config.AcceptContentTypes = ""
 	config.Wrap(framework.AssertRequestResponseAsCBOR(t))
-	clientset, err := clientset.NewForConfig(config)
+	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1932,5 +1975,106 @@ func TestCBORWithTypedClient(t *testing.T) {
 		return err
 	}); err != nil {
 		t.Fatal(err)
+	}
+
+	config = rest.CopyConfig(server.ClientConfig)
+	// Configuring a non-empty AcceptContentTypes avoids the "default to accepting Protobuf"
+	// behavior from client-gen's --prefer-protobuf option, which is set when generating all of
+	// the clients with ApplyScale.
+	config.AcceptContentTypes = "application/cbor"
+	config.Wrap(framework.AssertRequestResponseAsCBOR(t))
+	clientset, err = kubernetes.NewForConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// for Apply, ApplyStatus, and ApplyScale
+	rsClient := clientset.AppsV1().ReplicaSets(TestNamespace)
+	rs, err := rsClient.Apply(
+		context.TODO(),
+		appsv1ac.ReplicaSet("test-cbor-typed-client", TestNamespace).
+			WithSpec(appsv1ac.ReplicaSetSpec().
+				WithReplicas(0).
+				WithSelector(metav1ac.LabelSelector().WithMatchLabels(map[string]string{"foo": "bar"})).
+				WithTemplate(corev1ac.PodTemplateSpec().
+					WithLabels(map[string]string{"foo": "bar"}).
+					WithSpec(corev1ac.PodSpec().
+						WithContainers(corev1ac.Container().
+							WithName("testing").
+							WithImage("busybox"),
+						),
+					),
+				),
+			),
+		metav1.ApplyOptions{FieldManager: "test-cbor-typed-client"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := rsClient.ApplyScale(
+		context.TODO(),
+		rs.GetName(),
+		autoscalingv1ac.Scale().WithSpec(autoscalingv1ac.ScaleSpec().WithReplicas(1)),
+		metav1.ApplyOptions{
+			FieldManager: "test-cbor-typed-client",
+			DryRun:       []string{metav1.DryRunAll},
+			Force:        true,
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := rsClient.ApplyStatus(context.TODO(), appsv1ac.ReplicaSet(rs.GetName(), rs.GetNamespace()), metav1.ApplyOptions{FieldManager: "test-cbor-typed-client", DryRun: []string{metav1.DryRunAll}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUnsupportedMediaTypeCircuitBreaker(t *testing.T) {
+	clientfeaturestesting.SetFeatureDuringTest(t, clientfeatures.ClientsAllowCBOR, true)
+	clientfeaturestesting.SetFeatureDuringTest(t, clientfeatures.ClientsPreferCBOR, true)
+
+	server := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
+	t.Cleanup(server.TearDownFn)
+
+	config := rest.CopyConfig(server.ClientConfig)
+	config.ContentType = "application/cbor"
+	config.AcceptContentTypes = "application/json"
+
+	client, err := corev1client.NewForConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := client.Namespaces().Create(
+		context.TODO(),
+		&v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test-client-415"}},
+		metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}},
+	); !apierrors.IsUnsupportedMediaType(err) {
+		t.Errorf("expected to receive unsupported media type on first cbor request, got: %v", err)
+	}
+
+	// Requests from this client should fall back from application/cbor to application/json.
+	if _, err := client.Namespaces().Create(
+		context.TODO(),
+		&v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test-client-415"}},
+		metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}},
+	); err != nil {
+		t.Errorf("expected to receive nil error on subsequent cbor request, got: %v", err)
+	}
+
+	// The circuit breaker trips on a per-client basis, so it should not begin tripped for a
+	// fresh client with identical config.
+	client, err = corev1client.NewForConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := client.Namespaces().Create(
+		context.TODO(),
+		&v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test-client-415"}},
+		metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}},
+	); !apierrors.IsUnsupportedMediaType(err) {
+		t.Errorf("expected to receive unsupported media type on cbor request with fresh client, got: %v", err)
 	}
 }
