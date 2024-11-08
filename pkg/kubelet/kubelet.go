@@ -50,6 +50,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	v1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -278,7 +279,6 @@ type Bootstrap interface {
 	ListenAndServeReadOnly(address net.IP, port uint, tp trace.TracerProvider)
 	ListenAndServePodResources()
 	Run(<-chan kubetypes.PodUpdate)
-	RunOnce(<-chan kubetypes.PodUpdate) ([]RunPodResult, error)
 }
 
 // Dependencies is a bin for things we might consider "injected dependencies" -- objects constructed
@@ -925,6 +925,9 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		volumepathhandler.NewBlockVolumePathHandler())
 
 	klet.backOff = flowcontrol.NewBackOff(containerBackOffPeriod, MaxContainerBackOff)
+	klet.backOff.HasExpiredFunc = func(eventTime time.Time, lastUpdate time.Time, maxDuration time.Duration) bool {
+		return eventTime.Sub(lastUpdate) > 600*time.Second
+	}
 
 	// setup eviction manager
 	evictionManager, evictionAdmitHandler := eviction.NewManager(klet.resourceAnalyzer, evictionConfig,
@@ -1255,6 +1258,12 @@ type Kubelet struct {
 	// nodeStatusReportFrequency is the frequency that kubelet posts node
 	// status to master. It is only used when node lease feature is enabled.
 	nodeStatusReportFrequency time.Duration
+
+	// delayAfterNodeStatusChange is the one-time random duration that we add to the next node status report interval
+	// every time when there's an actual node status change. But all future node status update that is not caused by
+	// real status change will stick with nodeStatusReportFrequency. The random duration is a uniform distribution over
+	// [-0.5*nodeStatusReportFrequency, 0.5*nodeStatusReportFrequency]
+	delayAfterNodeStatusChange time.Duration
 
 	// lastStatusReportTime is the time when node status was last reported.
 	lastStatusReportTime time.Time
@@ -2020,17 +2029,6 @@ func (kl *Kubelet) SyncPod(ctx context.Context, updateType kubetypes.SyncPodType
 		}
 
 		return false, nil
-	}
-
-	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) && isPodResizeInProgress(pod, podStatus) {
-		// While resize is in progress, periodically request the latest status from the runtime via
-		// the PLEG. This is necessary since ordinarily pod status is only fetched when a container
-		// undergoes a state transition.
-		runningPod := kubecontainer.ConvertPodStatusToRunningPod(kl.getRuntime().Type(), podStatus)
-		if err, _ := kl.pleg.UpdateCache(&runningPod, pod.UID); err != nil {
-			klog.ErrorS(err, "Failed to update pod cache", "pod", klog.KObj(pod))
-			return false, err
-		}
 	}
 
 	return false, nil
@@ -2832,6 +2830,21 @@ func isPodResizeInProgress(pod *v1.Pod, podStatus *kubecontainer.PodStatus) bool
 // pod should hold the desired (pre-allocated) spec.
 // Returns true if the resize can proceed.
 func (kl *Kubelet) canResizePod(pod *v1.Pod) (bool, v1.PodResizeStatus) {
+	if v1qos.GetPodQOS(pod) == v1.PodQOSGuaranteed && !utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScalingExclusiveCPUs) {
+		if utilfeature.DefaultFeatureGate.Enabled(features.CPUManager) {
+			if kl.containerManager.GetNodeConfig().CPUManagerPolicy == "static" {
+				klog.V(3).InfoS("Resize is infeasible for Guaranteed Pods alongside CPU Manager static policy")
+				return false, v1.PodResizeStatusInfeasible
+			}
+		}
+		if utilfeature.DefaultFeatureGate.Enabled(features.MemoryManager) {
+			if kl.containerManager.GetNodeConfig().ExperimentalMemoryManagerPolicy == "static" {
+				klog.V(3).InfoS("Resize is infeasible for Guaranteed Pods alongside Memory Manager static policy")
+				return false, v1.PodResizeStatusInfeasible
+			}
+		}
+	}
+
 	node, err := kl.getNodeAnyWay()
 	if err != nil {
 		klog.ErrorS(err, "getNodeAnyway function failed")
@@ -2892,7 +2905,23 @@ func (kl *Kubelet) handlePodResourcesResize(pod *v1.Pod, podStatus *kubecontaine
 		if err := kl.statusManager.SetPodAllocation(pod); err != nil {
 			return nil, err
 		}
+		for i, container := range pod.Spec.Containers {
+			if !apiequality.Semantic.DeepEqual(container.Resources, allocatedPod.Spec.Containers[i].Resources) {
+				key := kuberuntime.GetStableKey(pod, &container)
+				kl.backOff.Reset(key)
+			}
+		}
 		allocatedPod = pod
+
+		// Special case when the updated allocation matches the actual resources. This can occur
+		// when reverting a resize that hasn't been actuated, or when making an equivalent change
+		// (such as CPU requests below MinShares). This is an optimization to clear the resize
+		// status immediately, rather than waiting for the next SyncPod iteration.
+		if allocatedResourcesMatchStatus(allocatedPod, podStatus) {
+			// In this case, consider the resize complete.
+			kl.statusManager.SetPodResizeStatus(pod.UID, "")
+			return allocatedPod, nil
+		}
 	}
 	if resizeStatus != "" {
 		kl.statusManager.SetPodResizeStatus(pod.UID, resizeStatus)
@@ -3167,4 +3196,8 @@ func (kl *Kubelet) fastStaticPodsRegistration(ctx context.Context) {
 	for staticPod, mirrorPod := range staticPodToMirrorPodMap {
 		kl.tryReconcileMirrorPods(staticPod, mirrorPod)
 	}
+}
+
+func (kl *Kubelet) SetPodWatchCondition(podUID types.UID, conditionKey string, condition pleg.WatchCondition) {
+	kl.pleg.SetPodWatchCondition(podUID, conditionKey, condition)
 }

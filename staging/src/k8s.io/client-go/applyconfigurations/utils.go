@@ -36,7 +36,7 @@ import (
 	certificatesv1alpha1 "k8s.io/api/certificates/v1alpha1"
 	certificatesv1beta1 "k8s.io/api/certificates/v1beta1"
 	coordinationv1 "k8s.io/api/coordination/v1"
-	coordinationv1alpha1 "k8s.io/api/coordination/v1alpha1"
+	v1alpha2 "k8s.io/api/coordination/v1alpha2"
 	coordinationv1beta1 "k8s.io/api/coordination/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
@@ -89,7 +89,7 @@ import (
 	applyconfigurationscertificatesv1alpha1 "k8s.io/client-go/applyconfigurations/certificates/v1alpha1"
 	applyconfigurationscertificatesv1beta1 "k8s.io/client-go/applyconfigurations/certificates/v1beta1"
 	applyconfigurationscoordinationv1 "k8s.io/client-go/applyconfigurations/coordination/v1"
-	applyconfigurationscoordinationv1alpha1 "k8s.io/client-go/applyconfigurations/coordination/v1alpha1"
+	coordinationv1alpha2 "k8s.io/client-go/applyconfigurations/coordination/v1alpha2"
 	applyconfigurationscoordinationv1beta1 "k8s.io/client-go/applyconfigurations/coordination/v1beta1"
 	applyconfigurationscorev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	applyconfigurationsdiscoveryv1 "k8s.io/client-go/applyconfigurations/discovery/v1"
@@ -631,11 +631,11 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 	case coordinationv1.SchemeGroupVersion.WithKind("LeaseSpec"):
 		return &applyconfigurationscoordinationv1.LeaseSpecApplyConfiguration{}
 
-		// Group=coordination.k8s.io, Version=v1alpha1
-	case coordinationv1alpha1.SchemeGroupVersion.WithKind("LeaseCandidate"):
-		return &applyconfigurationscoordinationv1alpha1.LeaseCandidateApplyConfiguration{}
-	case coordinationv1alpha1.SchemeGroupVersion.WithKind("LeaseCandidateSpec"):
-		return &applyconfigurationscoordinationv1alpha1.LeaseCandidateSpecApplyConfiguration{}
+		// Group=coordination.k8s.io, Version=v1alpha2
+	case v1alpha2.SchemeGroupVersion.WithKind("LeaseCandidate"):
+		return &coordinationv1alpha2.LeaseCandidateApplyConfiguration{}
+	case v1alpha2.SchemeGroupVersion.WithKind("LeaseCandidateSpec"):
+		return &coordinationv1alpha2.LeaseCandidateSpecApplyConfiguration{}
 
 		// Group=coordination.k8s.io, Version=v1beta1
 	case coordinationv1beta1.SchemeGroupVersion.WithKind("Lease"):
@@ -1582,6 +1582,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &applyconfigurationsrbacv1beta1.SubjectApplyConfiguration{}
 
 		// Group=resource.k8s.io, Version=v1alpha3
+	case v1alpha3.SchemeGroupVersion.WithKind("AllocatedDeviceStatus"):
+		return &resourcev1alpha3.AllocatedDeviceStatusApplyConfiguration{}
 	case v1alpha3.SchemeGroupVersion.WithKind("AllocationResult"):
 		return &resourcev1alpha3.AllocationResultApplyConfiguration{}
 	case v1alpha3.SchemeGroupVersion.WithKind("BasicDevice"):
@@ -1616,6 +1618,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &resourcev1alpha3.DeviceRequestAllocationResultApplyConfiguration{}
 	case v1alpha3.SchemeGroupVersion.WithKind("DeviceSelector"):
 		return &resourcev1alpha3.DeviceSelectorApplyConfiguration{}
+	case v1alpha3.SchemeGroupVersion.WithKind("NetworkDeviceData"):
+		return &resourcev1alpha3.NetworkDeviceDataApplyConfiguration{}
 	case v1alpha3.SchemeGroupVersion.WithKind("OpaqueDeviceConfiguration"):
 		return &resourcev1alpha3.OpaqueDeviceConfigurationApplyConfiguration{}
 	case v1alpha3.SchemeGroupVersion.WithKind("ResourceClaim"):
@@ -1638,6 +1642,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &resourcev1alpha3.ResourceSliceSpecApplyConfiguration{}
 
 		// Group=resource.k8s.io, Version=v1beta1
+	case resourcev1beta1.SchemeGroupVersion.WithKind("AllocatedDeviceStatus"):
+		return &applyconfigurationsresourcev1beta1.AllocatedDeviceStatusApplyConfiguration{}
 	case resourcev1beta1.SchemeGroupVersion.WithKind("AllocationResult"):
 		return &applyconfigurationsresourcev1beta1.AllocationResultApplyConfiguration{}
 	case resourcev1beta1.SchemeGroupVersion.WithKind("BasicDevice"):
@@ -1674,6 +1680,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &applyconfigurationsresourcev1beta1.DeviceRequestAllocationResultApplyConfiguration{}
 	case resourcev1beta1.SchemeGroupVersion.WithKind("DeviceSelector"):
 		return &applyconfigurationsresourcev1beta1.DeviceSelectorApplyConfiguration{}
+	case resourcev1beta1.SchemeGroupVersion.WithKind("NetworkDeviceData"):
+		return &applyconfigurationsresourcev1beta1.NetworkDeviceDataApplyConfiguration{}
 	case resourcev1beta1.SchemeGroupVersion.WithKind("OpaqueDeviceConfiguration"):
 		return &applyconfigurationsresourcev1beta1.OpaqueDeviceConfigurationApplyConfiguration{}
 	case resourcev1beta1.SchemeGroupVersion.WithKind("ResourceClaim"):

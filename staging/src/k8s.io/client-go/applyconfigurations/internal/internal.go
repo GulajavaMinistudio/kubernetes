@@ -4471,7 +4471,7 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: strategy
       type:
         scalar: string
-- name: io.k8s.api.coordination.v1alpha1.LeaseCandidate
+- name: io.k8s.api.coordination.v1alpha2.LeaseCandidate
   map:
     fields:
     - name: apiVersion
@@ -4486,14 +4486,15 @@ var schemaYAML = typed.YAMLObject(`types:
       default: {}
     - name: spec
       type:
-        namedType: io.k8s.api.coordination.v1alpha1.LeaseCandidateSpec
+        namedType: io.k8s.api.coordination.v1alpha2.LeaseCandidateSpec
       default: {}
-- name: io.k8s.api.coordination.v1alpha1.LeaseCandidateSpec
+- name: io.k8s.api.coordination.v1alpha2.LeaseCandidateSpec
   map:
     fields:
     - name: binaryVersion
       type:
         scalar: string
+      default: ""
     - name: emulationVersion
       type:
         scalar: string
@@ -4504,15 +4505,12 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: pingTime
       type:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.MicroTime
-    - name: preferredStrategies
-      type:
-        list:
-          elementType:
-            scalar: string
-          elementRelationship: atomic
     - name: renewTime
       type:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.MicroTime
+    - name: strategy
+      type:
+        scalar: string
 - name: io.k8s.api.coordination.v1beta1.Lease
   map:
     fields:
@@ -7169,6 +7167,9 @@ var schemaYAML = typed.YAMLObject(`types:
           elementRelationship: associative
           keys:
           - name
+    - name: resources
+      type:
+        namedType: io.k8s.api.core.v1.ResourceRequirements
     - name: restartPolicy
       type:
         scalar: string
@@ -12353,6 +12354,35 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: namespace
       type:
         scalar: string
+- name: io.k8s.api.resource.v1alpha3.AllocatedDeviceStatus
+  map:
+    fields:
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+    - name: data
+      type:
+        namedType: __untyped_atomic_
+    - name: device
+      type:
+        scalar: string
+      default: ""
+    - name: driver
+      type:
+        scalar: string
+      default: ""
+    - name: networkData
+      type:
+        namedType: io.k8s.api.resource.v1alpha3.NetworkDeviceData
+    - name: pool
+      type:
+        scalar: string
+      default: ""
 - name: io.k8s.api.resource.v1alpha3.AllocationResult
   map:
     fields:
@@ -12576,6 +12606,21 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: cel
       type:
         namedType: io.k8s.api.resource.v1alpha3.CELDeviceSelector
+- name: io.k8s.api.resource.v1alpha3.NetworkDeviceData
+  map:
+    fields:
+    - name: hardwareAddress
+      type:
+        scalar: string
+    - name: interfaceName
+      type:
+        scalar: string
+    - name: ips
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: atomic
 - name: io.k8s.api.resource.v1alpha3.OpaqueDeviceConfiguration
   map:
     fields:
@@ -12638,6 +12683,16 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: allocation
       type:
         namedType: io.k8s.api.resource.v1alpha3.AllocationResult
+    - name: devices
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.resource.v1alpha3.AllocatedDeviceStatus
+          elementRelationship: associative
+          keys:
+          - driver
+          - device
+          - pool
     - name: reservedFor
       type:
         list:
@@ -12732,6 +12787,35 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         namedType: io.k8s.api.resource.v1alpha3.ResourcePool
       default: {}
+- name: io.k8s.api.resource.v1beta1.AllocatedDeviceStatus
+  map:
+    fields:
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+    - name: data
+      type:
+        namedType: __untyped_atomic_
+    - name: device
+      type:
+        scalar: string
+      default: ""
+    - name: driver
+      type:
+        scalar: string
+      default: ""
+    - name: networkData
+      type:
+        namedType: io.k8s.api.resource.v1beta1.NetworkDeviceData
+    - name: pool
+      type:
+        scalar: string
+      default: ""
 - name: io.k8s.api.resource.v1beta1.AllocationResult
   map:
     fields:
@@ -12961,6 +13045,21 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: cel
       type:
         namedType: io.k8s.api.resource.v1beta1.CELDeviceSelector
+- name: io.k8s.api.resource.v1beta1.NetworkDeviceData
+  map:
+    fields:
+    - name: hardwareAddress
+      type:
+        scalar: string
+    - name: interfaceName
+      type:
+        scalar: string
+    - name: ips
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: atomic
 - name: io.k8s.api.resource.v1beta1.OpaqueDeviceConfiguration
   map:
     fields:
@@ -13023,6 +13122,16 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: allocation
       type:
         namedType: io.k8s.api.resource.v1beta1.AllocationResult
+    - name: devices
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.resource.v1beta1.AllocatedDeviceStatus
+          elementRelationship: associative
+          keys:
+          - driver
+          - device
+          - pool
     - name: reservedFor
       type:
         list:
@@ -13966,6 +14075,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: gracePeriodSeconds
       type:
         scalar: numeric
+    - name: ignoreStoreReadErrorWithClusterBreakingPotential
+      type:
+        scalar: boolean
     - name: kind
       type:
         scalar: string

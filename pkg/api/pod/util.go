@@ -377,8 +377,6 @@ func GetValidationOptionsFromPodSpecAndMeta(podSpec, oldPodSpec *api.PodSpec, po
 	// default pod validation options based on feature gate
 	opts := apivalidation.PodValidationOptions{
 		AllowInvalidPodDeletionCost: !utilfeature.DefaultFeatureGate.Enabled(features.PodDeletionCost),
-		// Allow pod spec to use status.hostIPs in downward API if feature is enabled
-		AllowHostIPsField: utilfeature.DefaultFeatureGate.Enabled(features.PodHostIPs),
 		// Do not allow pod spec to use non-integer multiple of huge page unit size default
 		AllowIndivisibleHugePagesValues:                   false,
 		AllowInvalidLabelValueInSelector:                  false,
@@ -386,6 +384,7 @@ func GetValidationOptionsFromPodSpecAndMeta(podSpec, oldPodSpec *api.PodSpec, po
 		AllowNamespacedSysctlsForHostNetAndHostIPC:        false,
 		AllowNonLocalProjectedTokenPath:                   false,
 		AllowPodLifecycleSleepActionZeroValue:             utilfeature.DefaultFeatureGate.Enabled(features.PodLifecycleSleepActionAllowZero),
+		PodLevelResourcesEnabled:                          utilfeature.DefaultFeatureGate.Enabled(features.PodLevelResources),
 	}
 
 	// If old spec uses relaxed validation or enabled the RelaxedEnvironmentVariableValidation feature gate,
@@ -396,9 +395,6 @@ func GetValidationOptionsFromPodSpecAndMeta(podSpec, oldPodSpec *api.PodSpec, po
 	opts.AllowOnlyRecursiveSELinuxChangePolicy = useOnlyRecursiveSELinuxChangePolicy(oldPodSpec)
 
 	if oldPodSpec != nil {
-		// if old spec has status.hostIPs downwardAPI set, we must allow it
-		opts.AllowHostIPsField = opts.AllowHostIPsField || hasUsedDownwardAPIFieldPathWithPodSpec(oldPodSpec, "status.hostIPs")
-
 		// if old spec used non-integer multiple of huge page unit size, we must allow it
 		opts.AllowIndivisibleHugePagesValues = usesIndivisibleHugePagesValues(oldPodSpec)
 
@@ -536,55 +532,6 @@ func relaxedEnvVarUsed(name string, oldPodEnvVarNames sets.Set[string]) bool {
 	return false
 }
 
-func hasUsedDownwardAPIFieldPathWithPodSpec(podSpec *api.PodSpec, fieldPath string) bool {
-	if podSpec == nil {
-		return false
-	}
-	for _, vol := range podSpec.Volumes {
-		if hasUsedDownwardAPIFieldPathWithVolume(&vol, fieldPath) {
-			return true
-		}
-	}
-	for _, c := range podSpec.InitContainers {
-		if hasUsedDownwardAPIFieldPathWithContainer(&c, fieldPath) {
-			return true
-		}
-	}
-	for _, c := range podSpec.Containers {
-		if hasUsedDownwardAPIFieldPathWithContainer(&c, fieldPath) {
-			return true
-		}
-	}
-	return false
-}
-
-func hasUsedDownwardAPIFieldPathWithVolume(volume *api.Volume, fieldPath string) bool {
-	if volume == nil || volume.DownwardAPI == nil {
-		return false
-	}
-	for _, file := range volume.DownwardAPI.Items {
-		if file.FieldRef != nil &&
-			file.FieldRef.FieldPath == fieldPath {
-			return true
-		}
-	}
-	return false
-}
-
-func hasUsedDownwardAPIFieldPathWithContainer(container *api.Container, fieldPath string) bool {
-	if container == nil {
-		return false
-	}
-	for _, env := range container.Env {
-		if env.ValueFrom != nil &&
-			env.ValueFrom.FieldRef != nil &&
-			env.ValueFrom.FieldRef.FieldPath == fieldPath {
-			return true
-		}
-	}
-	return false
-}
-
 // GetValidationOptionsFromPodTemplate will return pod validation options for specified template.
 func GetValidationOptionsFromPodTemplate(podTemplate, oldPodTemplate *api.PodTemplateSpec) apivalidation.PodValidationOptions {
 	var newPodSpec, oldPodSpec *api.PodSpec
@@ -675,6 +622,7 @@ func dropDisabledFields(
 		}
 	}
 
+	dropDisabledPodLevelResources(podSpec, oldPodSpec)
 	dropDisabledProcMountField(podSpec, oldPodSpec)
 
 	dropDisabledNodeInclusionPolicyFields(podSpec, oldPodSpec)
@@ -726,6 +674,14 @@ func dropDisabledFields(
 	dropPodLifecycleSleepAction(podSpec, oldPodSpec)
 	dropImageVolumes(podSpec, oldPodSpec)
 	dropSELinuxChangePolicy(podSpec, oldPodSpec)
+}
+
+func dropDisabledPodLevelResources(podSpec, oldPodSpec *api.PodSpec) {
+	// If the feature is disabled and not in use, drop Resources at the pod-level
+	// from PodSpec.
+	if !utilfeature.DefaultFeatureGate.Enabled(features.PodLevelResources) && !podLevelResourcesInUse(oldPodSpec) {
+		podSpec.Resources = nil
+	}
 }
 
 func dropPodLifecycleSleepAction(podSpec, oldPodSpec *api.PodSpec) {
@@ -859,11 +815,6 @@ func dropDisabledPodStatusFields(podStatus, oldPodStatus *api.PodStatus, podSpec
 		podStatus.ResourceClaimStatuses = nil
 	}
 
-	// drop HostIPs to empty (disable PodHostIPs).
-	if !utilfeature.DefaultFeatureGate.Enabled(features.PodHostIPs) && !hostIPsInUse(oldPodStatus) {
-		podStatus.HostIPs = nil
-	}
-
 	if !utilfeature.DefaultFeatureGate.Enabled(features.RecursiveReadOnlyMounts) && !rroInUse(oldPodSpec) {
 		for i := range podStatus.ContainerStatuses {
 			podStatus.ContainerStatuses[i].VolumeMounts = nil
@@ -898,13 +849,6 @@ func dropDisabledPodStatusFields(podStatus, oldPodStatus *api.PodStatus, podSpec
 		dropUserField(podStatus.ContainerStatuses)
 		dropUserField(podStatus.EphemeralContainerStatuses)
 	}
-}
-
-func hostIPsInUse(podStatus *api.PodStatus) bool {
-	if podStatus == nil {
-		return false
-	}
-	return len(podStatus.HostIPs) > 0
 }
 
 // dropDisabledDynamicResourceAllocationFields removes pod claim references from
@@ -1116,6 +1060,28 @@ func supplementalGroupsPolicyInUse(podSpec *api.PodSpec) bool {
 	return false
 }
 
+// podLevelResourcesInUse returns true if pod-spec is non-nil and Resources field at
+// pod-level has non-empty Requests or Limits.
+func podLevelResourcesInUse(podSpec *api.PodSpec) bool {
+	if podSpec == nil {
+		return false
+	}
+
+	if podSpec.Resources == nil {
+		return false
+	}
+
+	if len(podSpec.Resources.Requests) > 0 {
+		return true
+	}
+
+	if len(podSpec.Resources.Limits) > 0 {
+		return true
+	}
+
+	return false
+}
+
 // inPlacePodVerticalScalingInUse returns true if pod spec is non-nil and ResizePolicy is set
 func inPlacePodVerticalScalingInUse(podSpec *api.PodSpec) bool {
 	if podSpec == nil {
@@ -1291,6 +1257,16 @@ func hasInvalidLabelValueInAffinitySelector(spec *api.PodSpec) bool {
 		}
 	}
 	return false
+}
+
+// IsRestartableInitContainer returns true if the container has ContainerRestartPolicyAlways.
+// This function is not checking if the container passed to it is indeed an init container.
+// It is just checking if the container restart policy has been set to always.
+func IsRestartableInitContainer(initContainer *api.Container) bool {
+	if initContainer == nil || initContainer.RestartPolicy == nil {
+		return false
+	}
+	return *initContainer.RestartPolicy == api.ContainerRestartPolicyAlways
 }
 
 func MarkPodProposedForResize(oldPod, newPod *api.Pod) {

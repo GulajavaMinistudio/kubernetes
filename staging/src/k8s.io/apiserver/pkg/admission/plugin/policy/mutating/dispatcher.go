@@ -27,6 +27,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apiserver/pkg/admission"
@@ -161,6 +162,11 @@ func (d *dispatcher) dispatchInvocations(
 		}
 
 		invocationKey, invocationKeyErr := keyFor(invocation)
+		if invocationKeyErr != nil {
+			// This should never happen. It occurs if there is a programming
+			// error causing the Param not to be a valid object.
+			return nil, k8serrors.NewInternalError(invocationKeyErr)
+		}
 		if reinvokeCtx.IsReinvoke() && !policyReinvokeCtx.ShouldReinvoke(invocationKey) {
 			continue
 		}
@@ -169,12 +175,6 @@ func (d *dispatcher) dispatchInvocations(
 		// Mutations for a single invocation of a MutatingAdmissionPolicy are evaluated
 		// in order.
 		for mutationIndex := range invocation.Policy.Spec.Mutations {
-			if invocationKeyErr != nil {
-				// This should never happen. It occurs if there is a programming
-				// error causing the Param not to be a valid object.
-				return nil, k8serrors.NewInternalError(invocationKeyErr)
-			}
-
 			lastVersionedAttr = versionedAttr
 			if versionedAttr.VersionedObject == nil { // Do not call patchers if there is no object to patch.
 				continue
@@ -249,9 +249,20 @@ func (d *dispatcher) dispatchOne(
 		return err
 	}
 
+	switch versionedAttributes.VersionedObject.(type) {
+	case *unstructured.Unstructured:
+		// No conversion needed before defaulting for the patch object if the admitted object is unstructured.
+	default:
+		// Before defaulting, if the admitted object is a typed object, convert unstructured patch result back to a typed object.
+		newVersionedObject, err = o.GetObjectConvertor().ConvertToVersion(newVersionedObject, versionedAttributes.GetKind().GroupVersion())
+		if err != nil {
+			return err
+		}
+	}
+	o.GetObjectDefaulter().Default(newVersionedObject)
+
 	versionedAttributes.Dirty = true
 	versionedAttributes.VersionedObject = newVersionedObject
-	o.GetObjectDefaulter().Default(newVersionedObject)
 	return nil
 }
 
