@@ -59,13 +59,11 @@ import (
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2edeployment "k8s.io/kubernetes/test/e2e/framework/deployment"
-	e2eendpoints "k8s.io/kubernetes/test/e2e/framework/endpoints"
 	e2eendpointslice "k8s.io/kubernetes/test/e2e/framework/endpointslice"
 	e2enetwork "k8s.io/kubernetes/test/e2e/framework/network"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	e2eoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
-	e2eproviders "k8s.io/kubernetes/test/e2e/framework/providers"
 	e2erc "k8s.io/kubernetes/test/e2e/framework/rc"
 	e2eservice "k8s.io/kubernetes/test/e2e/framework/service"
 	e2eskipper "k8s.io/kubernetes/test/e2e/framework/skipper"
@@ -1210,9 +1208,7 @@ var _ = common.SIGDescribe("Services", func() {
 
 	f.It("should work after restarting apiserver", f.WithDisruptive(), func(ctx context.Context) {
 
-		if !framework.ProviderIs("gke") {
-			e2eskipper.SkipUnlessComponentRunsAsPodsAndClientCanDeleteThem(ctx, kubeAPIServerLabelName, cs, metav1.NamespaceSystem, map[string]string{clusterComponentKey: kubeAPIServerLabelName})
-		}
+		e2eskipper.SkipUnlessComponentRunsAsPodsAndClientCanDeleteThem(ctx, kubeAPIServerLabelName, cs, metav1.NamespaceSystem, map[string]string{clusterComponentKey: kubeAPIServerLabelName})
 
 		// TODO: use the ServiceTestJig here
 		ns := f.Namespace.Name
@@ -1680,16 +1676,17 @@ var _ = common.SIGDescribe("Services", func() {
 			}
 		}()
 
-		service := t.BuildServiceSpec()
-		service.Spec.Type = v1.ServiceTypeNodePort
+		var service *v1.Service
+		baseService := t.BuildServiceSpec()
+		baseService.Spec.Type = v1.ServiceTypeNodePort
 		numberOfRetries := 5
 		ginkgo.By("creating service " + serviceName + " with type NodePort in namespace " + ns)
 		var err error
 		for i := 0; i < numberOfRetries; i++ {
 			port, err := e2eservice.GetUnusedStaticNodePort()
 			framework.ExpectNoError(err, "Static node port allocator was not able to find a free nodeport.")
-			service.Spec.Ports[0].NodePort = port
-			service, err = t.CreateService(service)
+			baseService.Spec.Ports[0].NodePort = port
+			service, err = t.CreateService(baseService)
 			// We will later delete this service and then recreate it with same nodeport. We need to ensure that
 			// another e2e test doesn't start listening on our old nodeport and conflicts re-creation of service
 			// hence we use ReserveStaticNodePort.
@@ -1703,7 +1700,7 @@ var _ = common.SIGDescribe("Services", func() {
 				}
 				break
 			}
-			if apierrors.IsConflict(err) {
+			if apierrors.IsInvalid(err) {
 				framework.Logf("node port %d is already allocated to other service, retrying ... : %v", port, err)
 				continue
 			}
@@ -3979,7 +3976,7 @@ var _ = common.SIGDescribe("Services", func() {
 				}
 				break
 			}
-			if apierrors.IsConflict(err) {
+			if apierrors.IsInvalid(err) {
 				framework.Logf("node port %d is already allocated to other service, retrying ... : %v", port, err)
 				continue
 			}
@@ -3987,7 +3984,12 @@ var _ = common.SIGDescribe("Services", func() {
 
 		}
 
-		defer e2eservice.ReleaseStaticNodePort(svc.Spec.HealthCheckNodePort)
+		ginkgo.DeferCleanup(func(ctx context.Context) {
+			err := cs.CoreV1().Services(namespace).Delete(ctx, serviceName, metav1.DeleteOptions{})
+			framework.ExpectNoError(err, "failed to delete service: %s in namespace: %s", serviceName, namespace)
+			e2eservice.ReleaseStaticNodePort(svc.Spec.HealthCheckNodePort)
+		})
+
 		nodePortStr := fmt.Sprintf("%d", svc.Spec.Ports[0].NodePort)
 		hcNodePortStr := fmt.Sprintf("%d", svc.Spec.HealthCheckNodePort)
 		framework.Logf("NodePort is %s, HealthCheckNodePort is %s", nodePortStr, hcNodePortStr)
@@ -4116,6 +4118,22 @@ var _ = common.SIGDescribe("Services", func() {
 			// Request the same healthCheckNodePort as before, to test the user-requested allocation path
 			svc.Spec.HealthCheckNodePort = oldHealthCheckNodePort
 		})
+		if err != nil {
+			// We added a global static nodeport allocator to synchronize across tests and avoid other tests stealing the NodePort of this test and make it flake.
+			// Log the offending Service so we identify easily the problematic test.
+			// Dump all the IPs and look for the ones we want.
+			list, _ := cs.CoreV1().Services(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+			for _, svc := range list.Items {
+				if svc.Spec.HealthCheckNodePort == oldHealthCheckNodePort {
+					framework.Failf("Service %#v stole NodePort from current test, please ensure that test is using the Static NodePort Allocator https://github.com/kubernetes/kubernetes/pull/127153 : %v", svc, err)
+				}
+				for _, port := range svc.Spec.Ports {
+					if port.NodePort == oldHealthCheckNodePort {
+						framework.Failf("Service %#v stole NodePort from current test, please ensure that test is using the Static NodePort Allocator https://github.com/kubernetes/kubernetes/pull/127153 : %v", svc, err)
+					}
+				}
+			}
+		}
 		framework.ExpectNoError(err, "updating ExternalTrafficPolicy and HealthCheckNodePort")
 		deadline = time.Now().Add(e2eservice.KubeProxyEndpointLagTimeout)
 
@@ -4126,6 +4144,78 @@ var _ = common.SIGDescribe("Services", func() {
 		checkOneNodePort(endpointNodeIP, true, v1.ServiceExternalTrafficPolicyLocal, deadline)
 		checkOneNodePort(hostExecPodNodeIP, true, v1.ServiceExternalTrafficPolicyLocal, deadline)
 		checkOneNodePort(thirdNodeIP, false, v1.ServiceExternalTrafficPolicyLocal, deadline)
+	})
+
+	ginkgo.It("should connect to the ports exposed by restartable init containers", func(ctx context.Context) {
+		serviceName := "sidecar-with-port"
+		ns := f.Namespace.Name
+
+		t := NewServerTest(cs, ns, serviceName)
+		defer func() {
+			defer ginkgo.GinkgoRecover()
+			errs := t.Cleanup()
+			if len(errs) != 0 {
+				framework.Failf("errors in cleanup: %v", errs)
+			}
+		}()
+
+		name := "sidecar-port"
+		port := int32(8080)
+		namedPort := "http-sidecar"
+
+		service := t.BuildServiceSpec()
+		service.Spec.Ports = []v1.ServicePort{
+			{
+				Name:       namedPort,
+				Port:       port,
+				TargetPort: intstr.FromInt(int(port)),
+			},
+		}
+		ports := []v1.ContainerPort{{Name: namedPort, ContainerPort: port, Protocol: v1.ProtocolTCP}}
+		args := []string{"netexec", fmt.Sprintf("--http-port=%d", port)}
+		createPodWithRestartableInitContainerOrFail(ctx, f, ns, name, t.Labels, ports, args...)
+
+		ginkgo.By(fmt.Sprintf("creating Service %v with selectors %v", service.Name, service.Spec.Selector))
+		service, err := t.CreateService(service)
+		framework.ExpectNoError(err)
+
+		checkServiceReachabilityFromExecPod(ctx, f.ClientSet, ns, service.Name, service.Spec.ClusterIP, port)
+	})
+
+	ginkgo.It("should connect to the named ports exposed by restartable init containers", func(ctx context.Context) {
+		serviceName := "sidecar-with-named-port"
+		ns := f.Namespace.Name
+
+		t := NewServerTest(cs, ns, serviceName)
+		defer func() {
+			defer ginkgo.GinkgoRecover()
+			errs := t.Cleanup()
+			if len(errs) != 0 {
+				framework.Failf("errors in cleanup: %v", errs)
+			}
+		}()
+
+		name := "sidecar-port"
+		port := int32(8080)
+		namedPort := "http-sidecar"
+
+		service := t.BuildServiceSpec()
+		service.Spec.Ports = []v1.ServicePort{
+			{
+				Name:       namedPort,
+				Port:       port,
+				TargetPort: intstr.FromString(namedPort),
+			},
+		}
+		ports := []v1.ContainerPort{{Name: namedPort, ContainerPort: port, Protocol: v1.ProtocolTCP}}
+		args := []string{"netexec", fmt.Sprintf("--http-port=%d", port)}
+		createPodWithRestartableInitContainerOrFail(ctx, f, ns, name, t.Labels, ports, args...)
+
+		ginkgo.By(fmt.Sprintf("creating Service %v with selectors %v", service.Name, service.Spec.Selector))
+		service, err := t.CreateService(service)
+		framework.ExpectNoError(err)
+
+		checkServiceReachabilityFromExecPod(ctx, f.ClientSet, ns, service.Name, service.Spec.ClusterIP, port)
 	})
 })
 
@@ -4376,6 +4466,18 @@ func createPodOrFail(ctx context.Context, f *framework.Framework, ns, name strin
 	e2epod.NewPodClient(f).CreateSync(ctx, pod)
 }
 
+// createPodWithRestartableInitContainerOrFail creates a pod with restartable init containers using the specified containerPorts.
+func createPodWithRestartableInitContainerOrFail(ctx context.Context, f *framework.Framework, ns, name string, labels map[string]string, containerPorts []v1.ContainerPort, args ...string) {
+	ginkgo.By(fmt.Sprintf("Creating pod %s with restartable init containers in namespace %s", name, ns))
+	pod := e2epod.NewAgnhostPod(ns, name, nil, nil, nil, "pause")
+	pod.ObjectMeta.Labels = labels
+	restartPolicyAlways := v1.ContainerRestartPolicyAlways
+	init := e2epod.NewAgnhostContainer(name, nil, containerPorts, args...)
+	init.RestartPolicy = &restartPolicyAlways
+	pod.Spec.InitContainers = []v1.Container{init}
+	e2epod.NewPodClient(f).CreateSync(ctx, pod)
+}
+
 // launchHostExecPod launches a hostexec pod in the given namespace and waits
 // until it's Running. If avoidNode is non-nil, it will ensure that the pod doesn't
 // land on that node.
@@ -4424,6 +4526,30 @@ func checkReachabilityFromPod(ctx context.Context, expectToBeReachable bool, tim
 		return true, nil
 	})
 	framework.ExpectNoError(err)
+}
+
+// checkServiceReachabilityFromExecPod creates a dedicated client pod, executes into it,
+// and checks reachability to the specified target host and port.
+func checkServiceReachabilityFromExecPod(ctx context.Context, client clientset.Interface, namespace, name, clusterIP string, port int32) {
+	// We avoid relying on DNS lookup with the service name here because
+	// we only want to test whether the named port is accessible from the service.
+	serverHost := net.JoinHostPort(clusterIP, strconv.Itoa(int(port)))
+	ginkgo.By("creating a dedicated client to send request to the http server " + serverHost)
+	execPod := e2epod.CreateExecPodOrFail(ctx, client, namespace, "execpod-", nil)
+	execPodName := execPod.Name
+	cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 http://%s/", serverHost)
+	var stdout string
+	if pollErr := wait.PollUntilContextTimeout(ctx, framework.Poll, e2eservice.KubeProxyLagTimeout, true, func(ctx context.Context) (bool, error) {
+		var err error
+		stdout, err = e2eoutput.RunHostCmd(namespace, execPodName, cmd)
+		if err != nil {
+			framework.Logf("error trying to connect to service %s: %v, ... retrying", name, err)
+			return false, nil
+		}
+		return true, nil
+	}); pollErr != nil {
+		framework.Failf("connection to the Service %v within %v should be succeeded, stdout: %v", name, e2eservice.KubeProxyLagTimeout, stdout)
+	}
 }
 
 func validatePorts(ep, expectedEndpoints portsByPodUID) error {
@@ -4480,7 +4606,7 @@ func validateEndpointsPortsOrFail(ctx context.Context, c clientset.Interface, na
 			// Retry the error
 			return false, nil
 		}
-		portsByUID := portsByPodUID(e2eendpoints.GetContainerPortsByPodUID(ep))
+		portsByUID := getContainerPortsByPodUID(ep)
 		if err := validatePorts(portsByUID, expectedPortsByPodUID); err != nil {
 			if i%5 == 0 {
 				framework.Logf("Unexpected endpoints: found %v, expected %v, will retry", portsByUID, expectedEndpoints)
@@ -4524,15 +4650,6 @@ func validateEndpointsPortsOrFail(ctx context.Context, c clientset.Interface, na
 }
 
 func restartApiserver(ctx context.Context, namespace string, cs clientset.Interface) error {
-	if framework.ProviderIs("gke") {
-		// GKE use a same-version master upgrade to teardown/recreate master.
-		v, err := cs.Discovery().ServerVersion()
-		if err != nil {
-			return err
-		}
-		return e2eproviders.MasterUpgradeGKE(ctx, namespace, v.GitVersion[1:]) // strip leading 'v'
-	}
-
 	return restartComponent(ctx, cs, kubeAPIServerLabelName, metav1.NamespaceSystem, map[string]string{clusterComponentKey: kubeAPIServerLabelName})
 }
 
@@ -4573,7 +4690,7 @@ func validateEndpointsPortsWithProtocolsOrFail(c clientset.Interface, namespace,
 			// Retry the error
 			return false, nil
 		}
-		portsByUID := fullPortsByPodUID(e2eendpoints.GetFullContainerPortsByPodUID(ep))
+		portsByUID := getFullContainerPortsByPodUID(ep)
 		if err := validatePortsAndProtocols(portsByUID, expectedPortsByPodUID); err != nil {
 			if i%5 == 0 {
 				framework.Logf("Unexpected endpoints: found %v, expected %v, will retry", portsByUID, expectedEndpoints)
