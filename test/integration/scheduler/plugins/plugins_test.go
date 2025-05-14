@@ -26,6 +26,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,6 +40,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	listersv1 "k8s.io/client-go/listers/core/v1"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
+	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
 	configv1 "k8s.io/kube-scheduler/config/v1"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler"
@@ -52,7 +55,7 @@ import (
 	schedulerutils "k8s.io/kubernetes/test/integration/scheduler"
 	testutils "k8s.io/kubernetes/test/integration/util"
 	imageutils "k8s.io/kubernetes/test/utils/image"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 // imported from testutils
@@ -73,6 +76,11 @@ func newPlugin(plugin framework.Plugin) frameworkruntime.PluginFactory {
 		}
 		return plugin, nil
 	}
+}
+
+type QueueSortPlugin struct {
+	// lessFunc is used to compare two queued pod infos.
+	lessFunc func(info1, info2 *framework.QueuedPodInfo) bool
 }
 
 type PreEnqueuePlugin struct {
@@ -282,6 +290,7 @@ func (pp *PermitPlugin) deepCopy() *PermitPlugin {
 }
 
 const (
+	queuesortPluginName          = "queuesort-plugin"
 	enqueuePluginName            = "enqueue-plugin"
 	prefilterPluginName          = "prefilter-plugin"
 	postfilterPluginName         = "postfilter-plugin"
@@ -300,14 +309,37 @@ var _ framework.PreFilterPlugin = &PreFilterPlugin{}
 var _ framework.PostFilterPlugin = &PostFilterPlugin{}
 var _ framework.ScorePlugin = &ScorePlugin{}
 var _ framework.FilterPlugin = &FilterPlugin{}
+var _ framework.EnqueueExtensions = &FilterPlugin{}
 var _ framework.ScorePlugin = &ScorePlugin{}
 var _ framework.ScorePlugin = &ScoreWithNormalizePlugin{}
+var _ framework.EnqueueExtensions = &ScorePlugin{}
 var _ framework.ReservePlugin = &ReservePlugin{}
 var _ framework.PreScorePlugin = &PreScorePlugin{}
 var _ framework.PreBindPlugin = &PreBindPlugin{}
+var _ framework.EnqueueExtensions = &PreBindPlugin{}
 var _ framework.BindPlugin = &BindPlugin{}
 var _ framework.PostBindPlugin = &PostBindPlugin{}
 var _ framework.PermitPlugin = &PermitPlugin{}
+var _ framework.EnqueueExtensions = &PermitPlugin{}
+var _ framework.QueueSortPlugin = &QueueSortPlugin{}
+
+func (ep *QueueSortPlugin) Name() string {
+	return queuesortPluginName
+}
+
+func (ep *QueueSortPlugin) Less(info1, info2 *framework.QueuedPodInfo) bool {
+	if ep.lessFunc != nil {
+		return ep.lessFunc(info1, info2)
+	}
+	// If no custom less function is provided, default to return true.
+	return true
+}
+
+func NewQueueSortPlugin(lessFunc func(info1, info2 *framework.QueuedPodInfo) bool) *QueueSortPlugin {
+	return &QueueSortPlugin{
+		lessFunc: lessFunc,
+	}
+}
 
 func (ep *PreEnqueuePlugin) Name() string {
 	return enqueuePluginName
@@ -327,7 +359,7 @@ func (sp *ScorePlugin) Name() string {
 }
 
 // Score returns the score of scheduling a pod on a specific node.
-func (sp *ScorePlugin) Score(ctx context.Context, state *framework.CycleState, p *v1.Pod, nodeName string) (int64, *framework.Status) {
+func (sp *ScorePlugin) Score(ctx context.Context, state *framework.CycleState, p *v1.Pod, nodeInfo *framework.NodeInfo) (int64, *framework.Status) {
 	sp.mutex.Lock()
 	defer sp.mutex.Unlock()
 
@@ -339,7 +371,7 @@ func (sp *ScorePlugin) Score(ctx context.Context, state *framework.CycleState, p
 	score := int64(1)
 	if sp.numScoreCalled == 1 {
 		// The first node is scored the highest, the rest is scored lower.
-		sp.highScoreNode = nodeName
+		sp.highScoreNode = nodeInfo.Node().Name
 		score = framework.MaxNodeScore
 	}
 	return score, nil
@@ -349,13 +381,17 @@ func (sp *ScorePlugin) ScoreExtensions() framework.ScoreExtensions {
 	return nil
 }
 
+func (sp *ScorePlugin) EventsToRegister(_ context.Context) ([]framework.ClusterEventWithHint, error) {
+	return nil, nil
+}
+
 // Name returns name of the score plugin.
 func (sp *ScoreWithNormalizePlugin) Name() string {
 	return scoreWithNormalizePluginName
 }
 
 // Score returns the score of scheduling a pod on a specific node.
-func (sp *ScoreWithNormalizePlugin) Score(ctx context.Context, state *framework.CycleState, p *v1.Pod, nodeName string) (int64, *framework.Status) {
+func (sp *ScoreWithNormalizePlugin) Score(ctx context.Context, state *framework.CycleState, p *v1.Pod, nodeInfo *framework.NodeInfo) (int64, *framework.Status) {
 	sp.mutex.Lock()
 	defer sp.mutex.Unlock()
 
@@ -397,6 +433,12 @@ func (fp *FilterPlugin) Filter(ctx context.Context, state *framework.CycleState,
 	}
 
 	return nil
+}
+
+func (fp *FilterPlugin) EventsToRegister(_ context.Context) ([]framework.ClusterEventWithHint, error) {
+	return []framework.ClusterEventWithHint{
+		{Event: framework.ClusterEvent{Resource: framework.Pod, ActionType: framework.Delete}},
+	}, nil
 }
 
 // Name returns name of the plugin.
@@ -463,6 +505,10 @@ func (pp *PreBindPlugin) PreBind(ctx context.Context, state *framework.CycleStat
 	return nil
 }
 
+func (pp *PreBindPlugin) EventsToRegister(_ context.Context) ([]framework.ClusterEventWithHint, error) {
+	return nil, nil
+}
+
 const bindPluginAnnotation = "bindPluginName"
 
 func (bp *BindPlugin) Name() string {
@@ -518,7 +564,7 @@ func (pp *PreFilterPlugin) PreFilterExtensions() framework.PreFilterExtensions {
 }
 
 // PreFilter is a test function that returns (true, nil) or errors for testing.
-func (pp *PreFilterPlugin) PreFilter(ctx context.Context, state *framework.CycleState, pod *v1.Pod) (*framework.PreFilterResult, *framework.Status) {
+func (pp *PreFilterPlugin) PreFilter(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodes []*framework.NodeInfo) (*framework.PreFilterResult, *framework.Status) {
 	pp.numPreFilterCalled++
 	if pp.failPreFilter {
 		return nil, framework.NewStatus(framework.Error, fmt.Sprintf("injecting failure for pod %v", pod.Name))
@@ -623,6 +669,10 @@ func (pp *PermitPlugin) rejectAllPods() {
 	pp.fh.IterateOverWaitingPods(func(wp framework.WaitingPod) { wp.Reject(pp.name, "rejectAllPods") })
 }
 
+func (pp *PermitPlugin) EventsToRegister(_ context.Context) ([]framework.ClusterEventWithHint, error) {
+	return nil, nil
+}
+
 // TestPreFilterPlugin tests invocation of prefilter plugins.
 func TestPreFilterPlugin(t *testing.T) {
 	testContext := testutils.InitTestAPIServer(t, "prefilter-plugin", nil)
@@ -668,7 +718,7 @@ func TestPreFilterPlugin(t *testing.T) {
 			preFilterPlugin := &PreFilterPlugin{}
 			registry, prof := initRegistryAndConfig(t, preFilterPlugin)
 
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2,
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2, true,
 				scheduler.WithProfiles(prof),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry))
 			defer teardown()
@@ -700,6 +750,85 @@ func TestPreFilterPlugin(t *testing.T) {
 
 			if preFilterPlugin.numPreFilterCalled == 0 {
 				t.Errorf("Expected the prefilter plugin to be called.")
+			}
+		})
+	}
+}
+
+// TestQueueSortPlugin tests invocation of queueSort plugins.
+func TestQueueSortPlugin(t *testing.T) {
+	tests := []struct {
+		name           string
+		podNames       []string
+		expectedOrder  []string
+		customLessFunc func(info1, info2 *framework.QueuedPodInfo) bool
+	}{
+		{
+			name:          "timestamp_sort_order",
+			podNames:      []string{"pod-1", "pod-2", "pod-3"},
+			expectedOrder: []string{"pod-1", "pod-2", "pod-3"},
+			customLessFunc: func(info1, info2 *framework.QueuedPodInfo) bool {
+				return info1.Timestamp.Before(info2.Timestamp)
+			},
+		},
+		{
+			name:          "priority_sort_order",
+			podNames:      []string{"pod-1", "pod-2", "pod-3"},
+			expectedOrder: []string{"pod-3", "pod-2", "pod-1"}, // depends on pod priority
+			customLessFunc: func(info1, info2 *framework.QueuedPodInfo) bool {
+				p1 := corev1helpers.PodPriority(info1.Pod)
+				p2 := corev1helpers.PodPriority(info2.Pod)
+				return (p1 > p2) || (p1 == p2 && info1.Timestamp.Before(info2.Timestamp))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queueSortPlugin := NewQueueSortPlugin(tt.customLessFunc)
+			registry, prof := initRegistryAndConfig(t, queueSortPlugin)
+
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testutils.InitTestAPIServer(t, "queuesort-plugin", nil), 2, false,
+				scheduler.WithProfiles(prof),
+				scheduler.WithFrameworkOutOfTreeRegistry(registry))
+			defer teardown()
+
+			pods := make([]*v1.Pod, 0, len(tt.podNames))
+			for i, name := range tt.podNames {
+				// Create a pod with different priority.
+				priority := int32(i + 1)
+				pod, err := testutils.CreatePausePod(testCtx.ClientSet,
+					testutils.InitPausePod(&testutils.PausePodConfig{Name: name, Namespace: testCtx.NS.Name, Priority: &priority}))
+				if err != nil {
+					t.Fatalf("Error while creating %v: %v", name, err)
+				}
+				pods = append(pods, pod)
+			}
+
+			// Wait for all Pods to be in the scheduling queue.
+			err := wait.PollUntilContextTimeout(testCtx.Ctx, time.Millisecond*200, wait.ForeverTestTimeout, false, func(ctx context.Context) (bool, error) {
+				pendingPods, _ := testCtx.Scheduler.SchedulingQueue.PendingPods()
+				if len(pendingPods) == len(pods) {
+					t.Logf("All Pods are in the pending queue.")
+					return true, nil
+				}
+				t.Logf("Waiting for all Pods to be in the scheduling queue. %d/%d", len(pendingPods), len(pods))
+				return false, nil
+			})
+			if err != nil {
+				t.Fatalf("Failed to observe all Pods in the scheduling queue: %v", err)
+			}
+
+			actualOrder := make([]string, len(tt.expectedOrder))
+			for i := 0; i < len(tt.expectedOrder); i++ {
+				queueInfo := testutils.NextPodOrDie(t, testCtx)
+				actualOrder[i] = queueInfo.Pod.Name
+				t.Logf("Popped Pod %q", queueInfo.Pod.Name)
+			}
+			if diff := cmp.Diff(tt.expectedOrder, actualOrder); diff != "" {
+				t.Errorf("Expected Pod order (-want,+got):\n%s", diff)
+			} else {
+				t.Logf("Pods were popped out in the expected order based on custom sorting logic.")
 			}
 		})
 	}
@@ -812,7 +941,7 @@ func TestPostFilterPlugin(t *testing.T) {
 			// Setup plugins for testing.
 			cfg := configtesting.V1ToInternalWithDefaults(t, configv1.KubeSchedulerConfiguration{
 				Profiles: []configv1.KubeSchedulerProfile{{
-					SchedulerName: pointer.String(v1.DefaultSchedulerName),
+					SchedulerName: ptr.To(v1.DefaultSchedulerName),
 					Plugins: &configv1.Plugins{
 						Filter: configv1.PluginSet{
 							Enabled: []configv1.Plugin{
@@ -848,7 +977,7 @@ func TestPostFilterPlugin(t *testing.T) {
 					},
 				}}})
 
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, int(tt.numNodes),
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, int(tt.numNodes), true,
 				scheduler.WithProfiles(cfg.Profiles...),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry),
 			)
@@ -916,7 +1045,7 @@ func TestScorePlugin(t *testing.T) {
 			scorePlugin := &ScorePlugin{}
 			registry, prof := initRegistryAndConfig(t, scorePlugin)
 
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 10,
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 10, true,
 				scheduler.WithProfiles(prof),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry))
 			defer teardown()
@@ -960,7 +1089,7 @@ func TestNormalizeScorePlugin(t *testing.T) {
 	scoreWithNormalizePlugin := &ScoreWithNormalizePlugin{}
 	registry, prof := initRegistryAndConfig(t, scoreWithNormalizePlugin)
 
-	testCtx, _ := schedulerutils.InitTestSchedulerForFrameworkTest(t, testutils.InitTestAPIServer(t, "score-plugin", nil), 10,
+	testCtx, _ := schedulerutils.InitTestSchedulerForFrameworkTest(t, testutils.InitTestAPIServer(t, "score-plugin", nil), 10, true,
 		scheduler.WithProfiles(prof),
 		scheduler.WithFrameworkOutOfTreeRegistry(registry))
 
@@ -1008,7 +1137,7 @@ func TestReservePluginReserve(t *testing.T) {
 			reservePlugin := &ReservePlugin{}
 			registry, prof := initRegistryAndConfig(t, reservePlugin)
 
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2,
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2, true,
 				scheduler.WithProfiles(prof),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry))
 			defer teardown()
@@ -1101,7 +1230,7 @@ func TestPrebindPlugin(t *testing.T) {
 			cfg := configtesting.V1ToInternalWithDefaults(t, configv1.KubeSchedulerConfiguration{
 				Profiles: []configv1.KubeSchedulerProfile{
 					{
-						SchedulerName: pointer.String(v1.DefaultSchedulerName),
+						SchedulerName: ptr.To(v1.DefaultSchedulerName),
 						Plugins: &configv1.Plugins{
 							PreBind: configv1.PluginSet{
 								Enabled: []configv1.Plugin{
@@ -1111,7 +1240,7 @@ func TestPrebindPlugin(t *testing.T) {
 						},
 					},
 					{
-						SchedulerName: pointer.String("2nd-scheduler"),
+						SchedulerName: ptr.To("2nd-scheduler"),
 						Plugins: &configv1.Plugins{
 							Filter: configv1.PluginSet{
 								Enabled: []configv1.Plugin{
@@ -1123,7 +1252,7 @@ func TestPrebindPlugin(t *testing.T) {
 				},
 			})
 
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, nodesNum,
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, nodesNum, true,
 				scheduler.WithProfiles(cfg.Profiles...),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry))
 			defer teardown()
@@ -1279,7 +1408,7 @@ func TestUnReserveReservePlugins(t *testing.T) {
 			}
 			registry, prof := initRegistryAndConfig(t, pls...)
 
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2,
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2, true,
 				scheduler.WithProfiles(prof),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry))
 			defer teardown()
@@ -1373,7 +1502,7 @@ func TestUnReservePermitPlugins(t *testing.T) {
 			}
 			registry, profile := initRegistryAndConfig(t, []framework.Plugin{test.plugin, reservePlugin}...)
 
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2,
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2, true,
 				scheduler.WithProfiles(profile),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry))
 			defer teardown()
@@ -1445,7 +1574,7 @@ func TestUnReservePreBindPlugins(t *testing.T) {
 			}
 			registry, profile := initRegistryAndConfig(t, []framework.Plugin{test.plugin, reservePlugin}...)
 
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2,
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2, true,
 				scheduler.WithProfiles(profile),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry))
 			defer teardown()
@@ -1516,7 +1645,7 @@ func TestUnReserveBindPlugins(t *testing.T) {
 
 			test.plugin.client = testContext.ClientSet
 
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2,
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2, true,
 				scheduler.WithProfiles(profile),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry))
 			defer teardown()
@@ -1641,7 +1770,7 @@ func TestBindPlugin(t *testing.T) {
 			// Setup initial unreserve and bind plugins for testing.
 			cfg := configtesting.V1ToInternalWithDefaults(t, configv1.KubeSchedulerConfiguration{
 				Profiles: []configv1.KubeSchedulerProfile{{
-					SchedulerName: pointer.String(v1.DefaultSchedulerName),
+					SchedulerName: ptr.To(v1.DefaultSchedulerName),
 					Plugins: &configv1.Plugins{
 						MultiPoint: configv1.PluginSet{
 							Disabled: []configv1.Plugin{
@@ -1663,7 +1792,7 @@ func TestBindPlugin(t *testing.T) {
 				}},
 			})
 
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2,
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2, true,
 				scheduler.WithProfiles(cfg.Profiles...),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry),
 			)
@@ -1789,7 +1918,7 @@ func TestPostBindPlugin(t *testing.T) {
 			}
 
 			registry, prof := initRegistryAndConfig(t, preBindPlugin, postBindPlugin)
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2,
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2, true,
 				scheduler.WithProfiles(prof),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry))
 			defer teardown()
@@ -1881,7 +2010,7 @@ func TestPermitPlugin(t *testing.T) {
 			perPlugin := &PermitPlugin{name: permitPluginName}
 			registry, prof := initRegistryAndConfig(t, perPlugin)
 
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2,
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2, true,
 				scheduler.WithProfiles(prof),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry))
 			defer teardown()
@@ -1931,7 +2060,7 @@ func TestMultiplePermitPlugins(t *testing.T) {
 	registry, prof := initRegistryAndConfig(t, perPlugin1, perPlugin2)
 
 	// Create the API server and the scheduler with the test plugin set.
-	testCtx, _ := schedulerutils.InitTestSchedulerForFrameworkTest(t, testutils.InitTestAPIServer(t, "multi-permit-plugin", nil), 2,
+	testCtx, _ := schedulerutils.InitTestSchedulerForFrameworkTest(t, testutils.InitTestAPIServer(t, "multi-permit-plugin", nil), 2, true,
 		scheduler.WithProfiles(prof),
 		scheduler.WithFrameworkOutOfTreeRegistry(registry))
 
@@ -1983,7 +2112,7 @@ func TestPermitPluginsCancelled(t *testing.T) {
 	registry, prof := initRegistryAndConfig(t, perPlugin1, perPlugin2)
 
 	// Create the API server and the scheduler with the test plugin set.
-	testCtx, _ := schedulerutils.InitTestSchedulerForFrameworkTest(t, testutils.InitTestAPIServer(t, "permit-plugins", nil), 2,
+	testCtx, _ := schedulerutils.InitTestSchedulerForFrameworkTest(t, testutils.InitTestAPIServer(t, "permit-plugins", nil), 2, true,
 		scheduler.WithProfiles(prof),
 		scheduler.WithFrameworkOutOfTreeRegistry(registry))
 
@@ -2046,7 +2175,7 @@ func TestCoSchedulingWithPermitPlugin(t *testing.T) {
 			permitPlugin := &PermitPlugin{name: permitPluginName}
 			registry, prof := initRegistryAndConfig(t, permitPlugin)
 
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2,
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2, true,
 				scheduler.WithProfiles(prof),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry))
 			defer teardown()
@@ -2128,7 +2257,7 @@ func TestFilterPlugin(t *testing.T) {
 			filterPlugin := &FilterPlugin{}
 			registry, prof := initRegistryAndConfig(t, filterPlugin)
 
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 1,
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 1, true,
 				scheduler.WithProfiles(prof),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry))
 			defer teardown()
@@ -2185,7 +2314,7 @@ func TestPreScorePlugin(t *testing.T) {
 			preScorePlugin := &PreScorePlugin{}
 			registry, prof := initRegistryAndConfig(t, preScorePlugin)
 
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2,
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2, true,
 				scheduler.WithProfiles(prof),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry))
 			defer teardown()
@@ -2245,7 +2374,7 @@ func TestPreEnqueuePlugin(t *testing.T) {
 			preFilterPlugin := &PreFilterPlugin{}
 			registry, prof := initRegistryAndConfig(t, enqueuePlugin, preFilterPlugin)
 
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 1,
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 1, true,
 				scheduler.WithProfiles(prof),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry))
 			defer teardown()
@@ -2354,7 +2483,7 @@ func TestPreemptWithPermitPlugin(t *testing.T) {
 			cfg := configtesting.V1ToInternalWithDefaults(t, configv1.KubeSchedulerConfiguration{
 				Profiles: []configv1.KubeSchedulerProfile{
 					{
-						SchedulerName: pointer.String(v1.DefaultSchedulerName),
+						SchedulerName: ptr.To(v1.DefaultSchedulerName),
 						Plugins: &configv1.Plugins{
 							Permit: configv1.PluginSet{
 								Enabled: []configv1.Plugin{
@@ -2377,7 +2506,7 @@ func TestPreemptWithPermitPlugin(t *testing.T) {
 				},
 			})
 
-			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 0,
+			testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 0, true,
 				scheduler.WithProfiles(cfg.Profiles...),
 				scheduler.WithFrameworkOutOfTreeRegistry(registry),
 			)
@@ -2485,7 +2614,7 @@ func (j *JobPlugin) Name() string {
 	return jobPluginName
 }
 
-func (j *JobPlugin) PreFilter(_ context.Context, _ *framework.CycleState, p *v1.Pod) (*framework.PreFilterResult, *framework.Status) {
+func (j *JobPlugin) PreFilter(_ context.Context, _ *framework.CycleState, p *v1.Pod, nodes []*framework.NodeInfo) (*framework.PreFilterResult, *framework.Status) {
 	labelSelector := labels.SelectorFromSet(labels.Set{"driver": ""})
 	driverPods, err := j.podLister.Pods(p.Namespace).List(labelSelector)
 	if err != nil {
@@ -2540,7 +2669,7 @@ func TestActivatePods(t *testing.T) {
 	// Setup initial filter plugin for testing.
 	cfg := configtesting.V1ToInternalWithDefaults(t, configv1.KubeSchedulerConfiguration{
 		Profiles: []configv1.KubeSchedulerProfile{{
-			SchedulerName: pointer.String(v1.DefaultSchedulerName),
+			SchedulerName: ptr.To(v1.DefaultSchedulerName),
 			Plugins: &configv1.Plugins{
 				PreFilter: configv1.PluginSet{
 					Enabled: []configv1.Plugin{
@@ -2557,7 +2686,7 @@ func TestActivatePods(t *testing.T) {
 	})
 
 	// Create the API server and the scheduler with the test plugin set.
-	testCtx, _ := schedulerutils.InitTestSchedulerForFrameworkTest(t, testutils.InitTestAPIServer(t, "job-plugin", nil), 1,
+	testCtx, _ := schedulerutils.InitTestSchedulerForFrameworkTest(t, testutils.InitTestAPIServer(t, "job-plugin", nil), 1, true,
 		scheduler.WithProfiles(cfg.Profiles...),
 		scheduler.WithFrameworkOutOfTreeRegistry(registry))
 
@@ -2716,7 +2845,7 @@ func TestPreEnqueuePluginEventsToRegister(t *testing.T) {
 				// Setup plugins for testing.
 				cfg := configtesting.V1ToInternalWithDefaults(t, configv1.KubeSchedulerConfiguration{
 					Profiles: []configv1.KubeSchedulerProfile{{
-						SchedulerName: pointer.String(v1.DefaultSchedulerName),
+						SchedulerName: ptr.To(v1.DefaultSchedulerName),
 						Plugins: &configv1.Plugins{
 							PreEnqueue: configv1.PluginSet{
 								Enabled: []configv1.Plugin{
@@ -2730,7 +2859,7 @@ func TestPreEnqueuePluginEventsToRegister(t *testing.T) {
 					}},
 				})
 
-				testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2,
+				testCtx, teardown := schedulerutils.InitTestSchedulerForFrameworkTest(t, testContext, 2, true,
 					scheduler.WithProfiles(cfg.Profiles...),
 					scheduler.WithFrameworkOutOfTreeRegistry(registry),
 				)

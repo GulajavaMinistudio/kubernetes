@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -41,6 +40,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1beta1"
+	resourceapiv1beta2 "k8s.io/api/resource/v1beta2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -49,11 +49,13 @@ import (
 	admissionapi "k8s.io/pod-security-admission/api"
 	"k8s.io/utils/ptr"
 
+	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/test/e2e/feature"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
+	"k8s.io/dynamic-resource-allocation/resourceslice"
 	testdriver "k8s.io/kubernetes/test/e2e/dra/test-driver/app"
 )
 
@@ -62,8 +64,6 @@ const (
 	kubeletPlugin1Name        = "test-driver1.cdi.k8s.io"
 	kubeletPlugin2Name        = "test-driver2.cdi.k8s.io"
 	cdiDir                    = "/var/run/cdi"
-	endpointTemplate          = "/var/lib/kubelet/plugins/%s/dra.sock"
-	pluginRegistrationPath    = "/var/lib/kubelet/plugins_registry"
 	pluginRegistrationTimeout = time.Second * 60 // how long to wait for a node plugin to be registered
 	podInPendingStateTimeout  = time.Second * 60 // how long to wait for a pod to stay in pending state
 
@@ -83,7 +83,9 @@ const (
 	retryTestTimeout = kubeletRetryPeriod + 30*time.Second
 )
 
-var _ = framework.SIGDescribe("node")("DRA", feature.DynamicResourceAllocation, func() {
+// Tests depend on container runtime support for CDI and the DRA feature gate.
+// The "DRA" label is used to select tests related to DRA in a Ginkgo label filter.
+var _ = framework.SIGDescribe("node")(framework.WithLabel("DRA"), feature.DynamicResourceAllocation, framework.WithFeatureGate(features.DynamicResourceAllocation), func() {
 	f := framework.NewDefaultFramework("dra-node")
 	f.NamespacePodSecurityLevel = admissionapi.LevelBaseline
 
@@ -348,7 +350,9 @@ var _ = framework.SIGDescribe("node")("DRA", feature.DynamicResourceAllocation, 
 
 			calls := kubeletPlugin.CountCalls("/NodePrepareResources")
 			ginkgo.By("make sure NodePrepareResources is not called again")
-			gomega.Consistently(kubeletPlugin.CountCalls("/NodePrepareResources")).WithTimeout(retryTestTimeout).Should(gomega.Equal(calls))
+			gomega.Consistently(func() int {
+				return kubeletPlugin.CountCalls("/NodePrepareResources")
+			}).WithTimeout(retryTestTimeout).Should(gomega.Equal(calls))
 		})
 	})
 
@@ -554,9 +558,9 @@ func newKubeletPlugin(ctx context.Context, clientSet kubernetes.Interface, nodeN
 	// creating those directories.
 	err := os.MkdirAll(cdiDir, os.FileMode(0750))
 	framework.ExpectNoError(err, "create CDI directory")
-	endpoint := fmt.Sprintf(endpointTemplate, pluginName)
-	err = os.MkdirAll(filepath.Dir(endpoint), 0750)
-	framework.ExpectNoError(err, "create socket directory")
+	datadir := path.Join(kubeletplugin.KubeletPluginsDir, pluginName) // The default, not set below.
+	err = os.MkdirAll(datadir, 0750)
+	framework.ExpectNoError(err, "create DRA socket directory")
 
 	plugin, err := testdriver.StartPlugin(
 		ctx,
@@ -564,10 +568,21 @@ func newKubeletPlugin(ctx context.Context, clientSet kubernetes.Interface, nodeN
 		pluginName,
 		clientSet,
 		nodeName,
-		testdriver.FileOperations{},
-		kubeletplugin.PluginSocketPath(endpoint),
-		kubeletplugin.RegistrarSocketPath(path.Join(pluginRegistrationPath, pluginName+"-reg.sock")),
-		kubeletplugin.KubeletPluginSocketPath(endpoint),
+		testdriver.FileOperations{
+			DriverResources: &resourceslice.DriverResources{
+				Pools: map[string]resourceslice.Pool{
+					nodeName: {
+						Slices: []resourceslice.Slice{{
+							Devices: []resourceapiv1beta2.Device{
+								{
+									Name: "device-00",
+								},
+							},
+						}},
+					},
+				},
+			},
+		},
 	)
 	framework.ExpectNoError(err)
 

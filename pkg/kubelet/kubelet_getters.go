@@ -140,6 +140,20 @@ func (kl *Kubelet) GetMaxPods() int {
 	return kl.maxPods
 }
 
+func (kl *Kubelet) GetUserNamespacesIDsPerPod() uint32 {
+	userNs := kl.kubeletConfiguration.UserNamespaces
+	if userNs == nil {
+		return config.DefaultKubeletUserNamespacesIDsPerPod
+	}
+	idsPerPod := userNs.IDsPerPod
+	if idsPerPod == nil || *idsPerPod == 0 {
+		return config.DefaultKubeletUserNamespacesIDsPerPod
+	}
+	// The value is already validated to be <= MaxUint32,
+	// so we can safely drop the upper bits.
+	return uint32(*idsPerPod)
+}
+
 // getPodDir returns the full path to the per-pod directory for the pod with
 // the given UID.
 func (kl *Kubelet) getPodDir(podUID types.UID) string {
@@ -465,4 +479,14 @@ func (kl *Kubelet) setCachedMachineInfo(info *cadvisorapiv1.MachineInfo) {
 	kl.machineInfoLock.Lock()
 	defer kl.machineInfoLock.Unlock()
 	kl.machineInfo = info
+}
+
+// getLastStableNodeAddresses returns the last observed node addresses.
+func (kl *Kubelet) getLastObservedNodeAddresses() []v1.NodeAddress {
+	node, err := kl.GetNode()
+	if err != nil || node == nil {
+		klog.V(4).InfoS("fail to obtain node from local cache", "node", kl.nodeName, "error", err)
+		return nil
+	}
+	return node.Status.Addresses
 }

@@ -30,6 +30,7 @@ import (
 	authv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilnettesting "k8s.io/apimachinery/pkg/util/net/testing"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
@@ -61,7 +62,7 @@ func TestExternalJWTSigningAndAuth(t *testing.T) {
 	defer cancel()
 
 	// create and start mock signer.
-	socketPath := fmt.Sprintf("@mock-external-jwt-signer-%d.sock", time.Now().Nanosecond())
+	socketPath := utilnettesting.MakeSocketNameForTest(t, fmt.Sprintf("mock-external-jwt-signer-%d.sock", time.Now().Nanosecond()))
 	t.Cleanup(func() { _ = os.Remove(socketPath) })
 	mockSigner := v1alpha1testing.NewMockSigner(t, socketPath)
 	defer mockSigner.CleanUp()
@@ -75,6 +76,16 @@ func TestExternalJWTSigningAndAuth(t *testing.T) {
 		},
 	})
 	defer tearDownFn()
+
+	// Validate that OIDC discovery doc and keys are available.
+	for _, p := range []string{
+		"/.well-known/openid-configuration",
+		"/openid/v1/jwks",
+	} {
+		if _, err := client.CoreV1().RESTClient().Get().AbsPath(p).DoRaw(ctx); err != nil {
+			t.Errorf("Validating OIDC discovery failed, error getting api path %q: %v", p, err)
+		}
+	}
 
 	// Create Namesapce (ns-1) to work with.
 	if _, err := client.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{
@@ -277,7 +288,7 @@ func TestDelayedStartForSigner(t *testing.T) {
 	defer cancel()
 
 	// Schedule signer to start on socket after 20 sec
-	socketPath := "@mock-external-jwt-signer.sock"
+	socketPath := utilnettesting.MakeSocketNameForTest(t, "mock-external-jwt-signer.sock")
 	t.Cleanup(func() { _ = os.Remove(socketPath) })
 	go func() {
 		time.Sleep(20 * time.Second)

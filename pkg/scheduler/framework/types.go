@@ -366,13 +366,18 @@ type QueuedPodInfo struct {
 	// Number of schedule attempts before successfully scheduled.
 	// It's used to record the # attempts metric and calculate the backoff time this Pod is obliged to get before retrying.
 	Attempts int
+	// BackoffExpiration is the time when the Pod will complete its backoff.
+	// If the SchedulerPopFromBackoffQ feature is enabled, the value is aligned to the backoff ordering window.
+	// Then, two Pods with the same BackoffExpiration (time bucket) are ordered by priority and eventually the timestamp,
+	// to make sure popping from the backoffQ considers priority of pods that are close to the expiration time.
+	BackoffExpiration time.Time
 	// The time when the pod is added to the queue for the first time. The pod may be added
 	// back to the queue multiple times before it's successfully scheduled.
 	// It shouldn't be updated once initialized. It's used to record the e2e scheduling
 	// latency for a pod.
 	InitialAttemptTimestamp *time.Time
 	// UnschedulablePlugins records the plugin names that the Pod failed with Unschedulable or UnschedulableAndUnresolvable status
-	// at specific extension points: PreFilter, Filter, Reserve, Permit (WaitOnPermit), or PreBind.
+	// at specific extension points: PreFilter, Filter, Reserve, or Permit (WaitOnPermit).
 	// If Pods are rejected at other extension points,
 	// they're assumed to be unexpected errors (e.g., temporal network issue, plugin implementation issue, etc)
 	// and retried soon after a backoff period.

@@ -96,7 +96,7 @@ type Reflector struct {
 	// The destination to sync up with the watch source
 	store ReflectorStore
 	// listerWatcher is used to perform lists and watches.
-	listerWatcher ListerWatcher
+	listerWatcher ListerWatcherWithContext
 	// backoff manages backoff of ListWatch
 	backoffManager wait.BackoffManager
 	resyncPeriod   time.Duration
@@ -270,7 +270,7 @@ func NewReflectorWithOptions(lw ListerWatcher, expectedType interface{}, store R
 		resyncPeriod:    options.ResyncPeriod,
 		minWatchTimeout: minWatchTimeout,
 		typeDescription: options.TypeDescription,
-		listerWatcher:   lw,
+		listerWatcher:   ToListerWatcherWithContext(lw),
 		store:           store,
 		// We used to make the call every 1sec (1 QPS), the goal here is to achieve ~98% traffic reduction when
 		// API server is not healthy. With these parameters, backoff will stop at [30,60) sec interval which is
@@ -406,6 +406,12 @@ func (r *Reflector) ListAndWatchWithContext(ctx context.Context) error {
 	useWatchList := ptr.Deref(r.UseWatchList, false)
 	fallbackToList := !useWatchList
 
+	defer func() {
+		if w != nil {
+			w.Stop()
+		}
+	}()
+
 	if useWatchList {
 		w, err = r.watchList(ctx)
 		if w == nil && err == nil {
@@ -476,12 +482,21 @@ func (r *Reflector) watchWithResync(ctx context.Context, w watch.Interface) erro
 	return r.watch(ctx, w, resyncerrc)
 }
 
-// watch simply starts a watch request with the server.
+// watch starts a watch request with the server, consumes watch events, and
+// restarts the watch until an exit scenario is reached.
+//
+// If a watch is provided, it will be used, otherwise another will be started.
+// If the watcher has started, it will always be stopped before returning.
 func (r *Reflector) watch(ctx context.Context, w watch.Interface, resyncerrc chan error) error {
 	stopCh := ctx.Done()
 	logger := klog.FromContext(ctx)
 	var err error
 	retry := NewRetryWithDeadline(r.MaxInternalErrorRetryDuration, time.Minute, apierrors.IsInternalError, r.clock)
+	defer func() {
+		if w != nil {
+			w.Stop()
+		}
+	}()
 
 	for {
 		// give the stopCh a chance to stop the loop, even in case of continue statements further down on errors
@@ -489,9 +504,6 @@ func (r *Reflector) watch(ctx context.Context, w watch.Interface, resyncerrc cha
 		case <-stopCh:
 			// we can only end up here when the stopCh
 			// was closed after a successful watchlist or list request
-			if w != nil {
-				w.Stop()
-			}
 			return nil
 		default:
 		}
@@ -512,7 +524,7 @@ func (r *Reflector) watch(ctx context.Context, w watch.Interface, resyncerrc cha
 				AllowWatchBookmarks: true,
 			}
 
-			w, err = r.listerWatcher.Watch(options)
+			w, err = r.listerWatcher.WatchWithContext(ctx, options)
 			if err != nil {
 				if canRetry := isWatchErrorRetriable(err); canRetry {
 					logger.V(4).Info("Watch failed - backing off", "reflector", r.name, "type", r.typeDescription, "err", err)
@@ -529,8 +541,8 @@ func (r *Reflector) watch(ctx context.Context, w watch.Interface, resyncerrc cha
 
 		err = handleWatch(ctx, start, w, r.store, r.expectedType, r.expectedGVK, r.name, r.typeDescription, r.setLastSyncResourceVersion,
 			r.clock, resyncerrc)
-		// Ensure that watch will not be reused across iterations.
-		w.Stop()
+		// handleWatch always stops the watcher. So we don't need to here.
+		// Just set it to nil to trigger a retry on the next loop.
 		w = nil
 		retry.After(err)
 		if err != nil {
@@ -583,7 +595,7 @@ func (r *Reflector) list(ctx context.Context) error {
 		// Attempt to gather list in chunks, if supported by listerWatcher, if not, the first
 		// list request will return the full response.
 		pager := pager.New(pager.SimplePageFunc(func(opts metav1.ListOptions) (runtime.Object, error) {
-			return r.listerWatcher.List(opts)
+			return r.listerWatcher.ListWithContext(ctx, opts)
 		}))
 		switch {
 		case r.WatchListPageSize != 0:
@@ -739,7 +751,7 @@ func (r *Reflector) watchList(ctx context.Context) (watch.Interface, error) {
 		}
 		start := r.clock.Now()
 
-		w, err = r.listerWatcher.Watch(options)
+		w, err = r.listerWatcher.WatchWithContext(ctx, options)
 		if err != nil {
 			if isErrorRetriableWithSideEffectsFn(err) {
 				continue
@@ -771,7 +783,7 @@ func (r *Reflector) watchList(ctx context.Context) (watch.Interface, error) {
 	// we utilize the temporaryStore to ensure independence from the current store implementation.
 	// as of today, the store is implemented as a queue and will be drained by the higher-level
 	// component as soon as it finishes replacing the content.
-	checkWatchListDataConsistencyIfRequested(ctx, r.name, resourceVersion, wrapListFuncWithContext(r.listerWatcher.List), temporaryStore.List)
+	checkWatchListDataConsistencyIfRequested(ctx, r.name, resourceVersion, r.listerWatcher.ListWithContext, temporaryStore.List)
 
 	if err := r.store.Replace(temporaryStore.List(), resourceVersion); err != nil {
 		return nil, fmt.Errorf("unable to sync watch-list result: %w", err)
@@ -863,6 +875,12 @@ func handleAnyWatch(
 	logger := klog.FromContext(ctx)
 	initialEventsEndBookmarkWarningTicker := newInitialEventsEndBookmarkTicker(logger, name, clock, start, exitOnWatchListBookmarkReceived)
 	defer initialEventsEndBookmarkWarningTicker.Stop()
+	stopWatcher := true
+	defer func() {
+		if stopWatcher {
+			w.Stop()
+		}
+	}()
 
 loop:
 	for {
@@ -929,6 +947,7 @@ loop:
 			}
 			eventCount++
 			if exitOnWatchListBookmarkReceived && watchListBookmarkReceived {
+				stopWatcher = false
 				watchDuration := clock.Since(start)
 				klog.FromContext(ctx).V(4).Info("Exiting watch because received the bookmark that marks the end of initial events stream", "reflector", name, "totalItems", eventCount, "duration", watchDuration)
 				return watchListBookmarkReceived, nil
@@ -941,7 +960,7 @@ loop:
 
 	watchDuration := clock.Since(start)
 	if watchDuration < 1*time.Second && eventCount == 0 {
-		return watchListBookmarkReceived, fmt.Errorf("very short watch: %s: Unexpected watch close - watch lasted less than a second and no items received", name)
+		return watchListBookmarkReceived, &VeryShortWatchError{Name: name}
 	}
 	klog.FromContext(ctx).V(4).Info("Watch close", "reflector", name, "type", expectedTypeName, "totalItems", eventCount)
 	return watchListBookmarkReceived, nil
@@ -1057,13 +1076,6 @@ func isWatchErrorRetriable(err error) bool {
 	return false
 }
 
-// wrapListFuncWithContext simply wraps ListFunction into another function that accepts a context and ignores it.
-func wrapListFuncWithContext(listFn ListFunc) func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
-	return func(_ context.Context, options metav1.ListOptions) (runtime.Object, error) {
-		return listFn(options)
-	}
-}
-
 // initialEventsEndBookmarkTicker a ticker that produces a warning if the bookmark event
 // which marks the end of the watch stream, has not been received within the defined tick interval.
 //
@@ -1150,3 +1162,16 @@ type noopTicker struct{}
 func (t *noopTicker) C() <-chan time.Time { return nil }
 
 func (t *noopTicker) Stop() {}
+
+// VeryShortWatchError is returned when the watch result channel is closed
+// within one second, without having sent any events.
+type VeryShortWatchError struct {
+	// Name of the Reflector
+	Name string
+}
+
+// Error implements the error interface
+func (e *VeryShortWatchError) Error() string {
+	return fmt.Sprintf("very short watch: %s: Unexpected watch close - "+
+		"watch lasted less than a second and no items received", e.Name)
+}

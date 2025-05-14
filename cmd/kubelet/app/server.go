@@ -86,6 +86,8 @@ import (
 	"k8s.io/component-base/tracing"
 	"k8s.io/component-base/version"
 	"k8s.io/component-base/version/verflag"
+	zpagesfeatures "k8s.io/component-base/zpages/features"
+	"k8s.io/component-base/zpages/flagz"
 	nodeutil "k8s.io/component-helpers/node/util"
 	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
@@ -267,6 +269,13 @@ is checked every 20 seconds (also configurable with a flag).`,
 				return fmt.Errorf("failed to construct kubelet dependencies: %w", err)
 			}
 
+			if utilfeature.DefaultFeatureGate.Enabled(zpagesfeatures.ComponentFlagz) {
+				if cleanFlagSet != nil {
+					namedFlagSet := map[string]*pflag.FlagSet{server.ComponentKubelet: cleanFlagSet}
+					kubeletDeps.Flagz = flagz.NamedFlagSetsReader{FlagSets: cliflag.NamedFlagSets{FlagSets: namedFlagSet}}
+				}
+			}
+
 			if err := checkPermissions(); err != nil {
 				klog.ErrorS(err, "kubelet running with insufficient permissions")
 			}
@@ -443,6 +452,12 @@ func loadConfigFile(name string) (*kubeletconfiginternal.KubeletConfiguration, e
 	// See: https://github.com/kubernetes/kubernetes/pull/110263
 	if kc.EvictionHard == nil {
 		kc.EvictionHard = eviction.DefaultEvictionHard
+	} else if kc.MergeDefaultEvictionSettings {
+		for k, v := range eviction.DefaultEvictionHard {
+			if _, exists := kc.EvictionHard[k]; !exists {
+				kc.EvictionHard[k] = v
+			}
+		}
 	}
 	return kc, err
 }
@@ -811,14 +826,6 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 			return fmt.Errorf("--qos-reserved value failed to parse: %w", err)
 		}
 
-		var cpuManagerPolicyOptions map[string]string
-		if utilfeature.DefaultFeatureGate.Enabled(features.CPUManagerPolicyOptions) {
-			cpuManagerPolicyOptions = s.CPUManagerPolicyOptions
-		} else if s.CPUManagerPolicyOptions != nil {
-			return fmt.Errorf("CPU Manager policy options %v require feature gates %q, %q enabled",
-				s.CPUManagerPolicyOptions, features.CPUManager, features.CPUManagerPolicyOptions)
-		}
-
 		var topologyManagerPolicyOptions map[string]string
 		if utilfeature.DefaultFeatureGate.Enabled(features.TopologyManagerPolicyOptions) {
 			topologyManagerPolicyOptions = s.TopologyManagerPolicyOptions
@@ -827,7 +834,7 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 				s.TopologyManagerPolicyOptions, features.TopologyManagerPolicyOptions)
 		}
 		if utilfeature.DefaultFeatureGate.Enabled(features.NodeSwap) {
-			if !kubeletutil.IsCgroup2UnifiedMode() && s.MemorySwap.SwapBehavior == kubelettypes.LimitedSwap {
+			if !kubeletutil.IsCgroup2UnifiedMode() && s.MemorySwap.SwapBehavior == string(kubelettypes.LimitedSwap) {
 				// This feature is not supported for cgroupv1 so we are failing early.
 				return fmt.Errorf("swap feature is enabled and LimitedSwap but it is only supported with cgroupv2")
 			}
@@ -862,7 +869,7 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 				},
 				QOSReserved:                  *experimentalQOSReserved,
 				CPUManagerPolicy:             s.CPUManagerPolicy,
-				CPUManagerPolicyOptions:      cpuManagerPolicyOptions,
+				CPUManagerPolicyOptions:      s.CPUManagerPolicyOptions,
 				CPUManagerReconcilePeriod:    s.CPUManagerReconcilePeriod.Duration,
 				MemoryManagerPolicy:          s.MemoryManagerPolicy,
 				MemoryManagerReservedMemory:  s.ReservedMemory,

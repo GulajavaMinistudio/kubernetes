@@ -18,9 +18,7 @@ package podtopologyspread
 
 import (
 	"context"
-	"fmt"
 	"math"
-	"reflect"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -41,11 +39,14 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-var cmpOpts = []cmp.Option{
-	cmp.Comparer(func(s1 labels.Selector, s2 labels.Selector) bool {
-		return reflect.DeepEqual(s1, s2)
-	}),
+var stateCmpOpts = []cmp.Option{
 	cmp.Comparer(func(p1, p2 criticalPaths) bool {
+		// Before comparing p1 and p2 we need to make sure that TopologyValues
+		// paired with the same MatchNum values are sorted alphabetically.
+		// It's not possible to substitute this sorting with calling cmpopts.SortSlices()
+		// instead, because the lessFn in SortSlices would not modify the actual
+		// criticalPaths objects, and the default comparer function would still
+		// operate on "unsorted" TopologyValue fields.
 		p1.sort()
 		p2.sort()
 		return p1[0] == p2[0] && p1[1] == p2[1]
@@ -62,6 +63,10 @@ var (
 	taints = []v1.Taint{{Key: v1.TaintNodeUnschedulable, Value: "", Effect: v1.TaintEffectNoSchedule}}
 )
 
+func init() {
+	metrics.Register()
+}
+
 func (p *criticalPaths) sort() {
 	if p[0].MatchNum == p[1].MatchNum && p[0].TopologyValue > p[1].TopologyValue {
 		// Swap TopologyValue to make them sorted alphabetically.
@@ -70,7 +75,6 @@ func (p *criticalPaths) sort() {
 }
 
 func TestPreFilterState(t *testing.T) {
-	metrics.Register()
 	tests := []struct {
 		name                      string
 		pod                       *v1.Pod
@@ -1489,9 +1493,13 @@ func TestPreFilterState(t *testing.T) {
 			p := plugintesting.SetupPluginWithInformers(ctx, t, topologySpreadFunc, args, cache.NewSnapshot(tt.existingPods, tt.nodes), tt.objs)
 			p.(*PodTopologySpread).enableNodeInclusionPolicyInPodTopologySpread = tt.enableNodeInclusionPolicy
 			p.(*PodTopologySpread).enableMatchLabelKeysInPodTopologySpread = tt.enableMatchLabelKeys
+			nodeInfos, err := p.(*PodTopologySpread).sharedLister.NodeInfos().List()
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			cs := framework.NewCycleState()
-			_, s := p.(*PodTopologySpread).PreFilter(ctx, cs, tt.pod)
+			_, s := p.(*PodTopologySpread).PreFilter(ctx, cs, tt.pod, nodeInfos)
 			if !tt.wantPrefilterStatus.Equal(s) {
 				t.Errorf("PodTopologySpread#PreFilter() returned unexpected status. got: %v, want: %v", s, tt.wantPrefilterStatus)
 			}
@@ -1504,7 +1512,7 @@ func TestPreFilterState(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to get PreFilterState from cyclestate: %v", err)
 			}
-			if diff := cmp.Diff(tt.want, got, cmpOpts...); diff != "" {
+			if diff := cmp.Diff(tt.want, got, stateCmpOpts...); diff != "" {
 				t.Errorf("PodTopologySpread#PreFilter() returned unexpected prefilter status: diff (-want,+got):\n%s", diff)
 			}
 		})
@@ -1983,9 +1991,13 @@ func TestPreFilterStateAddPod(t *testing.T) {
 			pl := plugintesting.SetupPlugin(ctx, t, topologySpreadFunc, &config.PodTopologySpreadArgs{DefaultingType: config.ListDefaulting}, snapshot)
 			p := pl.(*PodTopologySpread)
 			p.enableNodeInclusionPolicyInPodTopologySpread = tt.enableNodeInclusionPolicy
+			nodeInfos, err := snapshot.NodeInfos().List()
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			cs := framework.NewCycleState()
-			if _, s := p.PreFilter(ctx, cs, tt.preemptor); !s.IsSuccess() {
+			if _, s := p.PreFilter(ctx, cs, tt.preemptor, nodeInfos); !s.IsSuccess() {
 				t.Fatal(s.AsError())
 			}
 			nodeInfo, err := snapshot.Get(tt.nodes[tt.nodeIdx].Name)
@@ -1999,7 +2011,7 @@ func TestPreFilterStateAddPod(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if diff := cmp.Diff(tt.want, state, cmpOpts...); diff != "" {
+			if diff := cmp.Diff(tt.want, state, stateCmpOpts...); diff != "" {
 				t.Errorf("PodTopologySpread.AddPod() returned diff (-want,+got):\n%s", diff)
 			}
 		})
@@ -2284,9 +2296,13 @@ func TestPreFilterStateRemovePod(t *testing.T) {
 			pl := plugintesting.SetupPlugin(ctx, t, topologySpreadFunc, &config.PodTopologySpreadArgs{DefaultingType: config.ListDefaulting}, snapshot)
 			p := pl.(*PodTopologySpread)
 			p.enableNodeInclusionPolicyInPodTopologySpread = tt.enableNodeInclusionPolicy
+			nodeInfos, err := snapshot.NodeInfos().List()
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			cs := framework.NewCycleState()
-			if _, s := p.PreFilter(ctx, cs, tt.preemptor); !s.IsSuccess() {
+			if _, s := p.PreFilter(ctx, cs, tt.preemptor, nodeInfos); !s.IsSuccess() {
 				t.Fatal(s.AsError())
 			}
 
@@ -2307,7 +2323,7 @@ func TestPreFilterStateRemovePod(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if diff := cmp.Diff(tt.want, state, cmpOpts...); diff != "" {
+			if diff := cmp.Diff(tt.want, state, stateCmpOpts...); diff != "" {
 				t.Errorf("PodTopologySpread.RemovePod() returned diff (-want,+got):\n%s", diff)
 			}
 		})
@@ -2315,7 +2331,6 @@ func TestPreFilterStateRemovePod(t *testing.T) {
 }
 
 func BenchmarkFilter(b *testing.B) {
-	metrics.Register()
 	tests := []struct {
 		name             string
 		pod              *v1.Pod
@@ -2359,10 +2374,14 @@ func BenchmarkFilter(b *testing.B) {
 			_, ctx := ktesting.NewTestContext(b)
 			pl := plugintesting.SetupPlugin(ctx, b, topologySpreadFunc, &config.PodTopologySpreadArgs{DefaultingType: config.ListDefaulting}, cache.NewSnapshot(existingPods, allNodes))
 			p := pl.(*PodTopologySpread)
+			nodeInfos, err := p.sharedLister.NodeInfos().List()
+			if err != nil {
+				b.Fatal(err)
+			}
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				state = framework.NewCycleState()
-				if _, s := p.PreFilter(ctx, state, tt.pod); !s.IsSuccess() {
+				if _, s := p.PreFilter(ctx, state, tt.pod, nodeInfos); !s.IsSuccess() {
 					b.Fatal(s.AsError())
 				}
 				filterNode := func(i int) {
@@ -2985,8 +3004,12 @@ func TestSingleConstraint(t *testing.T) {
 			pl := plugintesting.SetupPlugin(ctx, t, topologySpreadFunc, &config.PodTopologySpreadArgs{DefaultingType: config.ListDefaulting}, snapshot)
 			p := pl.(*PodTopologySpread)
 			p.enableNodeInclusionPolicyInPodTopologySpread = tt.enableNodeInclusionPolicy
+			nodeInfos, err := snapshot.NodeInfos().List()
+			if err != nil {
+				t.Fatal(err)
+			}
 			state := framework.NewCycleState()
-			if _, s := p.PreFilter(ctx, state, tt.pod); !s.IsSuccess() {
+			if _, s := p.PreFilter(ctx, state, tt.pod, nodeInfos); !s.IsSuccess() {
 				t.Errorf("preFilter failed with status: %v", s)
 			}
 
@@ -3390,8 +3413,12 @@ func TestMultipleConstraints(t *testing.T) {
 			pl := plugintesting.SetupPlugin(ctx, t, topologySpreadFunc, &config.PodTopologySpreadArgs{DefaultingType: config.ListDefaulting}, snapshot)
 			p := pl.(*PodTopologySpread)
 			p.enableNodeInclusionPolicyInPodTopologySpread = tt.enableNodeInclusionPolicy
+			nodeInfos, err := snapshot.NodeInfos().List()
+			if err != nil {
+				t.Fatal(err)
+			}
 			state := framework.NewCycleState()
-			if _, s := p.PreFilter(ctx, state, tt.pod); !s.IsSuccess() {
+			if _, s := p.PreFilter(ctx, state, tt.pod, nodeInfos); !s.IsSuccess() {
 				t.Errorf("preFilter failed with status: %v", s)
 			}
 
@@ -3415,9 +3442,9 @@ func TestPreFilterDisabled(t *testing.T) {
 	p := plugintesting.SetupPlugin(ctx, t, topologySpreadFunc, &config.PodTopologySpreadArgs{DefaultingType: config.ListDefaulting}, cache.NewEmptySnapshot())
 	cycleState := framework.NewCycleState()
 	gotStatus := p.(*PodTopologySpread).Filter(ctx, cycleState, pod, nodeInfo)
-	wantStatus := framework.AsStatus(fmt.Errorf(`reading "PreFilterPodTopologySpread" from cycleState: %w`, framework.ErrNotFound))
-	if !reflect.DeepEqual(gotStatus, wantStatus) {
-		t.Errorf("status does not match: %v, want: %v", gotStatus, wantStatus)
+	wantStatus := framework.AsStatus(framework.ErrNotFound)
+	if diff := cmp.Diff(wantStatus, gotStatus); diff != "" {
+		t.Errorf("Status does not match (-want,+got):\n%s", diff)
 	}
 }
 

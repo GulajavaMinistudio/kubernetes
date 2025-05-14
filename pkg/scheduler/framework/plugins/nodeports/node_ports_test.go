@@ -18,7 +18,6 @@ package nodeports
 
 import (
 	"fmt"
-	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -153,7 +152,7 @@ func TestNodePorts(t *testing.T) {
 				t.Fatalf("creating plugin: %v", err)
 			}
 			cycleState := framework.NewCycleState()
-			_, preFilterStatus := p.(framework.PreFilterPlugin).PreFilter(ctx, cycleState, test.pod)
+			_, preFilterStatus := p.(framework.PreFilterPlugin).PreFilter(ctx, cycleState, test.pod, nil)
 			if diff := cmp.Diff(test.wantPreFilterStatus, preFilterStatus); diff != "" {
 				t.Errorf("preFilter status does not match (-want,+got): %s", diff)
 			}
@@ -183,9 +182,9 @@ func TestPreFilterDisabled(t *testing.T) {
 	}
 	cycleState := framework.NewCycleState()
 	gotStatus := p.(framework.FilterPlugin).Filter(ctx, cycleState, pod, nodeInfo)
-	wantStatus := framework.AsStatus(fmt.Errorf(`reading "PreFilterNodePorts" from cycleState: %w`, framework.ErrNotFound))
-	if !reflect.DeepEqual(gotStatus, wantStatus) {
-		t.Errorf("status does not match: %v, want: %v", gotStatus, wantStatus)
+	wantStatus := framework.AsStatus(framework.ErrNotFound)
+	if diff := cmp.Diff(wantStatus, gotStatus); diff != "" {
+		t.Errorf("status does not match (-want,+got):\n%s", diff)
 	}
 }
 

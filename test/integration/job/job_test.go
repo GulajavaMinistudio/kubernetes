@@ -37,6 +37,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	utilversion "k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/util/feature"
@@ -44,6 +45,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	typedv1 "k8s.io/client-go/kubernetes/typed/batch/v1"
 	restclient "k8s.io/client-go/rest"
+	cache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
@@ -64,6 +66,7 @@ import (
 
 const waitInterval = time.Second
 const fastPodFailureBackoff = 100 * time.Millisecond
+const fastSyncJobBatchPeriod = 100 * time.Millisecond
 
 // Time duration used to account for controller latency in tests in which it is
 // expected the Job controller does not make a change. In that cases we wait a
@@ -823,6 +826,10 @@ func TestSuccessPolicy(t *testing.T) {
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 			resetMetrics()
+			if !tc.enableBackoffLimitPerIndex || !tc.enableJobSuccessPolicy {
+				// TODO: this will be removed in 1.36
+				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, feature.DefaultFeatureGate, utilversion.MustParse("1.32"))
+			}
 			featuregatetesting.SetFeatureGateDuringTest(t, feature.DefaultFeatureGate, features.JobSuccessPolicy, tc.enableJobSuccessPolicy)
 			featuregatetesting.SetFeatureGateDuringTest(t, feature.DefaultFeatureGate, features.JobBackoffLimitPerIndex, tc.enableBackoffLimitPerIndex)
 
@@ -870,6 +877,7 @@ func TestSuccessPolicy(t *testing.T) {
 // TestSuccessPolicy_ReEnabling tests handling of pod successful when
 // re-enabling the JobSuccessPolicy feature.
 func TestSuccessPolicy_ReEnabling(t *testing.T) {
+	featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, feature.DefaultFeatureGate, utilversion.MustParse("1.32"))
 	featuregatetesting.SetFeatureGateDuringTest(t, feature.DefaultFeatureGate, features.JobSuccessPolicy, true)
 	closeFn, resetConfig, clientSet, ns := setup(t, "success-policy-re-enabling")
 	t.Cleanup(closeFn)
@@ -939,7 +947,7 @@ func TestSuccessPolicy_ReEnabling(t *testing.T) {
 		Active:      0,
 		Succeeded:   3,
 		Ready:       ptr.To[int32](0),
-		Terminating: ptr.To[int32](2),
+		Terminating: ptr.To[int32](0),
 	})
 	validateIndexedJobPods(ctx, t, clientSet, jobObj, sets.New[int](), "0-2", nil)
 
@@ -1028,6 +1036,7 @@ func TestBackoffLimitPerIndex_DelayedPodDeletion(t *testing.T) {
 // TestBackoffLimitPerIndex_Reenabling tests handling of pod failures when
 // reenabling the BackoffLimitPerIndex feature.
 func TestBackoffLimitPerIndex_Reenabling(t *testing.T) {
+	featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, feature.DefaultFeatureGate, utilversion.MustParse("1.32"))
 	t.Cleanup(setDurationDuringTest(&jobcontroller.DefaultJobPodFailureBackOff, fastPodFailureBackoff))
 
 	featuregatetesting.SetFeatureGateDuringTest(t, feature.DefaultFeatureGate, features.JobBackoffLimitPerIndex, true)
@@ -1576,6 +1585,10 @@ func TestDelayTerminalPhaseCondition(t *testing.T) {
 	for name, test := range testCases {
 		t.Run(name, func(t *testing.T) {
 			resetMetrics()
+			if !test.enableJobSuccessPolicy {
+				// TODO: this will be removed in 1.36.
+				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, feature.DefaultFeatureGate, utilversion.MustParse("1.32"))
+			}
 			featuregatetesting.SetFeatureGateDuringTest(t, feature.DefaultFeatureGate, features.JobPodReplacementPolicy, test.enableJobPodReplacementPolicy)
 			featuregatetesting.SetFeatureGateDuringTest(t, feature.DefaultFeatureGate, features.JobManagedBy, test.enableJobManagedBy)
 			featuregatetesting.SetFeatureGateDuringTest(t, feature.DefaultFeatureGate, features.ElasticIndexedJob, true)
@@ -3196,9 +3209,15 @@ func TestJobPodReplacementPolicyFeatureToggling(t *testing.T) {
 		Ready:       ptr.To[int32](0),
 		Active:      int(podCount),
 	})
-	// Disable the controller and turn feature on again.
-	featuregatetesting.SetFeatureGateDuringTest(t, feature.DefaultFeatureGate, features.JobPodReplacementPolicy, true)
 	cancel()
+	// Disable the controller and turn feature on again.
+	// However, before we re-enabling the feature gate we wait a little (1s to
+	// wait for the syncJob re-queue after update + 100ms for the syncJob
+	// execution itself) to make sure there is no pending syncJob which could
+	// panic if the trackTerminating returned false at the start of the sync,
+	// but onlyReplaceFailedPods returned true during that sync.
+	time.Sleep(time.Second + sleepDurationForControllerLatency)
+	featuregatetesting.SetFeatureGateDuringTest(t, feature.DefaultFeatureGate, features.JobPodReplacementPolicy, true)
 	ctx, cancel = startJobControllerAndWaitForCaches(t, restConfig)
 	waitForPodsToBeActive(ctx, t, jobClient, 2, jobObj)
 	deletePods(ctx, t, clientSet, jobObj.Namespace)
@@ -3419,6 +3438,10 @@ func BenchmarkLargeIndexedJob(b *testing.B) {
 	for name, tc := range cases {
 		b.Run(name, func(b *testing.B) {
 			enableJobBackoffLimitPerIndex := tc.backoffLimitPerIndex != nil
+			if !enableJobBackoffLimitPerIndex {
+				// TODO: this will be removed in 1.36
+				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(b, feature.DefaultFeatureGate, utilversion.MustParse("1.32"))
+			}
 			featuregatetesting.SetFeatureGateDuringTest(b, feature.DefaultFeatureGate, features.JobBackoffLimitPerIndex, enableJobBackoffLimitPerIndex)
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
@@ -3506,6 +3529,10 @@ func BenchmarkLargeFailureHandling(b *testing.B) {
 		b.Run(name, func(b *testing.B) {
 			enableJobBackoffLimitPerIndex := tc.backoffLimitPerIndex != nil
 			timeout := ptr.Deref(tc.customTimeout, wait.ForeverTestTimeout)
+			if !enableJobBackoffLimitPerIndex {
+				// TODO: this will be removed in 1.36
+				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(b, feature.DefaultFeatureGate, utilversion.MustParse("1.32"))
+			}
 			featuregatetesting.SetFeatureGateDuringTest(b, feature.DefaultFeatureGate, features.JobBackoffLimitPerIndex, enableJobBackoffLimitPerIndex)
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
@@ -4042,6 +4069,145 @@ func TestNodeSelectorUpdate(t *testing.T) {
 
 }
 
+// TestDelayedJobUpdateEvent tests that a Job only creates one Pod even when
+// the job events are delayed. This test verfies the finishedJobStore is working
+// correctly and preventing from job controller creating a new pod if the job success
+// or fail event is delayed.
+func TestDelayedJobUpdateEvent(t *testing.T) {
+	t.Cleanup(setDurationDuringTest(&jobcontroller.DefaultJobPodFailureBackOff, fastPodFailureBackoff))
+	t.Cleanup(setDurationDuringTest(&jobcontroller.SyncJobBatchPeriod, fastSyncJobBatchPeriod))
+	closeFn, restConfig, clientSet, ns := setup(t, "simple")
+	t.Cleanup(closeFn)
+	// the transform is used to introduce a delay for the job events. Since all the object have to go through
+	// transform func first before being added to the informer cache, this would serve as an indirect way to
+	// introduce watch event delay.
+	transformOpt := informers.WithTransform(cache.TransformFunc(func(obj interface{}) (interface{}, error) {
+		_, ok := obj.(*batchv1.Job)
+		if ok {
+			// This will make sure pod events are processed before the job events occur.
+			time.Sleep(2 * fastSyncJobBatchPeriod)
+		}
+		return obj, nil
+	}))
+
+	type jobStatus struct {
+		succeeded int
+		failed    int
+		status    batchv1.JobConditionType
+	}
+
+	cases := map[string]struct {
+		podReplacementPolicyEnabled bool
+		job                         *batchv1.Job
+		podUpdate                   func(*v1.Pod) bool
+		wantStatus                  jobStatus
+	}{
+		"job succeeded event delayed": {
+			job: &batchv1.Job{},
+			podUpdate: func(p *v1.Pod) bool {
+				p.Status.Phase = v1.PodSucceeded
+				p.Status.ContainerStatuses = []v1.ContainerStatus{
+					{
+						State: v1.ContainerState{
+							Terminated: &v1.ContainerStateTerminated{
+								FinishedAt: metav1.Now(),
+							},
+						},
+					},
+				}
+				return true
+			},
+			wantStatus: jobStatus{
+				succeeded: 1,
+				failed:    0,
+				status:    batchv1.JobComplete,
+			},
+		},
+		"job failed event delayed": {
+			job: &batchv1.Job{
+				Spec: batchv1.JobSpec{
+					Template: v1.PodTemplateSpec{
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:                     "main-container",
+									Image:                    "foo",
+									ImagePullPolicy:          v1.PullIfNotPresent,
+									TerminationMessagePolicy: v1.TerminationMessageFallbackToLogsOnError,
+								},
+							},
+						},
+					},
+					BackoffLimit: ptr.To[int32](0),
+				},
+			},
+			podUpdate: func(p *v1.Pod) bool {
+				p.Status = v1.PodStatus{
+					Phase: v1.PodFailed,
+					ContainerStatuses: []v1.ContainerStatus{
+						{
+							Name: "main-container",
+							State: v1.ContainerState{
+								Terminated: &v1.ContainerStateTerminated{
+									ExitCode: 5,
+								},
+							},
+						},
+					},
+				}
+				return true
+			},
+			wantStatus: jobStatus{
+				succeeded: 0,
+				failed:    1,
+				status:    batchv1.JobFailed,
+			},
+		},
+	}
+
+	for name, tc := range cases {
+		tc := tc
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := startJobControllerAndWaitForCaches(t, restConfig, transformOpt)
+			t.Cleanup(cancel)
+			resetMetrics()
+
+			jobObj, err := createJobWithDefaults(ctx, clientSet, ns.Name, tc.job)
+			if err != nil {
+				t.Fatalf("Failed to create Job: %v", err)
+			}
+
+			validateJobPodsStatus(ctx, t, clientSet, jobObj, podsByStatus{
+				Active:      1,
+				Ready:       ptr.To[int32](0),
+				Terminating: ptr.To[int32](0),
+			})
+
+			if _, err := updateJobPodsStatus(ctx, clientSet, jobObj, tc.podUpdate, 1); err != nil {
+				t.Fatalf("Error %q while updating pod status for Job: %v", err, jobObj.Name)
+			}
+
+			validateJobsPodsStatusOnly(ctx, t, clientSet, jobObj, podsByStatus{
+				Failed:      tc.wantStatus.failed,
+				Succeeded:   tc.wantStatus.succeeded,
+				Ready:       ptr.To[int32](0),
+				Terminating: ptr.To[int32](0),
+			})
+
+			validateJobCondition(ctx, t, clientSet, jobObj, tc.wantStatus.status)
+
+			jobPods, err := getJobPods(ctx, t, clientSet, jobObj, func(ps v1.PodStatus) bool { return true })
+			if err != nil {
+				t.Fatalf("Error %v getting the list of pods for job %q", err, klog.KObj(jobObj))
+			}
+			if len(jobPods) != 1 {
+				t.Errorf("Found %d Pods for the job %q, want 1", len(jobPods), klog.KObj(jobObj))
+			}
+		})
+	}
+
+}
+
 type podsByStatus struct {
 	Active      int
 	Ready       *int32
@@ -4463,9 +4629,9 @@ func setup(t testing.TB, nsBaseName string) (framework.TearDownFunc, *restclient
 	return closeFn, config, clientSet, ns
 }
 
-func startJobControllerAndWaitForCaches(tb testing.TB, restConfig *restclient.Config) (context.Context, context.CancelFunc) {
+func startJobControllerAndWaitForCaches(tb testing.TB, restConfig *restclient.Config, options ...informers.SharedInformerOption) (context.Context, context.CancelFunc) {
 	tb.Helper()
-	informerSet := informers.NewSharedInformerFactory(clientset.NewForConfigOrDie(restclient.AddUserAgent(restConfig, "job-informers")), 0)
+	informerSet := informers.NewSharedInformerFactoryWithOptions(clientset.NewForConfigOrDie(restclient.AddUserAgent(restConfig, "job-informers")), 0, options...)
 	jc, ctx, cancel := createJobControllerWithSharedInformers(tb, restConfig, informerSet)
 	informerSet.Start(ctx.Done())
 	go jc.Run(ctx, 1)

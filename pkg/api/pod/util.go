@@ -17,9 +17,9 @@ limitations under the License.
 package pod
 
 import (
+	"iter"
 	"strings"
 
-	"github.com/google/go-cmp/cmp" //nolint:depguard
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	metavalidation "k8s.io/apimachinery/pkg/apis/meta/v1/validation"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -61,28 +61,40 @@ type ContainerVisitor func(container *api.Container, containerType ContainerType
 // visiting is short-circuited. VisitContainers returns true if visiting completes,
 // false if visiting was short-circuited.
 func VisitContainers(podSpec *api.PodSpec, mask ContainerType, visitor ContainerVisitor) bool {
-	if mask&InitContainers != 0 {
-		for i := range podSpec.InitContainers {
-			if !visitor(&podSpec.InitContainers[i], InitContainers) {
-				return false
-			}
-		}
-	}
-	if mask&Containers != 0 {
-		for i := range podSpec.Containers {
-			if !visitor(&podSpec.Containers[i], Containers) {
-				return false
-			}
-		}
-	}
-	if mask&EphemeralContainers != 0 {
-		for i := range podSpec.EphemeralContainers {
-			if !visitor((*api.Container)(&podSpec.EphemeralContainers[i].EphemeralContainerCommon), EphemeralContainers) {
-				return false
-			}
+	for c, t := range ContainerIter(podSpec, mask) {
+		if !visitor(c, t) {
+			return false
 		}
 	}
 	return true
+}
+
+// ContainerIter returns an iterator over all containers in the given pod spec with a masked type.
+// The iteration order is InitContainers, then main Containers, then EphemeralContainers.
+func ContainerIter(podSpec *api.PodSpec, mask ContainerType) iter.Seq2[*api.Container, ContainerType] {
+	return func(yield func(*api.Container, ContainerType) bool) {
+		if mask&InitContainers != 0 {
+			for i := range podSpec.InitContainers {
+				if !yield(&podSpec.InitContainers[i], InitContainers) {
+					return
+				}
+			}
+		}
+		if mask&Containers != 0 {
+			for i := range podSpec.Containers {
+				if !yield(&podSpec.Containers[i], Containers) {
+					return
+				}
+			}
+		}
+		if mask&EphemeralContainers != 0 {
+			for i := range podSpec.EphemeralContainers {
+				if !yield((*api.Container)(&podSpec.EphemeralContainers[i].EphemeralContainerCommon), EphemeralContainers) {
+					return
+				}
+			}
+		}
+	}
 }
 
 // Visitor is called with each object name, and returns true if visiting should continue
@@ -354,6 +366,28 @@ func hasInvalidTopologySpreadConstraintLabelSelector(spec *api.PodSpec) bool {
 	return false
 }
 
+// hasInvalidTopologySpreadConstrainMatchLabelKeys return true if spec.TopologySpreadConstraints have any entry with invalid MatchLabelKeys
+func hasInvalidTopologySpreadConstrainMatchLabelKeys(spec *api.PodSpec) bool {
+	for _, constraint := range spec.TopologySpreadConstraints {
+		errs := apivalidation.ValidateMatchLabelKeysAndMismatchLabelKeys(nil, constraint.MatchLabelKeys, nil, constraint.LabelSelector)
+		if len(errs) != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// hasLegacyInvalidTopologySpreadConstrainMatchLabelKeys return true if spec.TopologySpreadConstraints have any entry with invalid MatchLabelKeys against legacy validation
+func hasLegacyInvalidTopologySpreadConstrainMatchLabelKeys(spec *api.PodSpec) bool {
+	for _, constraint := range spec.TopologySpreadConstraints {
+		errs := apivalidation.ValidateMatchLabelKeysInTopologySpread(nil, constraint.MatchLabelKeys, constraint.LabelSelector)
+		if len(errs) != 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // hasNonLocalProjectedTokenPath return true if spec.Volumes have any entry with non-local projected token path
 func hasNonLocalProjectedTokenPath(spec *api.PodSpec) bool {
 	for _, volume := range spec.Volumes {
@@ -378,14 +412,19 @@ func GetValidationOptionsFromPodSpecAndMeta(podSpec, oldPodSpec *api.PodSpec, po
 	opts := apivalidation.PodValidationOptions{
 		AllowInvalidPodDeletionCost: !utilfeature.DefaultFeatureGate.Enabled(features.PodDeletionCost),
 		// Do not allow pod spec to use non-integer multiple of huge page unit size default
-		AllowIndivisibleHugePagesValues:                   false,
-		AllowInvalidLabelValueInSelector:                  false,
-		AllowInvalidTopologySpreadConstraintLabelSelector: false,
-		AllowNamespacedSysctlsForHostNetAndHostIPC:        false,
-		AllowNonLocalProjectedTokenPath:                   false,
-		AllowPodLifecycleSleepActionZeroValue:             utilfeature.DefaultFeatureGate.Enabled(features.PodLifecycleSleepActionAllowZero),
-		PodLevelResourcesEnabled:                          utilfeature.DefaultFeatureGate.Enabled(features.PodLevelResources),
-		AllowInvalidLabelValueInRequiredNodeAffinity:      false,
+		AllowIndivisibleHugePagesValues:                     false,
+		AllowInvalidLabelValueInSelector:                    false,
+		AllowInvalidTopologySpreadConstraintLabelSelector:   false,
+		AllowNamespacedSysctlsForHostNetAndHostIPC:          false,
+		AllowNonLocalProjectedTokenPath:                     false,
+		AllowPodLifecycleSleepActionZeroValue:               utilfeature.DefaultFeatureGate.Enabled(features.PodLifecycleSleepActionAllowZero),
+		PodLevelResourcesEnabled:                            utilfeature.DefaultFeatureGate.Enabled(features.PodLevelResources),
+		AllowInvalidLabelValueInRequiredNodeAffinity:        false,
+		AllowSidecarResizePolicy:                            utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling),
+		AllowMatchLabelKeysInPodTopologySpread:              utilfeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpread),
+		AllowMatchLabelKeysInPodTopologySpreadSelectorMerge: utilfeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpreadSelectorMerge),
+		OldPodViolatesMatchLabelKeysValidation:              false,
+		OldPodViolatesLegacyMatchLabelKeysValidation:        false,
 	}
 
 	// If old spec uses relaxed validation or enabled the RelaxedEnvironmentVariableValidation feature gate,
@@ -403,6 +442,15 @@ func GetValidationOptionsFromPodSpecAndMeta(podSpec, oldPodSpec *api.PodSpec, po
 		opts.AllowInvalidLabelValueInRequiredNodeAffinity = hasInvalidLabelValueInRequiredNodeAffinity(oldPodSpec)
 		// if old spec has invalid labelSelector in topologySpreadConstraint, we must allow it
 		opts.AllowInvalidTopologySpreadConstraintLabelSelector = hasInvalidTopologySpreadConstraintLabelSelector(oldPodSpec)
+		if opts.AllowMatchLabelKeysInPodTopologySpread {
+			if opts.AllowMatchLabelKeysInPodTopologySpreadSelectorMerge {
+				// If old spec has invalid MatchLabelKeys, we must set true
+				opts.OldPodViolatesMatchLabelKeysValidation = hasInvalidTopologySpreadConstrainMatchLabelKeys(oldPodSpec)
+			} else {
+				// If old spec has invalid MatchLabelKeys against legacy validation, we must set true
+				opts.OldPodViolatesLegacyMatchLabelKeysValidation = hasLegacyInvalidTopologySpreadConstrainMatchLabelKeys(oldPodSpec)
+			}
+		}
 		// if old spec has an invalid projected token volume path, we must allow it
 		opts.AllowNonLocalProjectedTokenPath = hasNonLocalProjectedTokenPath(oldPodSpec)
 
@@ -417,9 +465,9 @@ func GetValidationOptionsFromPodSpecAndMeta(podSpec, oldPodSpec *api.PodSpec, po
 			}
 		}
 
-		opts.AllowPodLifecycleSleepActionZeroValue = opts.AllowPodLifecycleSleepActionZeroValue || podLifecycleSleepActionZeroValueInUse(podSpec)
+		opts.AllowPodLifecycleSleepActionZeroValue = opts.AllowPodLifecycleSleepActionZeroValue || podLifecycleSleepActionZeroValueInUse(oldPodSpec)
 		// If oldPod has resize policy set on the restartable init container, we must allow it
-		opts.AllowSidecarResizePolicy = hasRestartableInitContainerResizePolicy(oldPodSpec)
+		opts.AllowSidecarResizePolicy = opts.AllowSidecarResizePolicy || hasRestartableInitContainerResizePolicy(oldPodSpec)
 	}
 	if oldPodMeta != nil && !opts.AllowInvalidPodDeletionCost {
 		// This is an update, so validate only if the existing object was valid.
@@ -678,6 +726,51 @@ func dropDisabledFields(
 	dropPodLifecycleSleepAction(podSpec, oldPodSpec)
 	dropImageVolumes(podSpec, oldPodSpec)
 	dropSELinuxChangePolicy(podSpec, oldPodSpec)
+	dropContainerStopSignals(podSpec, oldPodSpec)
+}
+
+func dropContainerStopSignals(podSpec, oldPodSpec *api.PodSpec) {
+	if utilfeature.DefaultFeatureGate.Enabled(features.ContainerStopSignals) || containerStopSignalsInUse(oldPodSpec) {
+		return
+	}
+
+	wipeLifecycle := func(ctr *api.Container) {
+		if ctr.Lifecycle == nil {
+			return
+		}
+		if ctr.Lifecycle.StopSignal != nil {
+			ctr.Lifecycle.StopSignal = nil
+			if *ctr.Lifecycle == (api.Lifecycle{}) {
+				ctr.Lifecycle = nil
+			}
+		}
+	}
+
+	VisitContainers(podSpec, AllContainers, func(c *api.Container, containerType ContainerType) bool {
+		if c.Lifecycle == nil {
+			return true
+		}
+		wipeLifecycle(c)
+		return true
+	})
+}
+
+func containerStopSignalsInUse(podSpec *api.PodSpec) bool {
+	if podSpec == nil {
+		return false
+	}
+	var inUse bool
+	VisitContainers(podSpec, AllContainers, func(c *api.Container, containerType ContainerType) bool {
+		if c.Lifecycle == nil {
+			return true
+		}
+		if c.Lifecycle.StopSignal != nil {
+			inUse = true
+			return false
+		}
+		return true
+	})
+	return inUse
 }
 
 func dropDisabledPodLevelResources(podSpec, oldPodSpec *api.PodSpec) {
@@ -713,7 +806,7 @@ func dropPodLifecycleSleepAction(podSpec, oldPodSpec *api.PodSpec) {
 			continue
 		}
 		adjustLifecycle(podSpec.Containers[i].Lifecycle)
-		if podSpec.Containers[i].Lifecycle.PreStop == nil && podSpec.Containers[i].Lifecycle.PostStart == nil {
+		if podSpec.Containers[i].Lifecycle.PreStop == nil && podSpec.Containers[i].Lifecycle.PostStart == nil && podSpec.Containers[i].Lifecycle.StopSignal == nil {
 			podSpec.Containers[i].Lifecycle = nil
 		}
 	}
@@ -723,7 +816,7 @@ func dropPodLifecycleSleepAction(podSpec, oldPodSpec *api.PodSpec) {
 			continue
 		}
 		adjustLifecycle(podSpec.InitContainers[i].Lifecycle)
-		if podSpec.InitContainers[i].Lifecycle.PreStop == nil && podSpec.InitContainers[i].Lifecycle.PostStart == nil {
+		if podSpec.InitContainers[i].Lifecycle.PreStop == nil && podSpec.InitContainers[i].Lifecycle.PostStart == nil && podSpec.InitContainers[i].Lifecycle.StopSignal == nil {
 			podSpec.InitContainers[i].Lifecycle = nil
 		}
 	}
@@ -733,7 +826,7 @@ func dropPodLifecycleSleepAction(podSpec, oldPodSpec *api.PodSpec) {
 			continue
 		}
 		adjustLifecycle(podSpec.EphemeralContainers[i].Lifecycle)
-		if podSpec.EphemeralContainers[i].Lifecycle.PreStop == nil && podSpec.EphemeralContainers[i].Lifecycle.PostStart == nil {
+		if podSpec.EphemeralContainers[i].Lifecycle.PreStop == nil && podSpec.EphemeralContainers[i].Lifecycle.PostStart == nil && podSpec.EphemeralContainers[i].Lifecycle.StopSignal == nil {
 			podSpec.EphemeralContainers[i].Lifecycle = nil
 		}
 	}
@@ -774,7 +867,7 @@ func podLifecycleSleepActionZeroValueInUse(podSpec *api.PodSpec) bool {
 			inUse = true
 			return false
 		}
-		if c.Lifecycle.PostStart != nil && c.Lifecycle.PostStart.Sleep != nil && c.Lifecycle.PreStop.Sleep.Seconds == 0 {
+		if c.Lifecycle.PostStart != nil && c.Lifecycle.PostStart.Sleep != nil && c.Lifecycle.PostStart.Sleep.Seconds == 0 {
 			inUse = true
 			return false
 		}
@@ -791,7 +884,7 @@ func dropDisabledPodStatusFields(podStatus, oldPodStatus *api.PodStatus, podSpec
 	}
 
 	if !utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) && !inPlacePodVerticalScalingInUse(oldPodSpec) {
-		// Drop Resize and Resources fields
+		// Drop Resources fields
 		dropResourcesField := func(csl []api.ContainerStatus) {
 			for i := range csl {
 				csl[i].Resources = nil
@@ -800,10 +893,7 @@ func dropDisabledPodStatusFields(podStatus, oldPodStatus *api.PodStatus, podSpec
 		dropResourcesField(podStatus.ContainerStatuses)
 		dropResourcesField(podStatus.InitContainerStatuses)
 		dropResourcesField(podStatus.EphemeralContainerStatuses)
-		podStatus.Resize = ""
-	}
-	if !utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) ||
-		!utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScalingAllocatedStatus) {
+
 		// Drop AllocatedResources field
 		dropAllocatedResourcesField := func(csl []api.ContainerStatus) {
 			for i := range csl {
@@ -852,6 +942,13 @@ func dropDisabledPodStatusFields(podStatus, oldPodStatus *api.PodStatus, podSpec
 		dropUserField(podStatus.InitContainerStatuses)
 		dropUserField(podStatus.ContainerStatuses)
 		dropUserField(podStatus.EphemeralContainerStatuses)
+	}
+
+	if !utilfeature.DefaultFeatureGate.Enabled(features.PodObservedGenerationTracking) && !podObservedGenerationTrackingInUse(oldPodStatus) {
+		podStatus.ObservedGeneration = 0
+		for i := range podStatus.Conditions {
+			podStatus.Conditions[i].ObservedGeneration = 0
+		}
 	}
 }
 
@@ -1049,16 +1146,26 @@ func nodeTaintsPolicyInUse(podSpec *api.PodSpec) bool {
 
 // hostUsersInUse returns true if the pod spec has spec.hostUsers field set.
 func hostUsersInUse(podSpec *api.PodSpec) bool {
-	if podSpec != nil && podSpec.SecurityContext != nil && podSpec.SecurityContext.HostUsers != nil {
-		return true
-	}
-
-	return false
+	return podSpec != nil && podSpec.SecurityContext != nil && podSpec.SecurityContext.HostUsers != nil
 }
 
 func supplementalGroupsPolicyInUse(podSpec *api.PodSpec) bool {
-	if podSpec != nil && podSpec.SecurityContext != nil && podSpec.SecurityContext.SupplementalGroupsPolicy != nil {
+	return podSpec != nil && podSpec.SecurityContext != nil && podSpec.SecurityContext.SupplementalGroupsPolicy != nil
+}
+
+func podObservedGenerationTrackingInUse(podStatus *api.PodStatus) bool {
+	if podStatus == nil {
+		return false
+	}
+
+	if podStatus.ObservedGeneration != 0 {
 		return true
+	}
+
+	for _, condition := range podStatus.Conditions {
+		if condition.ObservedGeneration != 0 {
+			return true
+		}
 	}
 
 	return false
@@ -1092,7 +1199,8 @@ func inPlacePodVerticalScalingInUse(podSpec *api.PodSpec) bool {
 		return false
 	}
 	var inUse bool
-	VisitContainers(podSpec, Containers, func(c *api.Container, containerType ContainerType) bool {
+	containersMask := Containers | InitContainers
+	VisitContainers(podSpec, containersMask, func(c *api.Container, containerType ContainerType) bool {
 		if len(c.ResizePolicy) > 0 {
 			inUse = true
 			return false
@@ -1281,27 +1389,6 @@ func hasInvalidLabelValueInRequiredNodeAffinity(spec *api.PodSpec) bool {
 		return false
 	}
 	return helper.HasInvalidLabelValueInNodeSelectorTerms(spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms)
-}
-
-func MarkPodProposedForResize(oldPod, newPod *api.Pod) {
-	if len(newPod.Spec.Containers) != len(oldPod.Spec.Containers) {
-		// Update is invalid: ignore changes and let validation handle it
-		return
-	}
-
-	for i, c := range newPod.Spec.Containers {
-		if c.Name != oldPod.Spec.Containers[i].Name {
-			return // Update is invalid (container mismatch): let validation handle it.
-		}
-		if c.Resources.Requests == nil {
-			continue
-		}
-		if cmp.Equal(oldPod.Spec.Containers[i].Resources, c.Resources) {
-			continue
-		}
-		newPod.Status.Resize = api.PodResizeStatusProposed
-		return
-	}
 }
 
 // KEP: https://kep.k8s.io/4639

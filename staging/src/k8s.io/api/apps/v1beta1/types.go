@@ -259,6 +259,7 @@ type StatefulSetSpec struct {
 	// the network identity of the set. Pods get DNS/hostnames that follow the
 	// pattern: pod-specific-string.serviceName.default.svc.cluster.local
 	// where "pod-specific-string" is managed by the StatefulSet controller.
+	// +optional
 	ServiceName string `json:"serviceName" protobuf:"bytes,5,opt,name=serviceName"`
 
 	// podManagementPolicy controls how pods are created during initial scale up,
@@ -577,7 +578,7 @@ type DeploymentStatus struct {
 	// Total number of terminating pods targeted by this deployment. Terminating pods have a non-null
 	// .metadata.deletionTimestamp and have not yet reached the Failed or Succeeded .status.phase.
 	//
-	// This is an alpha field. Enable DeploymentPodReplacementPolicy to be able to use this field.
+	// This is an alpha field. Enable DeploymentReplicaSetTerminatingReplicas to be able to use this field.
 	// +optional
 	TerminatingReplicas *int32 `json:"terminatingReplicas,omitempty" protobuf:"varint,9,opt,name=terminatingReplicas"`
 

@@ -27,12 +27,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	featuregatetesting "k8s.io/component-base/featuregate/testing"
-	"k8s.io/kubernetes/pkg/features"
+	"k8s.io/klog/v2"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/prober/results"
 	"k8s.io/kubernetes/pkg/probe"
+	"k8s.io/kubernetes/test/utils/ktesting"
 )
 
 func init() {
@@ -136,34 +135,33 @@ func TestAddRemovePods(t *testing.T) {
 func TestAddRemovePodsWithRestartableInitContainer(t *testing.T) {
 	m := newTestManager()
 	defer cleanup(t, m)
-	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SidecarContainers, true)
 	if err := expectProbes(m, nil); err != nil {
 		t.Error(err)
 	}
 
 	testCases := []struct {
-		desc                    string
-		probePaths              []probeKey
-		enableSidecarContainers bool
+		desc                        string
+		probePaths                  []probeKey
+		hasRestartableInitContainer bool
 	}{
 		{
-			desc:                    "pod with sidecar (no sidecar containers feature enabled)",
-			probePaths:              nil,
-			enableSidecarContainers: false,
+			desc:                        "pod without sidecar",
+			probePaths:                  nil,
+			hasRestartableInitContainer: false,
 		},
 		{
-			desc: "pod with sidecar (sidecar containers feature enabled)",
+			desc: "pod with sidecar",
 			probePaths: []probeKey{
 				{"restartable_init_container_pod", "restartable-init", liveness},
 				{"restartable_init_container_pod", "restartable-init", readiness},
 				{"restartable_init_container_pod", "restartable-init", startup},
 			},
-			enableSidecarContainers: true,
+			hasRestartableInitContainer: true,
 		},
 	}
 
-	containerRestartPolicy := func(enableSidecarContainers bool) *v1.ContainerRestartPolicy {
-		if !enableSidecarContainers {
+	containerRestartPolicy := func(hasRestartableInitContainer bool) *v1.ContainerRestartPolicy {
+		if !hasRestartableInitContainer {
 			return nil
 		}
 		restartPolicy := v1.ContainerRestartPolicyAlways
@@ -172,8 +170,6 @@ func TestAddRemovePodsWithRestartableInitContainer(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
-			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SidecarContainers, tc.enableSidecarContainers)
-
 			probePod := v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					UID: "restartable_init_container_pod",
@@ -186,7 +182,7 @@ func TestAddRemovePodsWithRestartableInitContainer(t *testing.T) {
 						LivenessProbe:  defaultProbe,
 						ReadinessProbe: defaultProbe,
 						StartupProbe:   defaultProbe,
-						RestartPolicy:  containerRestartPolicy(tc.enableSidecarContainers),
+						RestartPolicy:  containerRestartPolicy(tc.hasRestartableInitContainer),
 					}},
 					Containers: []v1.Container{{
 						Name: "main",
@@ -453,10 +449,10 @@ func TestUpdatePodStatusWithInitContainers(t *testing.T) {
 	m.startupManager.Set(kubecontainer.ParseContainerID(started.ContainerID), results.Success, &v1.Pod{})
 
 	testCases := []struct {
-		desc                    string
-		expectedStartup         map[probeKey]bool
-		expectedReadiness       map[probeKey]bool
-		enableSidecarContainers bool
+		desc                        string
+		expectedStartup             map[probeKey]bool
+		expectedReadiness           map[probeKey]bool
+		hasRestartableInitContainer bool
 	}{
 		{
 			desc: "init containers",
@@ -470,10 +466,10 @@ func TestUpdatePodStatusWithInitContainers(t *testing.T) {
 				{testPodUID, started.Name, readiness}:    false,
 				{testPodUID, terminated.Name, readiness}: true,
 			},
-			enableSidecarContainers: false,
+			hasRestartableInitContainer: false,
 		},
 		{
-			desc: "init container with SidecarContainers feature",
+			desc: "init container with Always restartPolicy",
 			expectedStartup: map[probeKey]bool{
 				{testPodUID, notStarted.Name, startup}: false,
 				{testPodUID, started.Name, startup}:    true,
@@ -484,7 +480,7 @@ func TestUpdatePodStatusWithInitContainers(t *testing.T) {
 				{testPodUID, started.Name, readiness}:    true,
 				{testPodUID, terminated.Name, readiness}: false,
 			},
-			enableSidecarContainers: true,
+			hasRestartableInitContainer: true,
 		},
 	}
 
@@ -498,7 +494,6 @@ func TestUpdatePodStatusWithInitContainers(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
-			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SidecarContainers, tc.enableSidecarContainers)
 			podStatus := v1.PodStatus{
 				Phase: v1.PodRunning,
 				InitContainerStatuses: []v1.ContainerStatus{
@@ -514,15 +509,15 @@ func TestUpdatePodStatusWithInitContainers(t *testing.T) {
 					InitContainers: []v1.Container{
 						{
 							Name:          notStarted.Name,
-							RestartPolicy: containerRestartPolicy(tc.enableSidecarContainers),
+							RestartPolicy: containerRestartPolicy(tc.hasRestartableInitContainer),
 						},
 						{
 							Name:          started.Name,
-							RestartPolicy: containerRestartPolicy(tc.enableSidecarContainers),
+							RestartPolicy: containerRestartPolicy(tc.hasRestartableInitContainer),
 						},
 						{
 							Name:          terminated.Name,
-							RestartPolicy: containerRestartPolicy(tc.enableSidecarContainers),
+							RestartPolicy: containerRestartPolicy(tc.hasRestartableInitContainer),
 						},
 					},
 				},
@@ -554,14 +549,15 @@ func TestUpdatePodStatusWithInitContainers(t *testing.T) {
 	}
 }
 
-func (m *manager) extractedReadinessHandling() {
+func (m *manager) extractedReadinessHandling(logger klog.Logger) {
 	update := <-m.readinessManager.Updates()
 	// This code corresponds to an extract from kubelet.syncLoopIteration()
 	ready := update.Result == results.Success
-	m.statusManager.SetContainerReadiness(update.PodUID, update.ContainerID, ready)
+	m.statusManager.SetContainerReadiness(logger, update.PodUID, update.ContainerID, ready)
 }
 
 func TestUpdateReadiness(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
 	testPod := getTestPod()
 	setTestProbe(testPod, readiness, v1.Probe{})
 	m := newTestManager()
@@ -569,7 +565,7 @@ func TestUpdateReadiness(t *testing.T) {
 
 	// Start syncing readiness without leaking goroutine.
 	stopCh := make(chan struct{})
-	go wait.Until(m.extractedReadinessHandling, 0, stopCh)
+	go wait.Until(func() { m.extractedReadinessHandling(logger) }, 0, stopCh)
 	defer func() {
 		close(stopCh)
 		// Send an update to exit extractedReadinessHandling()
@@ -580,7 +576,7 @@ func TestUpdateReadiness(t *testing.T) {
 	exec.set(probe.Success, nil)
 	m.prober.exec = &exec
 
-	m.statusManager.SetPodStatus(testPod, getTestRunningStatus())
+	m.statusManager.SetPodStatus(logger, testPod, getTestRunningStatus())
 
 	m.AddPod(testPod)
 	probePaths := []probeKey{{testPodUID, testContainerName, readiness}}

@@ -227,7 +227,7 @@ func computePodResourceRequest(pod *v1.Pod, opts ResourceRequestsOptions) *preFi
 }
 
 // PreFilter invoked at the prefilter extension point.
-func (f *Fit) PreFilter(ctx context.Context, cycleState *framework.CycleState, pod *v1.Pod) (*framework.PreFilterResult, *framework.Status) {
+func (f *Fit) PreFilter(ctx context.Context, cycleState *framework.CycleState, pod *v1.Pod, nodes []*framework.NodeInfo) (*framework.PreFilterResult, *framework.Status) {
 	if !f.enableSidecarContainers && hasRestartableInitContainer(pod) {
 		// Scheduler will calculate resources usage for a Pod containing
 		// restartable init containers that will be equal or more than kubelet will
@@ -294,7 +294,7 @@ func (f *Fit) isSchedulableAfterPodEvent(logger klog.Logger, pod *v1.Pod, oldObj
 	}
 
 	if modifiedPod == nil {
-		if originalPod.Spec.NodeName == "" {
+		if originalPod.Spec.NodeName == "" && originalPod.Status.NominatedNodeName == "" {
 			logger.V(5).Info("the deleted pod was unscheduled and it wouldn't make the unscheduled pod schedulable", "pod", klog.KObj(pod), "deletedPod", klog.KObj(originalPod))
 			return framework.QueueSkip, nil
 		}
@@ -579,12 +579,7 @@ func fitsRequest(podRequest *preFilterState, nodeInfo *framework.NodeInfo, ignor
 }
 
 // Score invoked at the Score extension point.
-func (f *Fit) Score(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodeName string) (int64, *framework.Status) {
-	nodeInfo, err := f.handle.SnapshotSharedLister().NodeInfos().Get(nodeName)
-	if err != nil {
-		return 0, framework.AsStatus(fmt.Errorf("getting node %q from Snapshot: %w", nodeName, err))
-	}
-
+func (f *Fit) Score(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodeInfo *framework.NodeInfo) (int64, *framework.Status) {
 	s, err := getPreScoreState(state)
 	if err != nil {
 		s = &preScoreState{

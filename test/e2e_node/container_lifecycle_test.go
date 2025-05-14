@@ -880,7 +880,7 @@ var _ = SIGDescribe(framework.WithNodeConformance(), "Containers Lifecycle", fun
 						gomega.Expect(err).To(gomega.HaveOccurred())
 					})
 
-					f.It("should continue running liveness probes for restartable init containers and restart them while in preStop", f.WithNodeConformance(), func(ctx context.Context) {
+					f.It("should not continue running liveness probes for restartable init containers and restart them while in preStop", f.WithNodeConformance(), func(ctx context.Context) {
 						client := e2epod.NewPodClient(f)
 						podSpec := testPod()
 						restartableInit1 := "restartable-init-1"
@@ -913,6 +913,8 @@ var _ = SIGDescribe(framework.WithNodeConformance(), "Containers Lifecycle", fun
 							PreStop: &v1.LifecycleHandler{
 								Exec: &v1.ExecAction{
 									Command: ExecCommand(prefixedName(PreStopPrefix, regular1), execCommand{
+										// Delay 10 secs not to make a race condition.
+										StartDelay:    10,
 										Delay:         40,
 										ExitCode:      0,
 										ContainerName: regular1,
@@ -937,8 +939,9 @@ var _ = SIGDescribe(framework.WithNodeConformance(), "Containers Lifecycle", fun
 						ginkgo.By("Analyzing results")
 						// FIXME ExpectNoError: this will be implemented in KEP 4438
 						// liveness probes are called for restartable init containers during pod termination
-						err = results.RunTogetherLhsFirst(prefixedName(PreStopPrefix, regular1), prefixedName(LivenessPrefix, restartableInit1))
-						gomega.Expect(err).To(gomega.HaveOccurred())
+						err = results.StartsBefore(prefixedName(PreStopPrefix, regular1), prefixedName(LivenessPrefix, restartableInit1))
+						gomega.Expect(err).To(gomega.HaveOccurred(),
+							"%s should not start before %s", prefixedName(PreStopPrefix, regular1), prefixedName(LivenessPrefix, restartableInit1))
 						// FIXME ExpectNoError: this will be implemented in KEP 4438
 						// restartable init containers are restarted during pod termination
 						err = results.RunTogetherLhsFirst(prefixedName(PreStopPrefix, regular1), restartableInit1)
@@ -5414,7 +5417,7 @@ var _ = SIGDescribe(feature.SidecarContainers, framework.WithSerial(), "Containe
 	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged
 
 	ginkgo.When("A node running restartable init containers reboots", func() {
-		ginkgo.It("should restart the containers in right order after the node reboot", func(ctx context.Context) {
+		ginkgo.It("should restart the containers in right order with the proper phase after the node reboot", func(ctx context.Context) {
 			init1 := "init-1"
 			restartableInit2 := "restartable-init-2"
 			init3 := "init-3"
@@ -5502,16 +5505,20 @@ var _ = SIGDescribe(feature.SidecarContainers, framework.WithSerial(), "Containe
 				return kubeletHealthCheck(kubeletHealthCheckURL)
 			}, f.Timeouts.PodStart, f.Timeouts.Poll).Should(gomega.BeTrueBecause("kubelet was expected to be healthy"))
 
-			ginkgo.By("Waiting for the pod to be re-initialized and run")
+			ginkgo.By("Waiting for the pod to re-initialize")
 			err = e2epod.WaitForPodCondition(ctx, f.ClientSet, pod.Namespace, pod.Name, "re-initialized", f.Timeouts.PodStart, func(pod *v1.Pod) (bool, error) {
-				if pod.Status.ContainerStatuses[0].RestartCount < 1 {
+				if pod.Status.InitContainerStatuses[0].RestartCount < 1 {
 					return false, nil
 				}
-				if pod.Status.Phase != v1.PodRunning {
-					return false, nil
+				if pod.Status.Phase != v1.PodPending {
+					return false, fmt.Errorf("pod should remain in the pending phase until it is re-initialized, but it is %q", pod.Status.Phase)
 				}
 				return true, nil
 			})
+			framework.ExpectNoError(err)
+
+			ginkgo.By("Waiting for the pod to run after re-initialization")
+			err = e2epod.WaitForPodRunningInNamespace(ctx, f.ClientSet, pod)
 			framework.ExpectNoError(err)
 
 			ginkgo.By("Parsing results")

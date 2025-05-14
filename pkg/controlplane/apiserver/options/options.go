@@ -157,7 +157,8 @@ func (s *Options) AddFlags(fss *cliflag.NamedFlagSets) {
 
 	fs.BoolVar(&s.EnableLogsHandler, "enable-logs-handler", s.EnableLogsHandler,
 		"If true, install a /logs handler for the apiserver logs.")
-	fs.MarkDeprecated("enable-logs-handler", "This flag will be removed in v1.33") //nolint:errcheck
+	fs.MarkDeprecated("enable-logs-handler", "Log handler functionality is deprecated") //nolint:errcheck
+	fs.Lookup("enable-logs-handler").Hidden = false
 
 	fs.Int64Var(&s.MaxConnectionBytesPerSec, "max-connection-bytes-per-sec", s.MaxConnectionBytesPerSec, ""+
 		"If non-zero, throttle each user connection to this number of bytes/sec. "+
@@ -203,7 +204,7 @@ func (s *Options) AddFlags(fss *cliflag.NamedFlagSets) {
 		"Path to socket where a external JWT signer is listening. This flag is mutually exclusive with --service-account-signing-key-file and --service-account-key-file. Requires enabling feature gate (ExternalServiceAccountTokenSigner)")
 }
 
-func (o *Options) Complete(ctx context.Context, fss cliflag.NamedFlagSets, alternateDNS []string, alternateIPs []net.IP) (CompletedOptions, error) {
+func (o *Options) Complete(ctx context.Context, alternateDNS []string, alternateIPs []net.IP) (CompletedOptions, error) {
 	if o == nil {
 		return CompletedOptions{completedOptions: &completedOptions{}}, nil
 	}
@@ -268,8 +269,6 @@ func (o *Options) Complete(ctx context.Context, fss cliflag.NamedFlagSets, alter
 			delete(completed.APIEnablement.RuntimeConfig, key)
 		}
 	}
-
-	completed.Flagz = flagz.NamedFlagSetsReader{FlagSets: fss}
 
 	return CompletedOptions{
 		completedOptions: &completed,

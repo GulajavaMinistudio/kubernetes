@@ -36,13 +36,11 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/apiserver/pkg/util/feature"
+	basecompatibility "k8s.io/component-base/compatibility"
 	componentbaseconfig "k8s.io/component-base/config"
 	"k8s.io/component-base/featuregate"
-	featuregatetesting "k8s.io/component-base/featuregate/testing"
-	utilversion "k8s.io/component-base/version"
 	configv1 "k8s.io/kube-scheduler/config/v1"
 	"k8s.io/kubernetes/cmd/kube-scheduler/app/options"
-	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config/testing/defaults"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
@@ -222,19 +220,6 @@ leaderElection:
 		wantErr              bool
 		wantFeaturesGates    map[string]bool
 	}{
-		{
-			name: "default config with an alpha feature enabled",
-			flags: []string{
-				"--kubeconfig", configKubeconfig,
-				"--feature-gates=VolumeCapacityPriority=true",
-			},
-			wantPlugins: map[string]*config.Plugins{
-				"default-scheduler": defaults.ExpandedPluginsV1,
-			},
-			restoreFeatures: map[featuregate.Feature]bool{
-				features.VolumeCapacityPriority: false,
-			},
-		},
 		{
 			name: "component configuration v1 with only scheduler name configured",
 			flags: []string{
@@ -435,15 +420,8 @@ leaderElection:
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			for k, v := range tc.restoreFeatures {
-				featuregatetesting.SetFeatureGateDuringTest(t, feature.DefaultFeatureGate, k, v)
-			}
-			componentGlobalsRegistry := featuregate.DefaultComponentGlobalsRegistry
-			t.Cleanup(func() {
-				componentGlobalsRegistry.Reset()
-			})
-			componentGlobalsRegistry.Reset()
-			verKube := utilversion.NewEffectiveVersion("1.32")
+			componentGlobalsRegistry := basecompatibility.NewComponentGlobalsRegistry()
+			verKube := basecompatibility.NewEffectiveVersionFromString("1.32", "1.31", "1.31")
 			fg := feature.DefaultFeatureGate.DeepCopy()
 			utilruntime.Must(fg.AddVersioned(map[featuregate.Feature]featuregate.VersionedSpecs{
 				"kubeA": {
@@ -454,10 +432,10 @@ leaderElection:
 					{Version: version.MustParse("1.31"), Default: false, PreRelease: featuregate.Alpha},
 				},
 			}))
-			utilruntime.Must(componentGlobalsRegistry.Register(featuregate.DefaultKubeComponent, verKube, fg))
+			utilruntime.Must(componentGlobalsRegistry.Register(basecompatibility.DefaultKubeComponent, verKube, fg))
 
 			fs := pflag.NewFlagSet("test", pflag.PanicOnError)
-			opts := options.NewOptions()
+			opts := options.NewOptionsWithComponentGlobalsRegistry(componentGlobalsRegistry)
 
 			// use listeners instead of static ports so parallel test runs don't conflict
 			opts.SecureServing.Listener = makeListener(t)
@@ -536,7 +514,7 @@ func newFoo(_ context.Context, _ runtime.Object, _ framework.Handle) (framework.
 	return &foo{}, nil
 }
 
-func (*foo) PreFilter(_ context.Context, _ *framework.CycleState, _ *v1.Pod) (*framework.PreFilterResult, *framework.Status) {
+func (*foo) PreFilter(_ context.Context, _ *framework.CycleState, _ *v1.Pod, _ []*framework.NodeInfo) (*framework.PreFilterResult, *framework.Status) {
 	return nil, nil
 }
 

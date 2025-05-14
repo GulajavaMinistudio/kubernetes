@@ -27,6 +27,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -251,6 +253,23 @@ func runKubectlRetryOrDie(ns string, args ...string) string {
 	return output
 }
 
+// matches localhost / loopback skip from
+// https://pkg.go.dev/golang.org/x/net/http/httpproxy#Config.ProxyFunc
+func hostIsLocal(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	nip, err := netip.ParseAddr(host)
+	var ip net.IP
+	if err == nil {
+		ip = net.IP(nip.AsSlice())
+		if ip.IsLoopback() {
+			return true
+		}
+	}
+	return false
+}
+
 var _ = SIGDescribe("Kubectl client", func() {
 	defer ginkgo.GinkgoRecover()
 	f := framework.NewDefaultFramework("kubectl")
@@ -467,11 +486,23 @@ var _ = SIGDescribe("Kubectl client", func() {
 		})
 
 		ginkgo.It("should support exec through an HTTP proxy", func(ctx context.Context) {
+			// testContextHost is a KUBECONFIG URL
 			testContextHost := getTestContextHost()
+
+			// check if testContextHost is on localhost and skip the tests
+			// proxy env vars are always ignored on localhost and loopback IPs
+			// https://pkg.go.dev/golang.org/x/net/http/httpproxy#Config.ProxyFunc
+			// TODO: consider if we can test proxying some other way with local clusters
+			// https://github.com/kubernetes/kubectl/issues/1655#issuecomment-2829408755
+			u, err := url.Parse(testContextHost)
+			framework.ExpectNoError(err, "parsing test context host: %s", testContextHost)
+			if hostIsLocal(u.Hostname()) {
+				e2eskipper.Skipf("Test host %q is on localhost and would not be proxied by HTTP_PROXY, skipping test", testContextHost)
+			}
 
 			ginkgo.By("Starting http_proxy")
 			var proxyLogs bytes.Buffer
-			testSrv := httptest.NewServer(utilnettesting.NewHTTPProxyHandler(ginkgo.GinkgoT(), func(req *http.Request) bool {
+			testSrv := httptest.NewServer(utilnettesting.NewHTTPProxyHandler(ginkgo.GinkgoTB(), func(req *http.Request) bool {
 				fmt.Fprintf(&proxyLogs, "Accepting %s to %s\n", req.Method, req.Host)
 				return true
 			}))
@@ -482,7 +513,7 @@ var _ = SIGDescribe("Kubectl client", func() {
 				proxyLogs.Reset()
 				ginkgo.By("Running kubectl via an HTTP proxy using " + proxyVar)
 				output := e2ekubectl.NewKubectlCommand(ns, "exec", podRunningTimeoutArg, simplePodName, "--", "echo", "running", "in", "container").
-					AppendEnv(append(os.Environ(), fmt.Sprintf("%s=%s", proxyVar, proxyAddr))).
+					AppendEnv([]string{fmt.Sprintf("%s=%s", proxyVar, proxyAddr)}).
 					ExecOrDie(ns)
 
 				// Verify we got the normal output captured by the exec server
@@ -498,6 +529,16 @@ var _ = SIGDescribe("Kubectl client", func() {
 				if !strings.Contains(proxyLog, expectedProxyLog) {
 					framework.Failf("Missing expected log result on proxy server for %s. Expected: %q, got %q", proxyVar, expectedProxyLog, proxyLog)
 				}
+			}
+		})
+
+		// https://issues.k8s.io/128314
+		f.It(f.WithSlow(), "should support exec idle connections", func(ctx context.Context) {
+			ginkgo.By("executing a command in the container")
+
+			execOutput := e2ekubectl.RunKubectlOrDie(ns, "exec", podRunningTimeoutArg, simplePodName, "--", "/bin/sh", "-c", "sleep 320 && echo running in container")
+			if expected, got := "running in container", strings.TrimSpace(execOutput); expected != got {
+				framework.Failf("Unexpected kubectl exec output. Wanted %q, got %q", expected, got)
 			}
 		})
 
@@ -563,9 +604,10 @@ var _ = SIGDescribe("Kubectl client", func() {
 
 				ginkgo.By("adding rbac permissions")
 				// grant the view permission widely to allow inspection of the `invalid` namespace and the default namespace
-				err := e2eauth.BindClusterRole(ctx, f.ClientSet.RbacV1(), "view", f.Namespace.Name,
+				cleanupFunc, err := e2eauth.BindClusterRole(ctx, f.ClientSet.RbacV1(), "view", f.Namespace.Name,
 					rbacv1.Subject{Kind: rbacv1.ServiceAccountKind, Namespace: f.Namespace.Name, Name: "default"})
 				framework.ExpectNoError(err)
+				defer cleanupFunc(ctx)
 
 				err = e2eauth.WaitForAuthorizationUpdate(ctx, f.ClientSet.AuthorizationV1(),
 					serviceaccount.MakeUsername(f.Namespace.Name, "default"),
