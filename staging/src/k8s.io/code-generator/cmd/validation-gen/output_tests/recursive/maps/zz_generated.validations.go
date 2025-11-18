@@ -25,6 +25,7 @@ import (
 	context "context"
 	fmt "fmt"
 
+	equality "k8s.io/apimachinery/pkg/api/equality"
 	operation "k8s.io/apimachinery/pkg/api/operation"
 	safe "k8s.io/apimachinery/pkg/api/safe"
 	validate "k8s.io/apimachinery/pkg/api/validate"
@@ -37,83 +38,123 @@ func init() { localSchemeBuilder.Register(RegisterValidations) }
 // RegisterValidations adds validation functions to the given scheme.
 // Public to allow building arbitrary schemes.
 func RegisterValidations(scheme *testscheme.Scheme) error {
+	// type T1
 	scheme.AddValidationFunc((*T1)(nil), func(ctx context.Context, op operation.Operation, obj, oldObj interface{}) field.ErrorList {
-		if len(op.Request.Subresources) == 0 {
+		switch op.Request.SubresourcePath() {
+		case "/":
 			return Validate_T1(ctx, op, nil /* fldPath */, obj.(*T1), safe.Cast[*T1](oldObj))
 		}
-		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresources: %v", obj, op.Request.Subresources))}
+		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresource: %v", obj, op.Request.SubresourcePath()))}
 	})
+	// type T2
 	scheme.AddValidationFunc((*T2)(nil), func(ctx context.Context, op operation.Operation, obj, oldObj interface{}) field.ErrorList {
-		if len(op.Request.Subresources) == 0 {
+		switch op.Request.SubresourcePath() {
+		case "/":
 			return Validate_T2(ctx, op, nil /* fldPath */, obj.(*T2), safe.Cast[*T2](oldObj))
 		}
-		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresources: %v", obj, op.Request.Subresources))}
+		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresource: %v", obj, op.Request.SubresourcePath()))}
 	})
+	// type T3
 	scheme.AddValidationFunc((*T3)(nil), func(ctx context.Context, op operation.Operation, obj, oldObj interface{}) field.ErrorList {
-		if len(op.Request.Subresources) == 0 {
+		switch op.Request.SubresourcePath() {
+		case "/":
 			return Validate_T3(ctx, op, nil /* fldPath */, obj.(*T3), safe.Cast[*T3](oldObj))
 		}
-		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresources: %v", obj, op.Request.Subresources))}
+		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresource: %v", obj, op.Request.SubresourcePath()))}
 	})
+	// type T4
 	scheme.AddValidationFunc((*T4)(nil), func(ctx context.Context, op operation.Operation, obj, oldObj interface{}) field.ErrorList {
-		if len(op.Request.Subresources) == 0 {
+		switch op.Request.SubresourcePath() {
+		case "/":
 			return Validate_T4(ctx, op, nil /* fldPath */, obj.(*T4), safe.Cast[*T4](oldObj))
 		}
-		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresources: %v", obj, op.Request.Subresources))}
+		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresource: %v", obj, op.Request.SubresourcePath()))}
 	})
 	return nil
 }
 
+// Validate_T1 validates an instance of T1 according
+// to declarative validation rules in the API schema.
 func Validate_T1(ctx context.Context, op operation.Operation, fldPath *field.Path, obj, oldObj *T1) (errs field.ErrorList) {
 	// field T1.T2
 	errs = append(errs,
-		func(fldPath *field.Path, obj, oldObj *T2) (errs field.ErrorList) {
+		func(fldPath *field.Path, obj, oldObj *T2, oldValueCorrelated bool) (errs field.ErrorList) {
+			// don't revalidate unchanged data
+			if oldValueCorrelated && op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil
+			}
+			// call the type's validation function
 			errs = append(errs, Validate_T2(ctx, op, fldPath, obj, oldObj)...)
 			return
-		}(fldPath.Child("t2"), &obj.T2, safe.Field(oldObj, func(oldObj *T1) *T2 { return &oldObj.T2 }))...)
+		}(fldPath.Child("t2"), &obj.T2, safe.Field(oldObj, func(oldObj *T1) *T2 { return &oldObj.T2 }), oldObj != nil)...)
 
 	// field T1.T3
 	errs = append(errs,
-		func(fldPath *field.Path, obj, oldObj *T3) (errs field.ErrorList) {
+		func(fldPath *field.Path, obj, oldObj *T3, oldValueCorrelated bool) (errs field.ErrorList) {
+			// don't revalidate unchanged data
+			if oldValueCorrelated && op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil
+			}
+			// call the type's validation function
 			errs = append(errs, Validate_T3(ctx, op, fldPath, obj, oldObj)...)
 			return
-		}(fldPath.Child("t3"), &obj.T3, safe.Field(oldObj, func(oldObj *T1) *T3 { return &oldObj.T3 }))...)
+		}(fldPath.Child("t3"), &obj.T3, safe.Field(oldObj, func(oldObj *T1) *T3 { return &oldObj.T3 }), oldObj != nil)...)
 
 	return errs
 }
 
+// Validate_T2 validates an instance of T2 according
+// to declarative validation rules in the API schema.
 func Validate_T2(ctx context.Context, op operation.Operation, fldPath *field.Path, obj, oldObj *T2) (errs field.ErrorList) {
 	// field T2.MT1
 	errs = append(errs,
-		func(fldPath *field.Path, obj, oldObj map[string]T1) (errs field.ErrorList) {
-			errs = append(errs, validate.EachMapVal(ctx, op, fldPath, obj, oldObj, Validate_T1)...)
+		func(fldPath *field.Path, obj, oldObj map[string]T1, oldValueCorrelated bool) (errs field.ErrorList) {
+			// don't revalidate unchanged data
+			if oldValueCorrelated && op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil
+			}
+			// iterate the map and call the value type's validation function
+			errs = append(errs, validate.EachMapVal(ctx, op, fldPath, obj, oldObj, validate.SemanticDeepEqual, Validate_T1)...)
 			return
-		}(fldPath.Child("mt1"), obj.MT1, safe.Field(oldObj, func(oldObj *T2) map[string]T1 { return oldObj.MT1 }))...)
+		}(fldPath.Child("mt1"), obj.MT1, safe.Field(oldObj, func(oldObj *T2) map[string]T1 { return oldObj.MT1 }), oldObj != nil)...)
 
 	return errs
 }
 
+// Validate_T3 validates an instance of T3 according
+// to declarative validation rules in the API schema.
 func Validate_T3(ctx context.Context, op operation.Operation, fldPath *field.Path, obj, oldObj *T3) (errs field.ErrorList) {
-	// type T3
 	errs = append(errs, validate.FixedResult(ctx, op, fldPath, obj, oldObj, false, "type T3")...)
 
 	// field T3.T4
 	errs = append(errs,
-		func(fldPath *field.Path, obj, oldObj *T4) (errs field.ErrorList) {
+		func(fldPath *field.Path, obj, oldObj *T4, oldValueCorrelated bool) (errs field.ErrorList) {
+			// don't revalidate unchanged data
+			if oldValueCorrelated && op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil
+			}
+			// call the type's validation function
 			errs = append(errs, Validate_T4(ctx, op, fldPath, obj, oldObj)...)
 			return
-		}(fldPath.Child("t4"), &obj.T4, safe.Field(oldObj, func(oldObj *T3) *T4 { return &oldObj.T4 }))...)
+		}(fldPath.Child("t4"), &obj.T4, safe.Field(oldObj, func(oldObj *T3) *T4 { return &oldObj.T4 }), oldObj != nil)...)
 
 	return errs
 }
 
+// Validate_T4 validates an instance of T4 according
+// to declarative validation rules in the API schema.
 func Validate_T4(ctx context.Context, op operation.Operation, fldPath *field.Path, obj, oldObj *T4) (errs field.ErrorList) {
 	// field T4.MT3
 	errs = append(errs,
-		func(fldPath *field.Path, obj, oldObj map[string]T3) (errs field.ErrorList) {
-			errs = append(errs, validate.EachMapVal(ctx, op, fldPath, obj, oldObj, Validate_T3)...)
+		func(fldPath *field.Path, obj, oldObj map[string]T3, oldValueCorrelated bool) (errs field.ErrorList) {
+			// don't revalidate unchanged data
+			if oldValueCorrelated && op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil
+			}
+			// iterate the map and call the value type's validation function
+			errs = append(errs, validate.EachMapVal(ctx, op, fldPath, obj, oldObj, validate.SemanticDeepEqual, Validate_T3)...)
 			return
-		}(fldPath.Child("mt3"), obj.MT3, safe.Field(oldObj, func(oldObj *T4) map[string]T3 { return oldObj.MT3 }))...)
+		}(fldPath.Child("mt3"), obj.MT3, safe.Field(oldObj, func(oldObj *T4) map[string]T3 { return oldObj.MT3 }), oldObj != nil)...)
 
 	return errs
 }

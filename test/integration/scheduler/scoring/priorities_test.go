@@ -67,6 +67,9 @@ var (
 	ignorePolicy = v1.NodeInclusionPolicyIgnore
 	honorPolicy  = v1.NodeInclusionPolicyHonor
 	taints       = []v1.Taint{{Key: v1.TaintNodeUnschedulable, Value: "", Effect: v1.TaintEffectPreferNoSchedule}}
+
+	priorityLowTaint  = v1.Taint{Key: "node.example.com/priority-class", Value: "800", Effect: v1.TaintEffectNoSchedule}
+	priorityHighTaint = v1.Taint{Key: "node.example.com/priority-class", Value: "999", Effect: v1.TaintEffectPreferNoSchedule}
 )
 
 const (
@@ -307,6 +310,9 @@ func TestNodeAffinityScoring(t *testing.T) {
 	labeledNode, err := createNode(testCtx.ClientSet, st.MakeNode().Name("testnode-4").Label(labelKey, labelValue).Obj())
 	if err != nil {
 		t.Fatalf("Cannot create labeled node: %v", err)
+	}
+	if err = testutils.WaitForNodesInCache(testCtx.Ctx, testCtx.Scheduler, 5); err != nil {
+		t.Fatalf("failed to wait for nodes in cache: %v", err)
 	}
 
 	// Create a pod with node affinity.
@@ -744,6 +750,9 @@ func TestPodAffinityScoring(t *testing.T) {
 					t.Fatalf("failed to create node: %v", err)
 				}
 			}
+			if err := testutils.WaitForNodesInCache(testCtx.Ctx, testCtx.Scheduler, len(tt.nodes)); err != nil {
+				t.Fatalf("failed to wait for nodes in cache: %v", err)
+			}
 
 			for _, p := range tt.existingPods {
 				if _, err := runPausePod(testCtx.ClientSet, initPausePod(p)); err != nil {
@@ -828,15 +837,38 @@ func TestTaintTolerationScoring(t *testing.T) {
 			},
 			expectedNodesName: sets.New("node-2"),
 		},
+		{
+			name: "pod with Gt toleration prefers nodes with matching numeric taints",
+			podTolerations: []v1.Toleration{
+				{
+					Key:      "node.example.com/priority-class",
+					Operator: v1.TolerationOpGt,
+					Value:    "900",
+					Effect:   v1.TaintEffectPreferNoSchedule,
+				},
+			},
+			nodes: []*v1.Node{
+				st.MakeNode().Name("node-gt-low").
+					Taints([]v1.Taint{priorityLowTaint}).Obj(),
+				st.MakeNode().Name("node-gt-high").
+					Taints([]v1.Taint{priorityHighTaint}).Obj(),
+			},
+			expectedNodesName: sets.New("node-gt-high"),
+		},
 	}
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Enable the TaintTolerationComparisonOperators feature gate for Gt/Lt tests
+			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.TaintTolerationComparisonOperators, true)
 			testCtx := initTestSchedulerForScoringTests(t, tainttoleration.Name, tainttoleration.Name)
 
 			for _, n := range tt.nodes {
 				if _, err := createNode(testCtx.ClientSet, n); err != nil {
 					t.Fatalf("Failed to create node: %v", err)
 				}
+			}
+			if err := testutils.WaitForNodesInCache(testCtx.Ctx, testCtx.Scheduler, len(tt.nodes)); err != nil {
+				t.Fatalf("Failed to wait for nodes in cache: %v", err)
 			}
 			pod, err := runPausePod(testCtx.ClientSet, initPausePod(&testutils.PausePodConfig{
 				Name:        fmt.Sprintf("test-pod-%v", i),
@@ -1102,6 +1134,9 @@ func TestPodTopologySpreadScoring(t *testing.T) {
 					t.Fatalf("Cannot create node: %v", err)
 				}
 			}
+			if err := testutils.WaitForNodesInCache(testCtx.Ctx, testCtx.Scheduler, len(tt.nodes)); err != nil {
+				t.Fatalf("Failed to wait for nodes in cache: %v", err)
+			}
 
 			// set namespace to pods
 			for i := range tt.existingPods {
@@ -1149,9 +1184,10 @@ func TestDefaultPodTopologySpreadScoring(t *testing.T) {
 	testCtx := initTestSchedulerForScoringTests(t, podtopologyspread.Name, podtopologyspread.Name)
 	cs := testCtx.ClientSet
 	ns := testCtx.NS.Name
+	nodeNum := 300
 
 	zoneForNode := make(map[string]string)
-	for i := 0; i < 300; i++ {
+	for i := 0; i < nodeNum; i++ {
 		nodeName := fmt.Sprintf("node-%d", i)
 		zone := fmt.Sprintf("zone-%d", i%3)
 		zoneForNode[nodeName] = zone
@@ -1159,6 +1195,9 @@ func TestDefaultPodTopologySpreadScoring(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Cannot create node: %v", err)
 		}
+	}
+	if err := testutils.WaitForNodesInCache(testCtx.Ctx, testCtx.Scheduler, nodeNum); err != nil {
+		t.Fatalf("Failed to wait for nodes in cache: %v", err)
 	}
 
 	serviceName := "test-service"

@@ -27,7 +27,6 @@ import (
 	internalapi "k8s.io/cri-api/pkg/apis"
 	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
 	"k8s.io/kubelet/pkg/types"
-	"k8s.io/kubernetes/test/e2e/feature"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	admissionapi "k8s.io/pod-security-admission/api"
@@ -73,7 +72,7 @@ type testRun struct {
 
 // GarbageCollect tests that the Kubelet conforms to the Kubelet Garbage Collection Policy, found here:
 // http://kubernetes.io/docs/admin/garbage-collection/
-var _ = SIGDescribe("GarbageCollect", framework.WithSerial(), feature.GarbageCollect, func() {
+var _ = SIGDescribe("GarbageCollect", framework.WithSerial(), framework.WithNodeConformance(), func() {
 	f := framework.NewDefaultFramework("garbage-collect-test")
 	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged
 	containerNamePrefix := "gc-test-container-"
@@ -328,7 +327,7 @@ func verifyPodRestartCount(ctx context.Context, f *framework.Framework, podName 
 			updatedPod.Name, expectedNumContainers, len(updatedPod.Status.ContainerStatuses))
 	}
 	for _, containerStatus := range updatedPod.Status.ContainerStatuses {
-		if containerStatus.RestartCount != expectedRestartCount {
+		if containerStatus.RestartCount < expectedRestartCount {
 			return fmt.Errorf("pod %s had container with restartcount %d.  Should have been at least %d",
 				updatedPod.Name, containerStatus.RestartCount, expectedRestartCount)
 		}

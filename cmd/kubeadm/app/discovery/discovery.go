@@ -19,10 +19,9 @@ package discovery
 import (
 	"net/url"
 
-	"github.com/pkg/errors"
-
 	clientset "k8s.io/client-go/kubernetes"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	bootstrapapi "k8s.io/cluster-bootstrap/token/api"
 	"k8s.io/klog/v2"
 
 	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
@@ -30,6 +29,7 @@ import (
 	"k8s.io/kubernetes/cmd/kubeadm/app/discovery/file"
 	"k8s.io/kubernetes/cmd/kubeadm/app/discovery/https"
 	"k8s.io/kubernetes/cmd/kubeadm/app/discovery/token"
+	"k8s.io/kubernetes/cmd/kubeadm/app/util/errors"
 	kubeconfigutil "k8s.io/kubernetes/cmd/kubeadm/app/util/kubeconfig"
 )
 
@@ -52,7 +52,10 @@ func For(client clientset.Interface, cfg *kubeadmapi.JoinConfiguration) (*client
 	if len(cfg.Discovery.TLSBootstrapToken) != 0 {
 		klog.V(1).Info("[discovery] Using provided TLSBootstrapToken as authentication credentials for the join process")
 
-		_, clusterinfo := kubeconfigutil.GetClusterFromKubeConfig(config)
+		_, clusterinfo, err := kubeconfigutil.GetClusterFromKubeConfig(config)
+		if err != nil {
+			return nil, errors.Wrapf(err, "malformed kubeconfig in the %s ConfigMap", bootstrapapi.ConfigMapClusterInfo)
+		}
 		return kubeconfigutil.CreateWithToken(
 			clusterinfo.Server,
 			kubeadmapiv1.DefaultClusterName,

@@ -28,35 +28,44 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
+	resourceapi "k8s.io/api/resource/v1"
 	resourcealphaapi "k8s.io/api/resource/v1alpha3"
-	resourceapi "k8s.io/api/resource/v1beta1"
+	schedulingapi "k8s.io/api/scheduling/v1alpha1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/util/sets"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	featuregatetesting "k8s.io/component-base/featuregate/testing"
-	resourceslicetracker "k8s.io/dynamic-resource-allocation/resourceslice/tracker"
-	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/ktesting"
-
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/version"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	dyfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
-
+	"k8s.io/client-go/tools/cache"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
+	resourceslicetracker "k8s.io/dynamic-resource-allocation/resourceslice/tracker"
+	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/ktesting"
+	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/features"
+	apidispatcher "k8s.io/kubernetes/pkg/scheduler/backend/api_dispatcher"
 	internalcache "k8s.io/kubernetes/pkg/scheduler/backend/cache"
 	internalqueue "k8s.io/kubernetes/pkg/scheduler/backend/queue"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
+	apicalls "k8s.io/kubernetes/pkg/scheduler/framework/api_calls"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/defaultbinder"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodename"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/queuesort"
+	frameworkruntime "k8s.io/kubernetes/pkg/scheduler/framework/runtime"
 	"k8s.io/kubernetes/pkg/scheduler/metrics"
+	"k8s.io/kubernetes/pkg/scheduler/profile"
 	st "k8s.io/kubernetes/pkg/scheduler/testing"
+	tf "k8s.io/kubernetes/pkg/scheduler/testing/framework"
 	"k8s.io/kubernetes/pkg/scheduler/util"
 	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 )
@@ -76,15 +85,15 @@ func TestEventHandlers_MoveToActiveOnNominatedNodeUpdate(t *testing.T) {
 	unschedulablePods := []*v1.Pod{highPriorityPod, medNominatedPriorityPod, medPriorityPod, lowPriorityPod}
 
 	// Make pods schedulable on Delete event when QHints are enabled, but not when nominated node appears.
-	queueHintForPodDelete := func(logger klog.Logger, pod *v1.Pod, oldObj, newObj interface{}) (framework.QueueingHint, error) {
+	queueHintForPodDelete := func(logger klog.Logger, pod *v1.Pod, oldObj, newObj interface{}) (fwk.QueueingHint, error) {
 		oldPod, _, err := util.As[*v1.Pod](oldObj, newObj)
 		if err != nil {
 			t.Errorf("Failed to convert objects to pods: %v", err)
 		}
 		if oldPod.Status.NominatedNodeName == "" {
-			return framework.QueueSkip, nil
+			return fwk.QueueSkip, nil
 		}
-		return framework.Queue, nil
+		return fwk.Queue, nil
 	}
 	queueingHintMap := internalqueue.QueueingHintMapPerProfile{
 		testSchedulerName: {
@@ -125,7 +134,7 @@ func TestEventHandlers_MoveToActiveOnNominatedNodeUpdate(t *testing.T) {
 		{
 			name: "Removal of a pod that had nominated node name should trigger rescheduling of lower priority pods",
 			updateFunc: func(s *Scheduler) {
-				s.deletePodFromSchedulingQueue(medNominatedPriorityPod)
+				s.deletePodFromSchedulingQueue(medNominatedPriorityPod, false)
 			},
 			wantInActiveOrBackoff: sets.New(lowPriorityPod.Name, medPriorityPod.Name),
 		},
@@ -144,7 +153,10 @@ func TestEventHandlers_MoveToActiveOnNominatedNodeUpdate(t *testing.T) {
 	for _, tt := range tests {
 		for _, qHintEnabled := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s, with queuehint(%v)", tt.name, qHintEnabled), func(t *testing.T) {
-				featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SchedulerQueueingHints, qHintEnabled)
+				if !qHintEnabled {
+					featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.33"))
+					featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SchedulerQueueingHints, false)
+				}
 
 				logger, ctx := ktesting.NewTestContext(t)
 				ctx, cancel := context.WithCancel(ctx)
@@ -157,16 +169,22 @@ func TestEventHandlers_MoveToActiveOnNominatedNodeUpdate(t *testing.T) {
 				client := fake.NewClientset(objs...)
 				informerFactory := informers.NewSharedInformerFactory(client, 0)
 
+				// apiDispatcher is unused in the test, but intializing it anyway.
+				apiDispatcher := apidispatcher.New(client, 16, apicalls.Relevances)
+				apiDispatcher.Run(logger)
+				defer apiDispatcher.Close()
+
 				recorder := metrics.NewMetricsAsyncRecorder(3, 20*time.Microsecond, ctx.Done())
 				queue := internalqueue.NewPriorityQueue(
 					newDefaultQueueSort(),
 					informerFactory,
-					internalqueue.WithMetricsRecorder(*recorder),
+					internalqueue.WithMetricsRecorder(recorder),
 					internalqueue.WithQueueingHintMapPerProfile(queueingHintMap),
+					internalqueue.WithAPIDispatcher(apiDispatcher),
 					// disable backoff queue
 					internalqueue.WithPodInitialBackoffDuration(0),
 					internalqueue.WithPodMaxBackoffDuration(0))
-				schedulerCache := internalcache.New(ctx, 30*time.Second)
+				schedulerCache := internalcache.New(ctx, 30*time.Second, nil)
 
 				// Put test pods into unschedulable queue
 				for _, pod := range unschedulablePods {
@@ -181,7 +199,7 @@ func TestEventHandlers_MoveToActiveOnNominatedNodeUpdate(t *testing.T) {
 					}
 				}
 
-				s, _, err := initScheduler(ctx, schedulerCache, queue, client, informerFactory)
+				s, _, err := initScheduler(ctx, schedulerCache, queue, apiDispatcher, client, informerFactory)
 				if err != nil {
 					t.Fatalf("Failed to initialize test scheduler: %v", err)
 				}
@@ -206,29 +224,29 @@ func TestEventHandlers_MoveToActiveOnNominatedNodeUpdate(t *testing.T) {
 	}
 }
 
-func newDefaultQueueSort() framework.LessFunc {
+func newDefaultQueueSort() fwk.LessFunc {
 	sort := &queuesort.PrioritySort{}
 	return sort.Less
 }
 
-func TestUpdatePodInCache(t *testing.T) {
+func TestUpdateAssignedPodInCache(t *testing.T) {
 	ttl := 10 * time.Second
 	nodeName := "node"
 
 	tests := []struct {
 		name   string
-		oldObj interface{}
-		newObj interface{}
+		oldPod *v1.Pod
+		newPod *v1.Pod
 	}{
 		{
 			name:   "pod updated with the same UID",
-			oldObj: withPodName(podWithPort("oldUID", nodeName, 80), "pod"),
-			newObj: withPodName(podWithPort("oldUID", nodeName, 8080), "pod"),
+			oldPod: withPodName(podWithPort("oldUID", nodeName, 80), "pod"),
+			newPod: withPodName(podWithPort("oldUID", nodeName, 8080), "pod"),
 		},
 		{
 			name:   "pod updated with different UIDs",
-			oldObj: withPodName(podWithPort("oldUID", nodeName, 80), "pod"),
-			newObj: withPodName(podWithPort("newUID", nodeName, 8080), "pod"),
+			oldPod: withPodName(podWithPort("oldUID", nodeName, 80), "pod"),
+			newPod: withPodName(podWithPort("newUID", nodeName, 8080), "pod"),
 		},
 	}
 	for _, tt := range tests {
@@ -237,24 +255,24 @@ func TestUpdatePodInCache(t *testing.T) {
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
 			sched := &Scheduler{
-				Cache:           internalcache.New(ctx, ttl),
+				Cache:           internalcache.New(ctx, ttl, nil),
 				SchedulingQueue: internalqueue.NewTestQueue(ctx, nil),
 				logger:          logger,
 			}
-			sched.addPodToCache(tt.oldObj)
-			sched.updatePodInCache(tt.oldObj, tt.newObj)
+			sched.addAssignedPodToCache(tt.oldPod)
+			sched.updateAssignedPodInCache(tt.oldPod, tt.newPod)
 
-			if tt.oldObj.(*v1.Pod).UID != tt.newObj.(*v1.Pod).UID {
-				if pod, err := sched.Cache.GetPod(tt.oldObj.(*v1.Pod)); err == nil {
+			if tt.oldPod.UID != tt.newPod.UID {
+				if pod, err := sched.Cache.GetPod(tt.oldPod); err == nil {
 					t.Errorf("Get pod UID %v from cache but it should not happen", pod.UID)
 				}
 			}
-			pod, err := sched.Cache.GetPod(tt.newObj.(*v1.Pod))
+			pod, err := sched.Cache.GetPod(tt.newPod)
 			if err != nil {
 				t.Errorf("Failed to get pod from scheduler: %v", err)
 			}
-			if pod.UID != tt.newObj.(*v1.Pod).UID {
-				t.Errorf("Want pod UID %v, got %v", tt.newObj.(*v1.Pod).UID, pod.UID)
+			if pod.UID != tt.newPod.UID {
+				t.Errorf("Want pod UID %v, got %v", tt.newPod.UID, pod.UID)
 			}
 		})
 	}
@@ -266,6 +284,8 @@ func withPodName(pod *v1.Pod, name string) *v1.Pod {
 }
 
 func TestPreCheckForNode(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
+
 	cpu4 := map[v1.ResourceName]string{v1.ResourceCPU: "4"}
 	cpu8 := map[v1.ResourceName]string{v1.ResourceCPU: "8"}
 	cpu16 := map[v1.ResourceName]string{v1.ResourceCPU: "16"}
@@ -396,11 +416,14 @@ func TestPreCheckForNode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SchedulerQueueingHints, tt.qHintEnabled)
+			if !tt.qHintEnabled {
+				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.33"))
+				featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SchedulerQueueingHints, false)
+			}
 
 			nodeInfo := framework.NewNodeInfo(tt.existingPods...)
 			nodeInfo.SetNode(tt.nodeFn())
-			preCheckFn := preCheckForNode(nodeInfo)
+			preCheckFn := preCheckForNode(logger, nodeInfo)
 
 			got := make([]bool, 0, len(tt.pods))
 			for _, pod := range tt.pods {
@@ -417,16 +440,19 @@ func TestPreCheckForNode(t *testing.T) {
 // test for informers of resources we care about is registered
 func TestAddAllEventHandlers(t *testing.T) {
 	tests := []struct {
-		name                   string
-		gvkMap                 map[framework.EventResource]framework.ActionType
-		enableDRA              bool
-		enableDRADeviceTaints  bool
-		expectStaticInformers  map[reflect.Type]bool
-		expectDynamicInformers map[schema.GroupVersionResource]bool
+		name                      string
+		gvkMap                    map[fwk.EventResource]fwk.ActionType
+		enableDRA                 bool
+		enableDRADeviceTaints     bool
+		enableDRADeviceTaintRules bool
+		enableDRAExtendedResource bool
+		enableGenericWorkload     bool
+		expectStaticInformers     map[reflect.Type]bool
+		expectDynamicInformers    map[schema.GroupVersionResource]bool
 	}{
 		{
 			name:   "default handlers in framework",
-			gvkMap: map[framework.EventResource]framework.ActionType{},
+			gvkMap: map[fwk.EventResource]fwk.ActionType{},
 			expectStaticInformers: map[reflect.Type]bool{
 				reflect.TypeOf(&v1.Pod{}):       true,
 				reflect.TypeOf(&v1.Node{}):      true,
@@ -436,10 +462,10 @@ func TestAddAllEventHandlers(t *testing.T) {
 		},
 		{
 			name: "DRA events disabled",
-			gvkMap: map[framework.EventResource]framework.ActionType{
-				framework.ResourceClaim: framework.Add,
-				framework.ResourceSlice: framework.Add,
-				framework.DeviceClass:   framework.Add,
+			gvkMap: map[fwk.EventResource]fwk.ActionType{
+				fwk.ResourceClaim: fwk.Add,
+				fwk.ResourceSlice: fwk.Add,
+				fwk.DeviceClass:   fwk.Add,
 			},
 			expectStaticInformers: map[reflect.Type]bool{
 				reflect.TypeOf(&v1.Pod{}):       true,
@@ -450,10 +476,10 @@ func TestAddAllEventHandlers(t *testing.T) {
 		},
 		{
 			name: "core DRA events enabled",
-			gvkMap: map[framework.EventResource]framework.ActionType{
-				framework.ResourceClaim: framework.Add,
-				framework.ResourceSlice: framework.Add,
-				framework.DeviceClass:   framework.Add,
+			gvkMap: map[fwk.EventResource]fwk.ActionType{
+				fwk.ResourceClaim: fwk.Add,
+				fwk.ResourceSlice: fwk.Add,
+				fwk.DeviceClass:   fwk.Add,
 			},
 			enableDRA: true,
 			expectStaticInformers: map[reflect.Type]bool{
@@ -467,14 +493,34 @@ func TestAddAllEventHandlers(t *testing.T) {
 			expectDynamicInformers: map[schema.GroupVersionResource]bool{},
 		},
 		{
-			name: "all DRA events enabled",
-			gvkMap: map[framework.EventResource]framework.ActionType{
-				framework.ResourceClaim: framework.Add,
-				framework.ResourceSlice: framework.Add,
-				framework.DeviceClass:   framework.Add,
+			name: "device taints partially enabled",
+			gvkMap: map[fwk.EventResource]fwk.ActionType{
+				fwk.ResourceClaim: fwk.Add,
+				fwk.ResourceSlice: fwk.Add,
+				fwk.DeviceClass:   fwk.Add,
 			},
 			enableDRA:             true,
 			enableDRADeviceTaints: true,
+			expectStaticInformers: map[reflect.Type]bool{
+				reflect.TypeOf(&v1.Pod{}):                    true,
+				reflect.TypeOf(&v1.Node{}):                   true,
+				reflect.TypeOf(&v1.Namespace{}):              true,
+				reflect.TypeOf(&resourceapi.ResourceClaim{}): true,
+				reflect.TypeOf(&resourceapi.ResourceSlice{}): true,
+				reflect.TypeOf(&resourceapi.DeviceClass{}):   true,
+			},
+			expectDynamicInformers: map[schema.GroupVersionResource]bool{},
+		},
+		{
+			name: "all DRA events enabled",
+			gvkMap: map[fwk.EventResource]fwk.ActionType{
+				fwk.ResourceClaim: fwk.Add,
+				fwk.ResourceSlice: fwk.Add,
+				fwk.DeviceClass:   fwk.Add,
+			},
+			enableDRA:                 true,
+			enableDRADeviceTaints:     true,
+			enableDRADeviceTaintRules: true,
 			expectStaticInformers: map[reflect.Type]bool{
 				reflect.TypeOf(&v1.Pod{}):                           true,
 				reflect.TypeOf(&v1.Node{}):                          true,
@@ -487,11 +533,40 @@ func TestAddAllEventHandlers(t *testing.T) {
 			expectDynamicInformers: map[schema.GroupVersionResource]bool{},
 		},
 		{
+			name: "Workload events disabled",
+			gvkMap: map[fwk.EventResource]fwk.ActionType{
+				fwk.Workload: fwk.Add,
+			},
+			expectStaticInformers: map[reflect.Type]bool{
+				reflect.TypeOf(&v1.Pod{}):       true,
+				reflect.TypeOf(&v1.Node{}):      true,
+				reflect.TypeOf(&v1.Namespace{}): true,
+			},
+			expectDynamicInformers: map[schema.GroupVersionResource]bool{},
+		},
+		{
+			name: "Workload events enabled",
+			gvkMap: map[fwk.EventResource]fwk.ActionType{
+				fwk.Workload: fwk.Add,
+			},
+			enableDRA:             true,
+			enableGenericWorkload: true,
+			expectStaticInformers: map[reflect.Type]bool{
+				reflect.TypeOf(&v1.Pod{}):                    true,
+				reflect.TypeOf(&v1.Node{}):                   true,
+				reflect.TypeOf(&v1.Namespace{}):              true,
+				reflect.TypeOf(&resourceapi.ResourceClaim{}): true,
+				reflect.TypeOf(&resourceapi.ResourceSlice{}): true,
+				reflect.TypeOf(&schedulingapi.Workload{}):    true,
+			},
+			expectDynamicInformers: map[schema.GroupVersionResource]bool{},
+		},
+		{
 			name: "add GVKs handlers defined in framework dynamically",
-			gvkMap: map[framework.EventResource]framework.ActionType{
-				"Pod":                               framework.Add | framework.Delete,
-				"PersistentVolume":                  framework.Delete,
-				"storage.k8s.io/CSIStorageCapacity": framework.Update,
+			gvkMap: map[fwk.EventResource]fwk.ActionType{
+				"Pod":                               fwk.Add | fwk.Delete,
+				"PersistentVolume":                  fwk.Delete,
+				"storage.k8s.io/CSIStorageCapacity": fwk.Update,
 			},
 			expectStaticInformers: map[reflect.Type]bool{
 				reflect.TypeOf(&v1.Pod{}):                       true,
@@ -504,9 +579,9 @@ func TestAddAllEventHandlers(t *testing.T) {
 		},
 		{
 			name: "add GVKs handlers defined in plugins dynamically",
-			gvkMap: map[framework.EventResource]framework.ActionType{
-				"daemonsets.v1.apps": framework.Add | framework.Delete,
-				"cronjobs.v1.batch":  framework.Delete,
+			gvkMap: map[fwk.EventResource]fwk.ActionType{
+				"daemonsets.v1.apps": fwk.Add | fwk.Delete,
+				"cronjobs.v1.batch":  fwk.Delete,
 			},
 			expectStaticInformers: map[reflect.Type]bool{
 				reflect.TypeOf(&v1.Pod{}):       true,
@@ -520,9 +595,9 @@ func TestAddAllEventHandlers(t *testing.T) {
 		},
 		{
 			name: "add GVKs handlers defined in plugins dynamically, with one illegal GVK form",
-			gvkMap: map[framework.EventResource]framework.ActionType{
-				"daemonsets.v1.apps":    framework.Add | framework.Delete,
-				"custommetrics.v1beta1": framework.Update,
+			gvkMap: map[fwk.EventResource]fwk.ActionType{
+				"daemonsets.v1.apps":    fwk.Add | fwk.Delete,
+				"custommetrics.v1beta1": fwk.Update,
 			},
 			expectStaticInformers: map[reflect.Type]bool{
 				reflect.TypeOf(&v1.Pod{}):       true,
@@ -544,8 +619,19 @@ func TestAddAllEventHandlers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.DynamicResourceAllocation, tt.enableDRA)
-			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.DRADeviceTaints, tt.enableDRADeviceTaints)
+			overrides := featuregatetesting.FeatureOverrides{
+				features.DynamicResourceAllocation: tt.enableDRA,
+				features.DRADeviceTaints:           tt.enableDRADeviceTaints,
+				features.DRAExtendedResource:       tt.enableDRAExtendedResource,
+			}
+			if !tt.enableDRA {
+				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.34"))
+			} else {
+				// Making this depend on the emulated version avoids "cannot set feature gate DRADeviceTaintRules to false, feature is PreAlpha at emulated version 1.34".
+				overrides[features.DRADeviceTaintRules] = tt.enableDRADeviceTaintRules
+				overrides[features.GenericWorkload] = tt.enableGenericWorkload
+			}
+			featuregatetesting.SetFeatureGatesDuringTest(t, utilfeature.DefaultFeatureGate, overrides)
 
 			logger, ctx := ktesting.NewTestContext(t)
 			ctx, cancel := context.WithCancel(ctx)
@@ -563,26 +649,31 @@ func TestAddAllEventHandlers(t *testing.T) {
 			dynInformerFactory := dynamicinformer.NewDynamicSharedInformerFactory(dynclient, 0)
 			var resourceClaimCache *assumecache.AssumeCache
 			var resourceSliceTracker *resourceslicetracker.Tracker
+			var draManager fwk.SharedDRAManager
 			if utilfeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation) {
-				resourceClaimInformer := informerFactory.Resource().V1beta1().ResourceClaims().Informer()
+				resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
 				resourceClaimCache = assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
 				var err error
 				opts := resourceslicetracker.Options{
-					EnableDeviceTaints: utilfeature.DefaultFeatureGate.Enabled(features.DRADeviceTaints),
-					SliceInformer:      informerFactory.Resource().V1beta1().ResourceSlices(),
+					EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(features.DRADeviceTaintRules),
+					SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
 				}
-				if opts.EnableDeviceTaints {
+				if opts.EnableDeviceTaintRules {
 					opts.TaintInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
-					opts.ClassInformer = informerFactory.Resource().V1beta1().DeviceClasses()
+					opts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
 
 				}
 				resourceSliceTracker, err = resourceslicetracker.StartTracker(ctx, opts)
 				if err != nil {
 					t.Fatalf("couldn't start resource slice tracker: %v", err)
 				}
+
+				if tt.enableDRAExtendedResource {
+					draManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, resourceSliceTracker, informerFactory)
+				}
 			}
 
-			if err := addAllEventHandlers(&testSched, informerFactory, dynInformerFactory, resourceClaimCache, resourceSliceTracker, tt.gvkMap); err != nil {
+			if err := addAllEventHandlers(&testSched, informerFactory, dynInformerFactory, resourceClaimCache, resourceSliceTracker, draManager, tt.gvkMap); err != nil {
 				t.Fatalf("Add event handlers failed, error = %v", err)
 			}
 
@@ -654,6 +745,320 @@ func TestAdmissionCheck(t *testing.T) {
 				if diff := cmp.Diff(tt.wantAdmissionResults[i], admissionResults); diff != "" {
 					t.Errorf("Unexpected admissionResults (-want, +got):\n%s", diff)
 				}
+			}
+		})
+	}
+}
+
+func TestAddPod(t *testing.T) {
+	tests := []struct {
+		name          string
+		pod           *v1.Pod
+		expectInQueue bool
+		expectInCache bool
+	}{
+		{
+			name:          "add unscheduled pod",
+			pod:           st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").SchedulerName("supported-scheduler").Obj(),
+			expectInQueue: true,
+		},
+		{
+			name: "add unscheduled pod with other scheduler name",
+			pod:  st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").SchedulerName("other-scheduler").Obj(),
+		},
+		{
+			name:          "add scheduled pod",
+			pod:           st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").Node("node1").Obj(),
+			expectInCache: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger, ctx := ktesting.NewTestContext(t)
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+
+			sched := &Scheduler{
+				Cache:           internalcache.New(ctx, 0, nil),
+				SchedulingQueue: internalqueue.NewTestQueue(ctx, nil),
+				logger:          logger,
+				Profiles: profile.Map{
+					"supported-scheduler": nil,
+				},
+			}
+
+			sched.addPod(tt.pod)
+
+			_, ok := sched.SchedulingQueue.GetPod(tt.pod.Name, tt.pod.Namespace)
+			if tt.expectInQueue && !ok {
+				t.Errorf("Expected pod to be in scheduling queue")
+			} else if !tt.expectInQueue && ok {
+				t.Errorf("Expected pod not to be in scheduling queue")
+			}
+			_, err := sched.Cache.GetPod(tt.pod)
+			if tt.expectInCache && err != nil {
+				t.Errorf("Expected pod to be in cache: %v", err)
+			} else if !tt.expectInCache && err == nil {
+				t.Errorf("Expected pod not to be in cache")
+			}
+		})
+	}
+}
+
+func TestUpdatePod(t *testing.T) {
+	pod := st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").SchedulerName("supported-scheduler").Obj()
+	updatedPod := st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").Labels(map[string]string{"foo": "bar"}).ResourceVersion("2").SchedulerName("supported-scheduler").Obj()
+
+	podWithDeletionTimestamp := st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").Terminating().ResourceVersion("2").SchedulerName("supported-scheduler").Obj()
+
+	otherPod := st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").SchedulerName("other-scheduler").Obj()
+	updatedOtherPod := st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").Labels(map[string]string{"foo": "bar"}).ResourceVersion("2").SchedulerName("other-scheduler").Obj()
+
+	scheduledPod := st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").Node("node1").SchedulerName("supported-scheduler").Obj()
+	updatedScheduledPod := st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").Labels(map[string]string{"foo": "bar"}).ResourceVersion("2").Node("node1").SchedulerName("supported-scheduler").Obj()
+
+	otherScheduledPod := st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").Node("node1").SchedulerName("other-scheduler").Obj()
+	updatedOtherScheduledPod := st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").Labels(map[string]string{"foo": "bar"}).ResourceVersion("2").Node("node1").SchedulerName("other-scheduler").Obj()
+
+	scheduledPodOtherNode := st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").Node("node2").SchedulerName("supported-scheduler").Obj()
+
+	tests := []struct {
+		name          string
+		oldPod        *v1.Pod
+		assumedPod    *v1.Pod
+		newPod        *v1.Pod
+		expectInQueue *v1.Pod
+		expectInCache *v1.Pod
+	}{
+		{
+			name:          "update unscheduled pod",
+			oldPod:        pod,
+			newPod:        updatedPod,
+			expectInQueue: updatedPod,
+		},
+		{
+			name:   "update unscheduled pod with other scheduler name",
+			oldPod: otherPod,
+			newPod: updatedOtherPod,
+		},
+		{
+			name:          "update assumed pod",
+			oldPod:        pod,
+			assumedPod:    scheduledPod,
+			newPod:        updatedPod,
+			expectInCache: scheduledPod,
+		},
+		{
+			name:          "update scheduled pod",
+			oldPod:        scheduledPod,
+			newPod:        updatedScheduledPod,
+			expectInCache: updatedScheduledPod,
+		},
+		{
+			name:          "update scheduled pod with other scheduler name",
+			oldPod:        otherScheduledPod,
+			newPod:        updatedOtherScheduledPod,
+			expectInCache: updatedOtherScheduledPod,
+		},
+		{
+			name:          "bind unscheduled pod",
+			oldPod:        pod,
+			newPod:        scheduledPod,
+			expectInCache: scheduledPod,
+		},
+		{
+			name:          "bind unscheduled pod with other scheduler name",
+			oldPod:        pod,
+			newPod:        scheduledPod,
+			expectInCache: scheduledPod,
+		},
+		{
+			name:          "bind assumed pod",
+			oldPod:        pod,
+			assumedPod:    scheduledPod,
+			newPod:        scheduledPod,
+			expectInCache: scheduledPod,
+		},
+		{
+			name:          "bind assumed pod to a different node",
+			oldPod:        pod,
+			assumedPod:    scheduledPod,
+			newPod:        scheduledPodOtherNode,
+			expectInCache: scheduledPodOtherNode,
+		},
+		{
+			name:       "delete assumed pod with deletion timestamp",
+			oldPod:     pod,
+			assumedPod: scheduledPod,
+			newPod:     podWithDeletionTimestamp,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger, ctx := ktesting.NewTestContext(t)
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+
+			registerPluginFuncs := []tf.RegisterPluginFunc{
+				tf.RegisterQueueSortPlugin(queuesort.Name, queuesort.New),
+				tf.RegisterBindPlugin(defaultbinder.Name, defaultbinder.New),
+			}
+			waitingPods := frameworkruntime.NewWaitingPodsMap()
+			schedFramework, err := tf.NewFramework(
+				ctx,
+				registerPluginFuncs,
+				"supported-scheduler",
+				frameworkruntime.WithWaitingPods(waitingPods),
+			)
+			if err != nil {
+				t.Fatalf("Failed to create framework: %v", err)
+			}
+			sched := &Scheduler{
+				Cache:           internalcache.New(ctx, 0, nil),
+				SchedulingQueue: internalqueue.NewTestQueue(ctx, nil),
+				logger:          logger,
+				Profiles: profile.Map{
+					"supported-scheduler": schedFramework,
+				},
+			}
+
+			if tt.assumedPod != nil {
+				err := sched.Cache.AssumePod(logger, tt.assumedPod)
+				if err != nil {
+					t.Fatalf("Failed to assume pod: %v", err)
+				}
+			} else {
+				sched.addPod(tt.oldPod)
+			}
+
+			sched.updatePod(tt.oldPod, tt.newPod)
+
+			qPod, ok := sched.SchedulingQueue.GetPod(tt.newPod.Name, tt.newPod.Namespace)
+			if tt.expectInQueue != nil {
+				if !ok {
+					t.Errorf("Expected pod to be in scheduling queue")
+				} else if diff := cmp.Diff(tt.expectInQueue, qPod.Pod); diff != "" {
+					t.Errorf("Unexpected pod after update (-want,+got):\n%s", diff)
+				}
+			} else if ok {
+				t.Errorf("Expected pod not to be in scheduling queue")
+			}
+			pod, err := sched.Cache.GetPod(tt.newPod)
+			if tt.expectInCache != nil {
+				if err != nil {
+					t.Errorf("Expected pod to be in cache: %v", err)
+				} else if diff := cmp.Diff(tt.expectInCache, pod); diff != "" {
+					t.Errorf("Unexpected pod after update (-want,+got):\n%s", diff)
+				}
+			} else if err == nil {
+				t.Errorf("Expected pod not to be in cache")
+			}
+		})
+	}
+}
+
+func TestDeletePod(t *testing.T) {
+	pod := st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").SchedulerName("supported-scheduler").Obj()
+	otherPod := st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").SchedulerName("other-scheduler").Obj()
+	scheduledPod := st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").Node("node1").SchedulerName("supported-scheduler").Obj()
+	otherScheduledPod := st.MakePod().Name("pod1").Namespace("ns1").UID("pod1").Node("node1").SchedulerName("other-scheduler").Obj()
+
+	tests := []struct {
+		name            string
+		initialPod      *v1.Pod
+		assumed         bool
+		waitingOnPermit bool
+		podToDelete     any
+	}{
+		{
+			name:        "delete unscheduled pod",
+			initialPod:  pod,
+			podToDelete: pod,
+		},
+		{
+			name:        "delete unscheduled pod with other scheduler name",
+			initialPod:  otherPod,
+			podToDelete: otherPod,
+		},
+		{
+			name:        "delete unscheduled pod with unknown state",
+			initialPod:  pod,
+			podToDelete: cache.DeletedFinalStateUnknown{Obj: pod},
+		},
+		{
+			name:        "delete assumed pod",
+			initialPod:  scheduledPod,
+			assumed:     true,
+			podToDelete: pod,
+		},
+		{
+			name:        "delete scheduled pod",
+			initialPod:  scheduledPod,
+			podToDelete: scheduledPod,
+		},
+		{
+			name:        "delete scheduled pod with other scheduler name",
+			initialPod:  otherScheduledPod,
+			podToDelete: otherScheduledPod,
+		},
+		{
+			name:        "delete scheduled pod with unknown state",
+			initialPod:  scheduledPod,
+			podToDelete: cache.DeletedFinalStateUnknown{Obj: scheduledPod},
+		},
+		{
+			name:        "delete scheduled pod with unknown older state",
+			initialPod:  scheduledPod,
+			podToDelete: cache.DeletedFinalStateUnknown{Obj: pod},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger, ctx := ktesting.NewTestContext(t)
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+
+			registerPluginFuncs := []tf.RegisterPluginFunc{
+				tf.RegisterQueueSortPlugin(queuesort.Name, queuesort.New),
+				tf.RegisterBindPlugin(defaultbinder.Name, defaultbinder.New),
+			}
+			waitingPods := frameworkruntime.NewWaitingPodsMap()
+			schedFramework, err := tf.NewFramework(
+				ctx,
+				registerPluginFuncs,
+				"supported-scheduler",
+				frameworkruntime.WithWaitingPods(waitingPods),
+			)
+			if err != nil {
+				t.Fatalf("Failed to create framework: %v", err)
+			}
+			sched := &Scheduler{
+				Cache:           internalcache.New(ctx, 0, nil),
+				SchedulingQueue: internalqueue.NewTestQueue(ctx, nil),
+				logger:          logger,
+				Profiles: profile.Map{
+					"supported-scheduler": schedFramework,
+				},
+			}
+
+			if tt.assumed {
+				err := sched.Cache.AssumePod(logger, tt.initialPod)
+				if err != nil {
+					t.Fatalf("Failed to assume pod: %v", err)
+				}
+			} else {
+				sched.addPod(tt.initialPod)
+			}
+
+			sched.deletePod(tt.podToDelete)
+
+			_, err = sched.Cache.GetPod(tt.initialPod)
+			if err == nil {
+				t.Errorf("Unexpected pod in cache after removal")
+			}
+			_, ok := sched.SchedulingQueue.GetPod(tt.initialPod.Name, tt.initialPod.Namespace)
+			if ok {
+				t.Errorf("Unexpected pod in scheduling queue after removal")
 			}
 		})
 	}

@@ -213,7 +213,7 @@ func TestUpdateNewNodeStatus(t *testing.T) {
 			}
 			inputImageList, expectedImageList := generateTestingImageLists(numTestImages, int(tc.nodeStatusMaxImages))
 			testKubelet := newTestKubeletWithImageList(
-				t, inputImageList, false /* controllerAttachDetachEnabled */, true /*initFakeVolumePlugin*/, true /* localStorageCapacityIsolation */)
+				t, inputImageList, false /* controllerAttachDetachEnabled */, true /*initFakeVolumePlugin*/, true /* localStorageCapacityIsolation */, false /*excludePodAdmitHandlers*/, false /*enableResizing*/)
 			defer testKubelet.Cleanup()
 			kubelet := testKubelet.kubelet
 			kubelet.nodeStatusMaxImages = tc.nodeStatusMaxImages
@@ -849,7 +849,10 @@ func TestUpdateNodeStatusWithLease(t *testing.T) {
 	// Since this test retroactively overrides the stub container manager,
 	// we have to regenerate default status setters.
 	kubelet.setNodeStatusFuncs = kubelet.defaultNodeStatusFuncs()
-	kubelet.nodeStatusReportFrequency = time.Minute
+	// You will add up to 50% of nodeStatusReportFrequency of additional random latency for
+	// kubelet to determine if update node status is needed due to time passage. We need to
+	// take that into consideration to ensure this test pass all time.
+	kubelet.nodeStatusReportFrequency = 30 * time.Second
 
 	kubeClient := testKubelet.fakeKubeClient
 	existingNode := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: testKubeletHostname}}
@@ -1128,7 +1131,7 @@ func TestUpdateNodeStatusAndVolumesInUseWithNodeLease(t *testing.T) {
 			kubelet.setCachedMachineInfo(&cadvisorapi.MachineInfo{})
 
 			// override test volumeManager
-			fakeVolumeManager := kubeletvolume.NewFakeVolumeManager(tc.existingVolumes, 0, nil)
+			fakeVolumeManager := kubeletvolume.NewFakeVolumeManager(tc.existingVolumes, 0, nil, false)
 			kubelet.volumeManager = fakeVolumeManager
 
 			// Only test VolumesInUse setter
@@ -1585,7 +1588,7 @@ func TestUpdateNewNodeStatusTooLargeReservation(t *testing.T) {
 	// generate one more in inputImageList than we configure the Kubelet to report
 	inputImageList, _ := generateTestingImageLists(nodeStatusMaxImages+1, nodeStatusMaxImages)
 	testKubelet := newTestKubeletWithImageList(
-		t, inputImageList, false /* controllerAttachDetachEnabled */, true /* initFakeVolumePlugin */, true)
+		t, inputImageList, false /* controllerAttachDetachEnabled */, true /* initFakeVolumePlugin */, true /*localStorageCapacityIsolation*/, false /*excludePodAdmitHandlers*/, false /*enableResizing*/)
 	defer testKubelet.Cleanup()
 	kubelet := testKubelet.kubelet
 	kubelet.nodeStatusMaxImages = nodeStatusMaxImages
@@ -2758,8 +2761,12 @@ func TestRegisterWithApiServerWithTaint(t *testing.T) {
 
 	addNotImplatedReaction(kubeClient)
 
-	// Make node to be unschedulable.
-	kubelet.registerSchedulable = false
+	unschedulableTaint := v1.Taint{
+		Key:    v1.TaintNodeUnschedulable,
+		Effect: v1.TaintEffectNoSchedule,
+	}
+	// Mark node with unschedulable taints
+	kubelet.registerWithTaints = []v1.Taint{unschedulableTaint}
 
 	// Reset kubelet status for each test.
 	kubelet.registrationCompleted = false
@@ -2769,13 +2776,9 @@ func TestRegisterWithApiServerWithTaint(t *testing.T) {
 
 	// Check the unschedulable taint.
 	got := gotNode.(*v1.Node)
-	unschedulableTaint := &v1.Taint{
-		Key:    v1.TaintNodeUnschedulable,
-		Effect: v1.TaintEffectNoSchedule,
-	}
 
 	require.True(t,
-		taintutil.TaintExists(got.Spec.Taints, unschedulableTaint),
+		taintutil.TaintExists(got.Spec.Taints, &unschedulableTaint),
 		"test unschedulable taint for TaintNodesByCondition")
 }
 
@@ -3085,6 +3088,138 @@ func TestUpdateNodeAddresses(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.True(t, apiequality.Semantic.DeepEqual(updatedNode, expectedNode), "%s", cmp.Diff(expectedNode, updatedNode))
+		})
+	}
+}
+
+func TestIsUpdateStatusPeriodExpired(t *testing.T) {
+	testcases := []struct {
+		name                       string
+		lastStatusReportTime       time.Time
+		delayAfterNodeStatusChange time.Duration
+		expectExpired              bool
+	}{
+		{
+			name:                       "no status update before and no delay",
+			lastStatusReportTime:       time.Time{},
+			delayAfterNodeStatusChange: 0,
+			expectExpired:              true,
+		},
+		{
+			name:                       "no status update before and existing delay",
+			lastStatusReportTime:       time.Time{},
+			delayAfterNodeStatusChange: 30 * time.Second,
+			expectExpired:              true,
+		},
+		{
+			name:                       "not expired and no delay",
+			lastStatusReportTime:       time.Now().Add(-4 * time.Minute),
+			delayAfterNodeStatusChange: 0,
+			expectExpired:              false,
+		},
+		{
+			name:                       "not expired",
+			lastStatusReportTime:       time.Now().Add(-5 * time.Minute),
+			delayAfterNodeStatusChange: time.Minute,
+			expectExpired:              false,
+		},
+		{
+			name:                       "expired",
+			lastStatusReportTime:       time.Now().Add(-4 * time.Minute),
+			delayAfterNodeStatusChange: -2 * time.Minute,
+			expectExpired:              true,
+		},
+		{
+			name:                       "Delay exactly at threshold",
+			lastStatusReportTime:       time.Now().Add(-5 * time.Minute),
+			delayAfterNodeStatusChange: 0,
+			expectExpired:              true,
+		},
+	}
+
+	testKubelet := newTestKubelet(t, false /* controllerAttachDetachEnabled */)
+	defer testKubelet.Cleanup()
+	kubelet := testKubelet.kubelet
+	kubelet.nodeStatusReportFrequency = 5 * time.Minute
+
+	for _, tc := range testcases {
+		kubelet.lastStatusReportTime = tc.lastStatusReportTime
+		kubelet.delayAfterNodeStatusChange = tc.delayAfterNodeStatusChange
+		expired := kubelet.isUpdateStatusPeriodExpired()
+		assert.Equal(t, tc.expectExpired, expired, tc.name)
+	}
+}
+
+func TestCalculateDelay(t *testing.T) {
+	testKubelet := newTestKubelet(t, false /* controllerAttachDetachEnabled */)
+	defer testKubelet.Cleanup()
+	kubelet := testKubelet.kubelet
+	kubelet.nodeStatusReportFrequency = 5 * time.Minute
+
+	for i := 0; i < 100; i++ {
+		randomDelay := kubelet.calculateDelay()
+		assert.LessOrEqual(t, randomDelay.Abs(), kubelet.nodeStatusReportFrequency/2)
+	}
+}
+
+func TestSetNodeStatusDeclaredFeatures(t *testing.T) {
+	testCases := []struct {
+		name               string
+		featureGateEnabled bool
+		discoveredFeatures []string
+		expectedFeatures   []string
+	}{
+		{
+			name:               "Feature gate enabled, features discovered",
+			featureGateEnabled: true,
+			discoveredFeatures: []string{"feature1", "feature2"},
+			expectedFeatures:   []string{"feature1", "feature2"},
+		},
+		{
+			name:               "Feature gate disabled",
+			featureGateEnabled: false,
+			discoveredFeatures: []string{"feature1", "feature2"},
+			expectedFeatures:   nil,
+		},
+		{
+			name:               "Feature gate enabled, no features discovered",
+			featureGateEnabled: true,
+			discoveredFeatures: nil,
+			expectedFeatures:   nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NodeDeclaredFeatures, tc.featureGateEnabled)
+
+			testKubelet := newTestKubelet(t, false /* controllerAttachDetachEnabled */)
+			defer testKubelet.Cleanup()
+			kubelet := testKubelet.kubelet
+			kubelet.nodeDeclaredFeatures = tc.discoveredFeatures
+			kubelet.kubeClient = nil
+
+			kubeClient := testKubelet.fakeKubeClient
+			existingNode := v1.Node{ObjectMeta: metav1.ObjectMeta{Name: testKubeletHostname}}
+			kubeClient.ReactionChain = fake.NewClientset(&v1.NodeList{Items: []v1.Node{existingNode}}).ReactionChain
+			kubelet.nodeLister = delegatingNodeLister{client: kubeClient}
+			machineInfo := &cadvisorapi.MachineInfo{}
+			kubelet.setCachedMachineInfo(machineInfo)
+
+			// We need to force a status update, so we make the last status report time old.
+			kubelet.lastStatusReportTime = time.Now().Add(-time.Hour)
+			require.NoError(t, kubelet.updateNodeStatus(context.TODO()))
+
+			actions := kubeClient.Actions()
+			// We expect a get and a patch
+			require.Len(t, actions, 2)
+			require.True(t, actions[1].Matches("patch", "nodes"))
+			require.Equal(t, "status", actions[1].GetSubresource())
+
+			updatedNode, err := applyNodeStatusPatch(&existingNode, actions[1].(core.PatchActionImpl).GetPatch())
+			require.NoError(t, err)
+
+			assert.Equal(t, tc.expectedFeatures, updatedNode.Status.DeclaredFeatures)
 		})
 	}
 }

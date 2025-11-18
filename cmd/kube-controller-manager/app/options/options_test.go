@@ -56,6 +56,7 @@ import (
 	cronjobconfig "k8s.io/kubernetes/pkg/controller/cronjob/config"
 	daemonconfig "k8s.io/kubernetes/pkg/controller/daemon/config"
 	deploymentconfig "k8s.io/kubernetes/pkg/controller/deployment/config"
+	devicetaintevictionconfig "k8s.io/kubernetes/pkg/controller/devicetainteviction/config"
 	endpointconfig "k8s.io/kubernetes/pkg/controller/endpoint/config"
 	endpointsliceconfig "k8s.io/kubernetes/pkg/controller/endpointslice/config"
 	endpointslicemirroringconfig "k8s.io/kubernetes/pkg/controller/endpointslicemirroring/config"
@@ -98,6 +99,7 @@ var args = []string{
 	"--cluster-signing-legacy-unknown-cert-file=/cluster-signing-legacy-unknown/cert-file",
 	"--cluster-signing-legacy-unknown-key-file=/cluster-signing-legacy-unknown/key-file",
 	"--concurrent-deployment-syncs=10",
+	"--concurrent-device-taint-eviction-syncs=10",
 	"--concurrent-daemonset-syncs=10",
 	"--concurrent-horizontal-pod-autoscaler-syncs=10",
 	"--concurrent-statefulset-syncs=15",
@@ -137,7 +139,7 @@ var args = []string{
 	"--leader-elect=false",
 	"--leader-elect-lease-duration=30s",
 	"--leader-elect-renew-deadline=15s",
-	"--leader-elect-resource-lock=configmap",
+	"--leader-elect-resource-lock=leases",
 	"--leader-elect-retry-period=5s",
 	"--legacy-service-account-token-clean-up-period=8760h",
 	"--master=192.168.4.20",
@@ -193,7 +195,7 @@ func TestAddFlags(t *testing.T) {
 				},
 				ControllerStartInterval: metav1.Duration{Duration: 2 * time.Minute},
 				LeaderElection: componentbaseconfig.LeaderElectionConfiguration{
-					ResourceLock:      "configmap",
+					ResourceLock:      "leases",
 					LeaderElect:       false,
 					LeaseDuration:     metav1.Duration{Duration: 30 * time.Second},
 					RenewDeadline:     metav1.Duration{Duration: 15 * time.Second},
@@ -271,6 +273,11 @@ func TestAddFlags(t *testing.T) {
 		DeploymentController: &DeploymentControllerOptions{
 			&deploymentconfig.DeploymentControllerConfiguration{
 				ConcurrentDeploymentSyncs: 10,
+			},
+		},
+		DeviceTaintEvictionController: &DeviceTaintEvictionControllerOptions{
+			&devicetaintevictionconfig.DeviceTaintEvictionControllerConfiguration{
+				ConcurrentSyncs: 10,
 			},
 		},
 		StatefulSetController: &StatefulSetControllerOptions{
@@ -423,7 +430,7 @@ func TestAddFlags(t *testing.T) {
 				PairName:      "kube-controller-manager",
 			},
 			HTTP2MaxStreamsPerConnection: 47,
-		}).WithLoopback(),
+		}),
 		Authentication: &apiserveroptions.DelegatingAuthenticationOptions{
 			CacheTTL:            10 * time.Second,
 			TokenRequestTimeout: 10 * time.Second,
@@ -447,9 +454,10 @@ func TestAddFlags(t *testing.T) {
 			AlwaysAllowPaths:             []string{"/healthz", "/readyz", "/livez"}, // note: this does not match /healthz/ or /healthz/*
 			AlwaysAllowGroups:            []string{"system:masters"},
 		},
-		Master:  "192.168.4.20",
-		Metrics: &metrics.Options{},
-		Logs:    logs.NewOptions(),
+		Master:                    "192.168.4.20",
+		ControllerShutdownTimeout: 10 * time.Second,
+		Metrics:                   &metrics.Options{},
+		Logs:                      logs.NewOptions(),
 		// ignores comparing ComponentGlobalsRegistry in this test.
 		ComponentGlobalsRegistry: s.ComponentGlobalsRegistry,
 	}
@@ -561,7 +569,7 @@ func TestApplyTo(t *testing.T) {
 				},
 				ControllerStartInterval: metav1.Duration{Duration: 2 * time.Minute},
 				LeaderElection: componentbaseconfig.LeaderElectionConfiguration{
-					ResourceLock:      "configmap",
+					ResourceLock:      "leases",
 					LeaderElect:       false,
 					LeaseDuration:     metav1.Duration{Duration: 30 * time.Second},
 					RenewDeadline:     metav1.Duration{Duration: 15 * time.Second},
@@ -622,6 +630,9 @@ func TestApplyTo(t *testing.T) {
 			},
 			DeploymentController: deploymentconfig.DeploymentControllerConfiguration{
 				ConcurrentDeploymentSyncs: 10,
+			},
+			DeviceTaintEvictionController: devicetaintevictionconfig.DeviceTaintEvictionControllerConfiguration{
+				ConcurrentSyncs: 10,
 			},
 			StatefulSetController: statefulsetconfig.StatefulSetControllerConfiguration{
 				ConcurrentStatefulSetSyncs: 15,
@@ -722,6 +733,7 @@ func TestApplyTo(t *testing.T) {
 				ConcurrentPolicySyncs: 9,
 			},
 		},
+		ControllerShutdownTimeout: 10 * time.Second,
 	}
 
 	// Sort GCIgnoredResources because it's built from a map, which means the
@@ -1261,6 +1273,15 @@ func TestValidateControllersOptions(t *testing.T) {
 			},
 		},
 		{
+			name:         "DeviceTaintEvictionControllerOptions",
+			expectErrors: false,
+			options: &DeviceTaintEvictionControllerOptions{
+				&devicetaintevictionconfig.DeviceTaintEvictionControllerConfiguration{
+					ConcurrentSyncs: 10,
+				},
+			},
+		},
+		{
 			name:         "DeprecatedControllerOptions",
 			expectErrors: false,
 			options: &DeprecatedControllerOptions{
@@ -1469,8 +1490,6 @@ func TestControllerManagerAliases(t *testing.T) {
 }
 
 func TestWatchListClientFlagUsage(t *testing.T) {
-	t.Skip("skip this test until we either bring back WatchListClient or remove it")
-
 	fs := pflag.NewFlagSet("addflagstest", pflag.ContinueOnError)
 	s, _ := NewKubeControllerManagerOptions()
 	for _, f := range s.Flags([]string{""}, []string{""}, nil).FlagSets {
@@ -1482,8 +1501,6 @@ func TestWatchListClientFlagUsage(t *testing.T) {
 }
 
 func TestWatchListClientFlagChange(t *testing.T) {
-	t.Skip("skip this test until we either bring back WatchListClient or remove it")
-
 	fs := pflag.NewFlagSet("addflagstest", pflag.ContinueOnError)
 	s, err := NewKubeControllerManagerOptions()
 	if err != nil {

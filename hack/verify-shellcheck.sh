@@ -114,7 +114,7 @@ if ${HAVE_SHELLCHECK}; then
 else
   echo "Using shellcheck ${SHELLCHECK_VERSION} docker image."
   "${DOCKER}" run \
-    --rm -v "${KUBE_ROOT}:${KUBE_ROOT}" -w "${KUBE_ROOT}" \
+    --rm -v "${KUBE_ROOT}:${KUBE_ROOT}" -w "${KUBE_ROOT}" --security-opt label=disable \
     "${SHELLCHECK_IMAGE}" \
     "${SHELLCHECK_OPTIONS[@]}" "${scripts_to_check[@]}" >&2 || res=$?
 fi
@@ -133,7 +133,6 @@ else
     echo 'See: https://github.com/koalaman/shellcheck/wiki/Ignore#ignoring-one-specific-instance-in-a-file'
     echo
   } >&2
-  exit 1
 fi
 
 # preserve the result

@@ -17,13 +17,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package staticpod contains utilities for managing the static pod.
 package staticpod
 
 import (
 	"fmt"
 	"path/filepath"
-
-	"github.com/pkg/errors"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
@@ -31,6 +30,7 @@ import (
 	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
 	kubeadmconstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	certphase "k8s.io/kubernetes/cmd/kubeadm/app/phases/certs"
+	"k8s.io/kubernetes/cmd/kubeadm/app/util/errors"
 	"k8s.io/kubernetes/cmd/kubeadm/app/util/users"
 )
 

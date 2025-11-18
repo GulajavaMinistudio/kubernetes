@@ -20,18 +20,13 @@ package upgrade
 import (
 	"fmt"
 
-	"github.com/pkg/errors"
-
 	"k8s.io/kubernetes/cmd/kubeadm/app/cmd/options"
 	"k8s.io/kubernetes/cmd/kubeadm/app/cmd/phases/workflow"
 	cmdutil "k8s.io/kubernetes/cmd/kubeadm/app/cmd/util"
 	"k8s.io/kubernetes/cmd/kubeadm/app/features"
 	patchnodephase "k8s.io/kubernetes/cmd/kubeadm/app/phases/patchnode"
 	"k8s.io/kubernetes/cmd/kubeadm/app/phases/upgrade"
-)
-
-const (
-	kubeletConfigDir = ""
+	"k8s.io/kubernetes/cmd/kubeadm/app/util/errors"
 )
 
 var (
@@ -66,7 +61,7 @@ func runKubeletConfigPhase(c workflow.RunData) error {
 	// Write the configuration for the kubelet down to disk and print the generated manifests instead of dry-running.
 	// If not dry-running, the kubelet config file will be backed up to the /etc/kubernetes/tmp/ dir, so that it could be
 	// recovered if anything goes wrong.
-	err := upgrade.WriteKubeletConfigFiles(data.InitCfg(), kubeletConfigDir, data.PatchesDir(), data.DryRun(), data.OutputWriter())
+	err := upgrade.WriteKubeletConfigFiles(data.InitCfg(), data.KubeletDir(), data.KubeConfigDir(), data.PatchesDir(), data.DryRun(), data.OutputWriter())
 	if err != nil {
 		return err
 	}

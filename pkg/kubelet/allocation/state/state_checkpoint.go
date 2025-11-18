@@ -112,11 +112,25 @@ func (sc *stateCheckpoint) GetContainerResources(podUID types.UID, containerName
 	return sc.cache.GetContainerResources(podUID, containerName)
 }
 
-// GetPodResourceInfoMap returns current pod resource information
+// GetPodLevelResources returns current resources information at pod-level
+func (sc *stateCheckpoint) GetPodLevelResources(podUID types.UID) (*v1.ResourceRequirements, bool) {
+	sc.mux.RLock()
+	defer sc.mux.RUnlock()
+	return sc.cache.GetPodLevelResources(podUID)
+}
+
+// GetPodResourceInfoMap returns current pod resource information map
 func (sc *stateCheckpoint) GetPodResourceInfoMap() PodResourceInfoMap {
 	sc.mux.RLock()
 	defer sc.mux.RUnlock()
 	return sc.cache.GetPodResourceInfoMap()
+}
+
+// GetPodResourceInfo returns current pod resource information
+func (sc *stateCheckpoint) GetPodResourceInfo(podUID types.UID) (PodResourceInfo, bool) {
+	sc.mux.RLock()
+	defer sc.mux.RUnlock()
+	return sc.cache.GetPodResourceInfo(podUID)
 }
 
 // SetContainerResoruces sets resources information for a pod's container
@@ -124,6 +138,17 @@ func (sc *stateCheckpoint) SetContainerResources(podUID types.UID, containerName
 	sc.mux.Lock()
 	defer sc.mux.Unlock()
 	err := sc.cache.SetContainerResources(podUID, containerName, resources)
+	if err != nil {
+		return err
+	}
+	return sc.storeState()
+}
+
+// SetPodLevelResources sets resources information for a pod's resources at pod-level.
+func (sc *stateCheckpoint) SetPodLevelResources(podUID types.UID, resInfo *v1.ResourceRequirements) error {
+	sc.mux.Lock()
+	defer sc.mux.Unlock()
+	err := sc.cache.SetPodLevelResources(podUID, resInfo)
 	if err != nil {
 		return err
 	}
@@ -168,11 +193,23 @@ func (sc *noopStateCheckpoint) GetContainerResources(_ types.UID, _ string) (v1.
 	return v1.ResourceRequirements{}, false
 }
 
+func (sc *noopStateCheckpoint) GetPodLevelResources(_ types.UID) (*v1.ResourceRequirements, bool) {
+	return nil, false
+}
+
 func (sc *noopStateCheckpoint) GetPodResourceInfoMap() PodResourceInfoMap {
 	return nil
 }
 
+func (sc *noopStateCheckpoint) GetPodResourceInfo(_ types.UID) (PodResourceInfo, bool) {
+	return PodResourceInfo{}, false
+}
+
 func (sc *noopStateCheckpoint) SetContainerResources(_ types.UID, _ string, _ v1.ResourceRequirements) error {
+	return nil
+}
+
+func (sc *noopStateCheckpoint) SetPodLevelResources(_ types.UID, _ *v1.ResourceRequirements) error {
 	return nil
 }
 

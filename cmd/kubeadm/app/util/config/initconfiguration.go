@@ -24,8 +24,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pkg/errors"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -44,6 +42,7 @@ import (
 	kubeadmconstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	kubeadmutil "k8s.io/kubernetes/cmd/kubeadm/app/util"
 	"k8s.io/kubernetes/cmd/kubeadm/app/util/config/strict"
+	"k8s.io/kubernetes/cmd/kubeadm/app/util/errors"
 	kubeadmruntime "k8s.io/kubernetes/cmd/kubeadm/app/util/runtime"
 )
 
@@ -381,6 +380,11 @@ func documentMapToInitConfiguration(gvkmap kubeadmapi.DocumentMap, allowDeprecat
 	// If ClusterConfiguration was given, populate it in the InitConfiguration struct
 	if clustercfg != nil {
 		initcfg.ClusterConfiguration = *clustercfg
+
+		// TODO: Workaround for missing v1beta3 ClusterConfiguration timeout conversion. Remove this conversion once the v1beta3 is removed
+		if clustercfg.APIServer.TimeoutForControlPlane.Duration != 0 && clustercfg.APIServer.TimeoutForControlPlane.Duration != kubeadmconstants.ControlPlaneComponentHealthCheckTimeout {
+			initcfg.Timeouts.ControlPlaneComponentHealthCheck.Duration = clustercfg.APIServer.TimeoutForControlPlane.Duration
+		}
 	} else {
 		// Populate the internal InitConfiguration.ClusterConfiguration with defaults
 		extclustercfg := &kubeadmapiv1.ClusterConfiguration{}

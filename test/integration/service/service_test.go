@@ -549,141 +549,6 @@ func Test_TransitionsForTrafficDistribution(t *testing.T) {
 	}
 
 	assertEndpointSliceHints(t, ctx, client, ns.GetName(), svc.GetName(), false, false)
-}
-
-// Test transitions involving the `trafficDistribution` field with
-// PreferSameTrafficDistribution enabled.
-func Test_TransitionsForPreferSameTrafficDistribution(t *testing.T) {
-
-	////////////////////////////////////////////////////////////////////////////
-	// Setup components, like kube-apiserver and EndpointSlice controller.
-	////////////////////////////////////////////////////////////////////////////
-
-	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.ServiceTrafficDistribution, true)
-	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.PreferSameTrafficDistribution, true)
-
-	// Disable ServiceAccount admission plugin as we don't have serviceaccount controller running.
-	server := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), framework.SharedEtcd())
-	defer server.TearDownFn()
-
-	client, err := clientset.NewForConfig(server.ClientConfig)
-	if err != nil {
-		t.Fatalf("Error creating clientset: %v", err)
-	}
-
-	resyncPeriod := 12 * time.Hour
-	informers := informers.NewSharedInformerFactory(client, resyncPeriod)
-
-	ctx := ktesting.Init(t)
-	defer ctx.Cancel("test has completed")
-	epsController := endpointslice.NewController(
-		ctx,
-		informers.Core().V1().Pods(),
-		informers.Core().V1().Services(),
-		informers.Core().V1().Nodes(),
-		informers.Discovery().V1().EndpointSlices(),
-		int32(100),
-		client,
-		1*time.Second,
-	)
-
-	informers.Start(ctx.Done())
-	go epsController.Run(ctx, 1)
-
-	////////////////////////////////////////////////////////////////////////////
-	// Create a namespace, node, pod in the node, and a service exposing the pod.
-	////////////////////////////////////////////////////////////////////////////
-
-	ns := framework.CreateNamespaceOrDie(client, "test-service-traffic-distribution", t)
-	defer framework.DeleteNamespaceOrDie(client, ns, t)
-
-	node := &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "fake-node",
-			Labels: map[string]string{
-				corev1.LabelTopologyZone: "fake-zone-1",
-			},
-		},
-	}
-
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pod",
-			Namespace: ns.GetName(),
-			Labels: map[string]string{
-				"foo": "bar",
-			},
-		},
-		Spec: corev1.PodSpec{
-			NodeName: node.GetName(),
-			Containers: []corev1.Container{
-				{
-					Name:  "fake-name",
-					Image: "fake-image",
-					Ports: []corev1.ContainerPort{
-						{
-							Name:          "port-443",
-							ContainerPort: 443,
-						},
-					},
-				},
-			},
-		},
-		Status: corev1.PodStatus{
-			Phase: corev1.PodRunning,
-			Conditions: []corev1.PodCondition{
-				{
-					Type:   corev1.PodReady,
-					Status: corev1.ConditionTrue,
-				},
-			},
-			PodIP: "10.0.0.1",
-			PodIPs: []corev1.PodIP{
-				{
-					IP: "10.0.0.1",
-				},
-			},
-		},
-	}
-
-	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-service",
-			Namespace: ns.GetName(),
-		},
-		Spec: corev1.ServiceSpec{
-			Selector: map[string]string{
-				"foo": "bar",
-			},
-			Ports: []corev1.ServicePort{
-				{Name: "port-443", Port: 443, Protocol: "TCP", TargetPort: intstr.FromInt32(443)},
-			},
-		},
-	}
-
-	_, err = client.CoreV1().Nodes().Create(ctx, node, metav1.CreateOptions{})
-	if err != nil {
-		t.Fatalf("Failed to create test node: %v", err)
-	}
-	_, err = client.CoreV1().Pods(ns.Name).Create(ctx, pod, metav1.CreateOptions{})
-	if err != nil {
-		t.Fatalf("Failed to create test ready pod: %v", err)
-	}
-	_, err = client.CoreV1().Pods(ns.Name).UpdateStatus(ctx, pod, metav1.UpdateOptions{})
-	if err != nil {
-		t.Fatalf("Failed to update status for test pod to Ready: %v", err)
-	}
-	_, err = client.CoreV1().Services(ns.Name).Create(ctx, svc, metav1.CreateOptions{})
-	if err != nil {
-		t.Fatalf("Failed to create test service: %v", err)
-	}
-
-	////////////////////////////////////////////////////////////////////////////
-	// Assert that without the presence of `trafficDistribution` field there are
-	// no zone hints in EndpointSlice.
-	////////////////////////////////////////////////////////////////////////////
-
-	assertEndpointSliceHints(t, ctx, client, ns.GetName(), svc.GetName(), false, false)
 
 	////////////////////////////////////////////////////////////////////////////
 	// Update the service by setting `trafficDistribution: PreferSameZone`
@@ -691,7 +556,7 @@ func Test_TransitionsForPreferSameTrafficDistribution(t *testing.T) {
 	// Assert that the respective EndpointSlices get the same-zone hints.
 	////////////////////////////////////////////////////////////////////////////
 
-	trafficDist := corev1.ServiceTrafficDistributionPreferSameZone
+	trafficDist = corev1.ServiceTrafficDistributionPreferSameZone
 	svc.Spec.TrafficDistribution = &trafficDist
 	_, err = client.CoreV1().Services(ns.Name).Update(ctx, svc, metav1.UpdateOptions{})
 	if err != nil {
@@ -1214,4 +1079,96 @@ func Test_ServiceWatchUntil(t *testing.T) {
 		t.Fatalf("failed to delete Service %v in namespace %v", service.ObjectMeta.Name, ns)
 	}
 	t.Logf("Service %s deleted", testSvcName)
+}
+
+func Test_ServiceValidation_FeatureGateEnableDisable(t *testing.T) {
+
+	////////////////////////////////////////////////////////////////////////////
+	// Start kube-apiserver with RelaxedServiceNameValidation feature-gate
+	// enabled.
+	////////////////////////////////////////////////////////////////////////////
+
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.RelaxedServiceNameValidation, true)
+
+	sharedEtcd := framework.SharedEtcd()
+	server1 := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), sharedEtcd)
+
+	client1, err := clientset.NewForConfig(server1.ClientConfig)
+	if err != nil {
+		t.Fatalf("Error creating clientset: %v", err)
+	}
+
+	////////////////////////////////////////////////////////////////////////////
+	// Create services with names that start with a digit and a letter.
+	//
+	// Assert that the services are created successfully with the feature gate enabled
+	////////////////////////////////////////////////////////////////////////////
+
+	ns := framework.CreateNamespaceOrDie(client1, "test-service-traffic-distribution", t)
+	makeService := func(serviceName string) *corev1.Service {
+		return &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      serviceName,
+				Namespace: ns.GetName(),
+			},
+			Spec: corev1.ServiceSpec{
+				Ports: []corev1.ServicePort{{Port: 443}},
+			},
+		}
+	}
+
+	// Expected to pass, as the feature gate is enabled
+	_, err = client1.CoreV1().Services(ns.Name).Create(t.Context(), makeService("test-service-1"), metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create test service: %v", err)
+	}
+
+	// Expected to pass, as the feature gate is enabled
+	_, err = client1.CoreV1().Services(ns.Name).Create(t.Context(), makeService("9-test-service-1"), metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Successfully created service, but shouldn't have: %v", err)
+	}
+
+	////////////////////////////////////////////////////////////////////////////
+	// Restart the kube-apiserver with RelaxedServiceNameValidation feature-gate
+	// disabled.
+	//
+	// Assert that the services are created using previous validation only
+	////////////////////////////////////////////////////////////////////////////
+
+	server1.TearDownFn()
+	featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.34"))
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.RelaxedServiceNameValidation, false)
+
+	server2 := kubeapiservertesting.StartTestServerOrDie(t, nil, framework.DefaultTestServerFlags(), sharedEtcd)
+	client2, err := clientset.NewForConfig(server2.ClientConfig)
+	if err != nil {
+		t.Fatalf("Error creating clientset: %v", err)
+	}
+
+	// Expected to pass, as the feature gate is disabled
+	_, err = client2.CoreV1().Services(ns.Name).Create(t.Context(), makeService("test-service-2"), metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create test service: %v", err)
+	}
+
+	// Expected to fail, as the feature gate is disabled and this name requires relaxed validation
+	_, err = client2.CoreV1().Services(ns.Name).Create(t.Context(), makeService("9-test-service-2"), metav1.CreateOptions{})
+	if err == nil {
+		t.Fatalf("Successfully created service, but shouldn't have: %v", err)
+	}
+
+	////////////////////////////////////////////////////////////////////////////
+	// Assert that the services created prior to the feature gate being disabled
+	// can still be patched successfully even though it requires relaxed validation.
+	////////////////////////////////////////////////////////////////////////////
+
+	// Expected to pass as the service was created before the feature gate was disabled
+	patch := []byte(`{"spec":{"selector":{"foo":"baz"}}}`)
+	_, err = client2.CoreV1().Services(ns.Name).Patch(t.Context(), "9-test-service-1", types.StrategicMergePatchType, patch, metav1.PatchOptions{})
+	if err != nil {
+		t.Fatalf("Failed to patch selector of service '9-test-service-1': %v", err)
+	}
+
+	server2.TearDownFn()
 }

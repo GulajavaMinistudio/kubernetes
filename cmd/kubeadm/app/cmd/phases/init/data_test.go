@@ -21,8 +21,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	clientset "k8s.io/client-go/kubernetes"
-
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+
 	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
 )
 
@@ -50,6 +50,6 @@ func (t *testInitData) KubeletDir() string                                   { r
 func (t *testInitData) ExternalCA() bool                                     { return false }
 func (t *testInitData) OutputWriter() io.Writer                              { return nil }
 func (t *testInitData) Client() (clientset.Interface, error)                 { return nil, nil }
-func (t *testInitData) ClientWithoutBootstrap() (clientset.Interface, error) { return nil, nil }
+func (t *testInitData) WaitControlPlaneClient() (clientset.Interface, error) { return nil, nil }
 func (t *testInitData) Tokens() []string                                     { return nil }
 func (t *testInitData) PatchesDir() string                                   { return "" }

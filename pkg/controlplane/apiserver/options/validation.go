@@ -23,7 +23,7 @@ import (
 	"strings"
 
 	apiextensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
-	genericfeatures "k8s.io/apiserver/pkg/features"
+	apiserverfeatures "k8s.io/apiserver/pkg/features"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	aggregatorscheme "k8s.io/kube-aggregator/pkg/apiserver/scheme"
 	"k8s.io/kubernetes/pkg/features"
@@ -71,16 +71,9 @@ func validateAPIPriorityAndFairness(options *Options) []error {
 	return nil
 }
 
-func validateNodeSelectorAuthorizationFeature() []error {
-	if utilfeature.DefaultFeatureGate.Enabled(features.AuthorizeNodeWithSelectors) && !utilfeature.DefaultFeatureGate.Enabled(genericfeatures.AuthorizeWithSelectors) {
-		return []error{fmt.Errorf("AuthorizeNodeWithSelectors feature requires AuthorizeWithSelectors feature to be enabled")}
-	}
-	return nil
-}
-
 func validateUnknownVersionInteroperabilityProxyFlags(options *Options) []error {
 	err := []error{}
-	if !utilfeature.DefaultFeatureGate.Enabled(features.UnknownVersionInteroperabilityProxy) {
+	if !utilfeature.DefaultFeatureGate.Enabled(apiserverfeatures.UnknownVersionInteroperabilityProxy) {
 		if options.PeerCAFile != "" {
 			err = append(err, fmt.Errorf("--peer-ca-file requires UnknownVersionInteroperabilityProxy feature to be turned on"))
 		}
@@ -117,6 +110,17 @@ func validateServiceAccountTokenSigningConfig(options *Options) []error {
 	return errors
 }
 
+func validateCoordinatedLeadershipFlags(options *Options) []error {
+	var errs []error
+	if options.CoordinatedLeadershipLeaseDuration <= options.CoordinatedLeadershipRenewDeadline {
+		errs = append(errs, fmt.Errorf("--coordinated-leadership-lease-duration must be greater than --coordinated-leadership-renew-deadline"))
+	}
+	if options.CoordinatedLeadershipRenewDeadline <= options.CoordinatedLeadershipRetryPeriod {
+		errs = append(errs, fmt.Errorf("--coordinated-leadership-renew-deadline must be greater than --coordinated-leadership-retry-period"))
+	}
+	return errs
+}
+
 // Validate checks Options and return a slice of found errs.
 func (s *Options) Validate() []error {
 	var errs []error
@@ -133,8 +137,8 @@ func (s *Options) Validate() []error {
 	errs = append(errs, validateTokenRequest(s)...)
 	errs = append(errs, s.Metrics.Validate()...)
 	errs = append(errs, validateUnknownVersionInteroperabilityProxyFlags(s)...)
-	errs = append(errs, validateNodeSelectorAuthorizationFeature()...)
 	errs = append(errs, validateServiceAccountTokenSigningConfig(s)...)
+	errs = append(errs, validateCoordinatedLeadershipFlags(s)...)
 
 	return errs
 }

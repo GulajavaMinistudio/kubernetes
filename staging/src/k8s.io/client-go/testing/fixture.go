@@ -19,10 +19,11 @@ package testing
 import (
 	"fmt"
 	"reflect"
-	"sigs.k8s.io/yaml"
 	"sort"
 	"strings"
 	"sync"
+
+	"sigs.k8s.io/yaml"
 
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 
@@ -510,6 +511,17 @@ func (t *tracker) Apply(gvr schema.GroupVersionResource, applyConfiguration runt
 	return t.add(gvr, obj, ns, true)
 }
 
+// IsWatchListSemanticsUnSupported informs the reflector that this client
+// doesn't support WatchList semantics.
+//
+// This is a synthetic method whose sole purpose is to satisfy the optional
+// interface check performed by the reflector.
+// Returning true signals that WatchList can NOT be used.
+// No additional logic is implemented here.
+func (t *tracker) IsWatchListSemanticsUnSupported() bool {
+	return true
+}
+
 func (t *tracker) getWatches(gvr schema.GroupVersionResource, ns string) []*watch.RaceFreeFakeWatcher {
 	watches := []*watch.RaceFreeFakeWatcher{}
 	if t.watchers[gvr] != nil {
@@ -631,7 +643,7 @@ type managedFieldObjectTracker struct {
 	ObjectTracker
 	scheme          ObjectScheme
 	objectConverter runtime.ObjectConvertor
-	mapper          meta.RESTMapper
+	mapper          func() meta.RESTMapper
 	typeConverter   managedfields.TypeConverter
 }
 
@@ -644,8 +656,10 @@ func NewFieldManagedObjectTracker(scheme *runtime.Scheme, decoder runtime.Decode
 		ObjectTracker:   NewObjectTracker(scheme, decoder),
 		scheme:          scheme,
 		objectConverter: scheme,
-		mapper:          testrestmapper.TestOnlyStaticRESTMapper(scheme),
-		typeConverter:   typeConverter,
+		mapper: func() meta.RESTMapper {
+			return testrestmapper.TestOnlyStaticRESTMapper(scheme)
+		},
+		typeConverter: typeConverter,
 	}
 }
 
@@ -654,7 +668,7 @@ func (t *managedFieldObjectTracker) Create(gvr schema.GroupVersionResource, obj 
 	if err != nil {
 		return err
 	}
-	gvk, err := t.mapper.KindFor(gvr)
+	gvk, err := t.mapper().KindFor(gvr)
 	if err != nil {
 		return err
 	}
@@ -698,7 +712,7 @@ func (t *managedFieldObjectTracker) Update(gvr schema.GroupVersionResource, obj 
 	if err != nil {
 		return err
 	}
-	gvk, err := t.mapper.KindFor(gvr)
+	gvk, err := t.mapper().KindFor(gvr)
 	if err != nil {
 		return err
 	}
@@ -728,7 +742,7 @@ func (t *managedFieldObjectTracker) Patch(gvr schema.GroupVersionResource, patch
 	if err != nil {
 		return err
 	}
-	gvk, err := t.mapper.KindFor(gvr)
+	gvk, err := t.mapper().KindFor(gvr)
 	if err != nil {
 		return err
 	}
@@ -757,7 +771,7 @@ func (t *managedFieldObjectTracker) Apply(gvr schema.GroupVersionResource, apply
 	if err != nil {
 		return err
 	}
-	gvk, err := t.mapper.KindFor(gvr)
+	gvk, err := t.mapper().KindFor(gvr)
 	if err != nil {
 		return err
 	}

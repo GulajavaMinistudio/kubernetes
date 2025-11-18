@@ -20,16 +20,17 @@ import (
 	"strings"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/util/version"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/test/integration/scheduler/queueing"
 )
 
-// TestCoreResourceEnqueueWithQueueingHints verify Pods failed by in-tree default plugins can be
+// TestCoreResourceEnqueueWithoutQueueingHints verify Pods failed by in-tree default plugins can be
 // moved properly upon their registered events.
 // Here, we run only the test cases where the EnableSchedulingQueueHint is disabled.
-func TestCoreResourceEnqueueWithQueueingHints(t *testing.T) {
+func TestCoreResourceEnqueueWithoutQueueingHints(t *testing.T) {
 	for _, tt := range queueing.CoreResourceEnqueueTestCases {
 		if tt.EnableSchedulingQueueHint != nil && !tt.EnableSchedulingQueueHint.Has(false) {
 			continue
@@ -37,6 +38,7 @@ func TestCoreResourceEnqueueWithQueueingHints(t *testing.T) {
 		// Note: if EnableSchedulingQueueHint is nil, we assume the test should be run both with/without the feature gate.
 
 		t.Run(strings.Join(append(tt.EnablePlugins, tt.Name), "/"), func(t *testing.T) {
+			featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.33"))
 			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SchedulerQueueingHints, false)
 			queueing.RunTestCoreResourceEnqueue(t, tt)
 		})

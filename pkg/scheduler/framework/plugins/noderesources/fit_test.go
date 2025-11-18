@@ -26,29 +26,52 @@ import (
 	"github.com/stretchr/testify/require"
 
 	v1 "k8s.io/api/core/v1"
+	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes/fake"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
+	"k8s.io/dynamic-resource-allocation/deviceclass/extendedresourcecache"
 	"k8s.io/klog/v2/ktesting"
 	_ "k8s.io/klog/v2/ktesting/init"
+	fwk "k8s.io/kube-scheduler/framework"
+	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/backend/cache"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
 	plfeature "k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
 	plugintesting "k8s.io/kubernetes/pkg/scheduler/framework/plugins/testing"
 	"k8s.io/kubernetes/pkg/scheduler/framework/runtime"
 	st "k8s.io/kubernetes/pkg/scheduler/testing"
 	tf "k8s.io/kubernetes/pkg/scheduler/testing/framework"
+	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
+	"k8s.io/utils/ptr"
 )
 
 var (
-	extendedResourceA     = v1.ResourceName("example.com/aaa")
-	extendedResourceB     = v1.ResourceName("example.com/bbb")
-	kubernetesIOResourceA = v1.ResourceName("kubernetes.io/something")
-	kubernetesIOResourceB = v1.ResourceName("subdomain.kubernetes.io/something")
-	hugePageResourceA     = v1.ResourceName(v1.ResourceHugePagesPrefix + "2Mi")
+	extendedResourceA                 = v1.ResourceName("example.com/aaa")
+	extendedResourceB                 = v1.ResourceName("example.com/bbb")
+	kubernetesIOResourceA             = v1.ResourceName("kubernetes.io/something")
+	kubernetesIOResourceB             = v1.ResourceName("subdomain.kubernetes.io/something")
+	hugePageResourceA                 = v1.ResourceName(v1.ResourceHugePagesPrefix + "2Mi")
+	extendedResourceName              = "extended.resource.dra.io/something"
+	extendedResourceDRA               = v1.ResourceName(extendedResourceName)
+	deviceClassName                   = "device-class-name"
+	deviceClassWithExtendResourceName = &resourceapi.DeviceClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: deviceClassName,
+		},
+		Spec: resourceapi.DeviceClassSpec{
+			ExtendedResourceName: &extendedResourceName,
+		},
+	}
 )
 
 var clusterEventCmpOpts = []cmp.Option{
-	cmpopts.EquateComparable(framework.ClusterEvent{}),
+	cmpopts.EquateComparable(fwk.ClusterEvent{}),
 }
 
 func makeResources(milliCPU, memory, pods, extendedA, storage, hugePageA int64) v1.ResourceList {
@@ -129,13 +152,15 @@ func newPodLevelResourcesPod(pod *v1.Pod, podResources v1.ResourceRequirements) 
 
 func TestEnoughRequests(t *testing.T) {
 	enoughPodsTests := []struct {
-		pod                       *v1.Pod
-		nodeInfo                  *framework.NodeInfo
-		name                      string
-		args                      config.NodeResourcesFitArgs
-		podLevelResourcesEnabled  bool
-		wantInsufficientResources []InsufficientResource
-		wantStatus                *framework.Status
+		pod                        *v1.Pod
+		nodeInfo                   *framework.NodeInfo
+		name                       string
+		args                       config.NodeResourcesFitArgs
+		podLevelResourcesEnabled   bool
+		draExtendedResourceEnabled bool
+		nilDRAManager              bool
+		wantInsufficientResources  []InsufficientResource
+		wantStatus                 *fwk.Status
 	}{
 		{
 			pod: &v1.Pod{},
@@ -149,7 +174,7 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 10, Memory: 20})),
 			name:       "too many resources fails",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(v1.ResourceCPU), getErrReason(v1.ResourceMemory)),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, getErrReason(v1.ResourceCPU), getErrReason(v1.ResourceMemory)),
 			wantInsufficientResources: []InsufficientResource{
 				{ResourceName: v1.ResourceCPU, Reason: getErrReason(v1.ResourceCPU), Requested: 1, Used: 10, Capacity: 10},
 				{ResourceName: v1.ResourceMemory, Reason: getErrReason(v1.ResourceMemory), Requested: 1, Used: 20, Capacity: 20},
@@ -160,7 +185,7 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 8, Memory: 19})),
 			name:       "too many resources fails due to init container cpu",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(v1.ResourceCPU)),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, getErrReason(v1.ResourceCPU)),
 			wantInsufficientResources: []InsufficientResource{
 				{ResourceName: v1.ResourceCPU, Reason: getErrReason(v1.ResourceCPU), Requested: 3, Used: 8, Capacity: 10},
 			},
@@ -170,7 +195,7 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 8, Memory: 19})),
 			name:       "too many resources fails due to highest init container cpu",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(v1.ResourceCPU)),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, getErrReason(v1.ResourceCPU)),
 			wantInsufficientResources: []InsufficientResource{
 				{ResourceName: v1.ResourceCPU, Reason: getErrReason(v1.ResourceCPU), Requested: 3, Used: 8, Capacity: 10},
 			},
@@ -180,7 +205,7 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 9, Memory: 19})),
 			name:       "too many resources fails due to init container memory",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(v1.ResourceMemory)),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, getErrReason(v1.ResourceMemory)),
 			wantInsufficientResources: []InsufficientResource{
 				{ResourceName: v1.ResourceMemory, Reason: getErrReason(v1.ResourceMemory), Requested: 3, Used: 19, Capacity: 20},
 			},
@@ -190,7 +215,7 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 9, Memory: 19})),
 			name:       "too many resources fails due to highest init container memory",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(v1.ResourceMemory)),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, getErrReason(v1.ResourceMemory)),
 			wantInsufficientResources: []InsufficientResource{
 				{ResourceName: v1.ResourceMemory, Reason: getErrReason(v1.ResourceMemory), Requested: 3, Used: 19, Capacity: 20},
 			},
@@ -221,7 +246,7 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 9, Memory: 5})),
 			name:       "one resource memory fits",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(v1.ResourceCPU)),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, getErrReason(v1.ResourceCPU)),
 			wantInsufficientResources: []InsufficientResource{
 				{ResourceName: v1.ResourceCPU, Reason: getErrReason(v1.ResourceCPU), Requested: 2, Used: 9, Capacity: 10},
 			},
@@ -231,7 +256,7 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 5, Memory: 19})),
 			name:       "one resource cpu fits",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(v1.ResourceMemory)),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, getErrReason(v1.ResourceMemory)),
 			wantInsufficientResources: []InsufficientResource{
 				{ResourceName: v1.ResourceMemory, Reason: getErrReason(v1.ResourceMemory), Requested: 2, Used: 19, Capacity: 20},
 			},
@@ -268,9 +293,9 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0, ScalarResources: map[v1.ResourceName]int64{extendedResourceA: 0}})),
 			name:       "extended resource capacity enforced",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(extendedResourceA)),
+			wantStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(extendedResourceA)),
 			wantInsufficientResources: []InsufficientResource{
-				{ResourceName: extendedResourceA, Reason: getErrReason(extendedResourceA), Requested: 10, Used: 0, Capacity: 5},
+				{ResourceName: extendedResourceA, Reason: getErrReason(extendedResourceA), Requested: 10, Used: 0, Capacity: 5, Unresolvable: true},
 			},
 		},
 		{
@@ -279,9 +304,9 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0, ScalarResources: map[v1.ResourceName]int64{extendedResourceA: 0}})),
 			name:       "extended resource capacity enforced for init container",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(extendedResourceA)),
+			wantStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(extendedResourceA)),
 			wantInsufficientResources: []InsufficientResource{
-				{ResourceName: extendedResourceA, Reason: getErrReason(extendedResourceA), Requested: 10, Used: 0, Capacity: 5},
+				{ResourceName: extendedResourceA, Reason: getErrReason(extendedResourceA), Requested: 10, Used: 0, Capacity: 5, Unresolvable: true},
 			},
 		},
 		{
@@ -290,7 +315,7 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0, ScalarResources: map[v1.ResourceName]int64{extendedResourceA: 5}})),
 			name:       "extended resource allocatable enforced",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(extendedResourceA)),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, getErrReason(extendedResourceA)),
 			wantInsufficientResources: []InsufficientResource{
 				{ResourceName: extendedResourceA, Reason: getErrReason(extendedResourceA), Requested: 1, Used: 5, Capacity: 5},
 			},
@@ -301,7 +326,7 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0, ScalarResources: map[v1.ResourceName]int64{extendedResourceA: 5}})),
 			name:       "extended resource allocatable enforced for init container",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(extendedResourceA)),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, getErrReason(extendedResourceA)),
 			wantInsufficientResources: []InsufficientResource{
 				{ResourceName: extendedResourceA, Reason: getErrReason(extendedResourceA), Requested: 1, Used: 5, Capacity: 5},
 			},
@@ -313,9 +338,9 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0, ScalarResources: map[v1.ResourceName]int64{extendedResourceA: 2}})),
 			name:       "extended resource allocatable enforced for multiple containers",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(extendedResourceA)),
+			wantStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(extendedResourceA)),
 			wantInsufficientResources: []InsufficientResource{
-				{ResourceName: extendedResourceA, Reason: getErrReason(extendedResourceA), Requested: 6, Used: 2, Capacity: 5},
+				{ResourceName: extendedResourceA, Reason: getErrReason(extendedResourceA), Requested: 6, Used: 2, Capacity: 5, Unresolvable: true},
 			},
 		},
 		{
@@ -334,9 +359,9 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0, ScalarResources: map[v1.ResourceName]int64{extendedResourceA: 2}})),
 			name:       "extended resource allocatable enforced for multiple init containers",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(extendedResourceA)),
+			wantStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(extendedResourceA)),
 			wantInsufficientResources: []InsufficientResource{
-				{ResourceName: extendedResourceA, Reason: getErrReason(extendedResourceA), Requested: 6, Used: 2, Capacity: 5},
+				{ResourceName: extendedResourceA, Reason: getErrReason(extendedResourceA), Requested: 6, Used: 2, Capacity: 5, Unresolvable: true},
 			},
 		},
 		{
@@ -345,9 +370,9 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0})),
 			name:       "extended resource allocatable enforced for unknown resource",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(extendedResourceB)),
+			wantStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(extendedResourceB)),
 			wantInsufficientResources: []InsufficientResource{
-				{ResourceName: extendedResourceB, Reason: getErrReason(extendedResourceB), Requested: 1, Used: 0, Capacity: 0},
+				{ResourceName: extendedResourceB, Reason: getErrReason(extendedResourceB), Requested: 1, Used: 0, Capacity: 0, Unresolvable: true},
 			},
 		},
 		{
@@ -356,9 +381,9 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0})),
 			name:       "extended resource allocatable enforced for unknown resource for init container",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(extendedResourceB)),
+			wantStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(extendedResourceB)),
 			wantInsufficientResources: []InsufficientResource{
-				{ResourceName: extendedResourceB, Reason: getErrReason(extendedResourceB), Requested: 1, Used: 0, Capacity: 0},
+				{ResourceName: extendedResourceB, Reason: getErrReason(extendedResourceB), Requested: 1, Used: 0, Capacity: 0, Unresolvable: true},
 			},
 		},
 		{
@@ -367,9 +392,9 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0})),
 			name:       "kubernetes.io resource capacity enforced",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(kubernetesIOResourceA)),
+			wantStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(kubernetesIOResourceA)),
 			wantInsufficientResources: []InsufficientResource{
-				{ResourceName: kubernetesIOResourceA, Reason: getErrReason(kubernetesIOResourceA), Requested: 10, Used: 0, Capacity: 0},
+				{ResourceName: kubernetesIOResourceA, Reason: getErrReason(kubernetesIOResourceA), Requested: 10, Used: 0, Capacity: 0, Unresolvable: true},
 			},
 		},
 		{
@@ -378,9 +403,9 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0})),
 			name:       "kubernetes.io resource capacity enforced for init container",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(kubernetesIOResourceB)),
+			wantStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(kubernetesIOResourceB)),
 			wantInsufficientResources: []InsufficientResource{
-				{ResourceName: kubernetesIOResourceB, Reason: getErrReason(kubernetesIOResourceB), Requested: 10, Used: 0, Capacity: 0},
+				{ResourceName: kubernetesIOResourceB, Reason: getErrReason(kubernetesIOResourceB), Requested: 10, Used: 0, Capacity: 0, Unresolvable: true},
 			},
 		},
 		{
@@ -389,9 +414,9 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0, ScalarResources: map[v1.ResourceName]int64{hugePageResourceA: 0}})),
 			name:       "hugepages resource capacity enforced",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(hugePageResourceA)),
+			wantStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(hugePageResourceA)),
 			wantInsufficientResources: []InsufficientResource{
-				{ResourceName: hugePageResourceA, Reason: getErrReason(hugePageResourceA), Requested: 10, Used: 0, Capacity: 5},
+				{ResourceName: hugePageResourceA, Reason: getErrReason(hugePageResourceA), Requested: 10, Used: 0, Capacity: 5, Unresolvable: true},
 			},
 		},
 		{
@@ -400,9 +425,9 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0, ScalarResources: map[v1.ResourceName]int64{hugePageResourceA: 0}})),
 			name:       "hugepages resource capacity enforced for init container",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(hugePageResourceA)),
+			wantStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(hugePageResourceA)),
 			wantInsufficientResources: []InsufficientResource{
-				{ResourceName: hugePageResourceA, Reason: getErrReason(hugePageResourceA), Requested: 10, Used: 0, Capacity: 5},
+				{ResourceName: hugePageResourceA, Reason: getErrReason(hugePageResourceA), Requested: 10, Used: 0, Capacity: 5, Unresolvable: true},
 			},
 		},
 		{
@@ -412,9 +437,9 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0, ScalarResources: map[v1.ResourceName]int64{hugePageResourceA: 2}})),
 			name:       "hugepages resource allocatable enforced for multiple containers",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(hugePageResourceA)),
+			wantStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(hugePageResourceA)),
 			wantInsufficientResources: []InsufficientResource{
-				{ResourceName: hugePageResourceA, Reason: getErrReason(hugePageResourceA), Requested: 6, Used: 2, Capacity: 5},
+				{ResourceName: hugePageResourceA, Reason: getErrReason(hugePageResourceA), Requested: 6, Used: 2, Capacity: 5, Unresolvable: true},
 			},
 		},
 		{
@@ -443,7 +468,7 @@ func TestEnoughRequests(t *testing.T) {
 			),
 			nodeInfo:   framework.NewNodeInfo(newResourcePod(framework.Resource{MilliCPU: 5, Memory: 5})),
 			name:       "requests + overhead does not fit for memory",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(v1.ResourceMemory)),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, getErrReason(v1.ResourceMemory)),
 			wantInsufficientResources: []InsufficientResource{
 				{ResourceName: v1.ResourceMemory, Reason: getErrReason(v1.ResourceMemory), Requested: 16, Used: 5, Capacity: 20},
 			},
@@ -462,14 +487,15 @@ func TestEnoughRequests(t *testing.T) {
 				IgnoredResourceGroups: []string{"example.com"},
 			},
 			name:       "skip checking ignored extended resource via resource groups",
-			wantStatus: framework.NewStatus(framework.Unschedulable, fmt.Sprintf("Insufficient %v", kubernetesIOResourceA)),
+			wantStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(kubernetesIOResourceA)),
 			wantInsufficientResources: []InsufficientResource{
 				{
 					ResourceName: kubernetesIOResourceA,
-					Reason:       fmt.Sprintf("Insufficient %v", kubernetesIOResourceA),
+					Reason:       getErrReason(kubernetesIOResourceA),
 					Requested:    1,
 					Used:         0,
 					Capacity:     0,
+					Unresolvable: true,
 				},
 			},
 		},
@@ -522,7 +548,7 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 5, Memory: 5})),
 			name:       "pod-level cpu resource not fit",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(v1.ResourceCPU)),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, getErrReason(v1.ResourceCPU)),
 			wantInsufficientResources: []InsufficientResource{{
 				ResourceName: v1.ResourceCPU, Reason: getErrReason(v1.ResourceCPU), Requested: 7, Used: 5, Capacity: 10},
 			},
@@ -538,7 +564,7 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 5, Memory: 19})),
 			name:       "pod-level memory resource not fit",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(v1.ResourceMemory)),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, getErrReason(v1.ResourceMemory)),
 			wantInsufficientResources: []InsufficientResource{{
 				ResourceName: v1.ResourceMemory, Reason: getErrReason(v1.ResourceMemory), Requested: 2, Used: 19, Capacity: 20},
 			},
@@ -577,9 +603,9 @@ func TestEnoughRequests(t *testing.T) {
 			),
 			nodeInfo:   framework.NewNodeInfo(),
 			name:       "pod-level hugepages resource not fit",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(hugePageResourceA)),
+			wantStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(hugePageResourceA)),
 			wantInsufficientResources: []InsufficientResource{
-				{ResourceName: hugePageResourceA, Reason: getErrReason(hugePageResourceA), Requested: 10, Used: 0, Capacity: 5},
+				{ResourceName: hugePageResourceA, Reason: getErrReason(hugePageResourceA), Requested: 10, Used: 0, Capacity: 5, Unresolvable: true},
 			},
 		},
 		{
@@ -595,16 +621,93 @@ func TestEnoughRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 5, Memory: 19})),
 			name:       "one pod-level cpu resource fits and all init and non-init containers resources fit",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(v1.ResourceMemory)),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, getErrReason(v1.ResourceMemory)),
 			wantInsufficientResources: []InsufficientResource{{
 				ResourceName: v1.ResourceMemory, Reason: getErrReason(v1.ResourceMemory), Requested: 2, Used: 19, Capacity: 20},
 			},
+		},
+		{
+			draExtendedResourceEnabled: true,
+			pod:                        newResourcePod(framework.Resource{ScalarResources: map[v1.ResourceName]int64{extendedResourceA: 1}}),
+			nodeInfo:                   framework.NewNodeInfo(newResourcePod(framework.Resource{})),
+			name:                       "extended resource backed by device plugin",
+			wantInsufficientResources:  []InsufficientResource{},
+		},
+		{
+			draExtendedResourceEnabled: true,
+			pod: newResourcePod(
+				framework.Resource{MilliCPU: 1, Memory: 1, ScalarResources: map[v1.ResourceName]int64{extendedResourceDRA: 1}}),
+			nodeInfo: framework.NewNodeInfo(newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0})),
+			name:     "extended resource backed by DRA",
+			// When DRAExtendedResource is enabled and there's a matching DeviceClass,
+			// the noderesources plugin delegates to DRA instead of reporting insufficient resources.
+			wantInsufficientResources: []InsufficientResource{},
+		},
+		{
+			draExtendedResourceEnabled: true,
+			nilDRAManager:              true,
+			pod: newResourcePod(
+				framework.Resource{MilliCPU: 1, Memory: 1, ScalarResources: map[v1.ResourceName]int64{extendedResourceA: 1}}),
+			nodeInfo: framework.NewNodeInfo(newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0})),
+			name:     "extended resource backed by DRA, nil draManager",
+			// When DRAExtendedResource is enabled but draManager is nil (e.g., kubelet path),
+			// the noderesources plugin delegates to DRA instead of reporting insufficient resources.
+			wantInsufficientResources: []InsufficientResource{},
+		},
+		{
+			draExtendedResourceEnabled: false,
+			pod: newResourcePod(
+				framework.Resource{MilliCPU: 1, Memory: 1, ScalarResources: map[v1.ResourceName]int64{extendedResourceDRA: 1}}),
+			nodeInfo:   framework.NewNodeInfo(newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0})),
+			name:       "extended resource backed by DRA not enabled",
+			wantStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(extendedResourceDRA)),
+			wantInsufficientResources: []InsufficientResource{
+				{
+					ResourceName: "extended.resource.dra.io/something",
+					Reason:       "Insufficient extended.resource.dra.io/something",
+					Requested:    1,
+					Unresolvable: true,
+				},
+			},
+		},
+		{
+			draExtendedResourceEnabled: true,
+			pod: newResourcePod(
+				framework.Resource{MilliCPU: 1, Memory: 1, ScalarResources: map[v1.ResourceName]int64{extendedResourceB: 1}}),
+			nodeInfo:   framework.NewNodeInfo(newResourcePod(framework.Resource{MilliCPU: 0, Memory: 0})),
+			name:       "extended resource NOT backed by DRA",
+			wantStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(extendedResourceB)),
+			wantInsufficientResources: []InsufficientResource{
+				{
+					ResourceName: "example.com/bbb",
+					Reason:       "Insufficient example.com/bbb",
+					Requested:    1,
+					Unresolvable: true,
+				},
+			},
+		},
+		{
+			draExtendedResourceEnabled: true,
+			pod: newResourcePod(
+				framework.Resource{ScalarResources: map[v1.ResourceName]int64{extendedResourceDRA: 1}}),
+			nodeInfo:                  framework.NewNodeInfo(newResourcePod(framework.Resource{ScalarResources: map[v1.ResourceName]int64{extendedResourceDRA: 0}})),
+			name:                      "extended resource was backed by Device Plugin (Allocatable: 0)",
+			wantInsufficientResources: []InsufficientResource{},
+		},
+		{
+			draExtendedResourceEnabled: true,
+			pod: newResourcePod(
+				framework.Resource{ScalarResources: map[v1.ResourceName]int64{extendedResourceA: 1}}),
+			nodeInfo:                  framework.NewNodeInfo(newResourcePod(framework.Resource{ScalarResources: map[v1.ResourceName]int64{extendedResourceA: 0}})),
+			name:                      "extended resource was backed by Device Plugin (Allocatable: 0), global cache",
+			wantInsufficientResources: []InsufficientResource{},
 		},
 	}
 
 	for _, test := range enoughPodsTests {
 		t.Run(test.name, func(t *testing.T) {
 
+			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.DRAExtendedResource, test.draExtendedResourceEnabled)
 			node := v1.Node{Status: v1.NodeStatus{Capacity: makeResources(10, 20, 32, 5, 20, 5), Allocatable: makeAllocatableResources(10, 20, 32, 5, 20, 5)}}
 			test.nodeInfo.SetNode(&node)
 
@@ -612,25 +715,52 @@ func TestEnoughRequests(t *testing.T) {
 				test.args.ScoringStrategy = defaultScoringStrategy
 			}
 
-			_, ctx := ktesting.NewTestContext(t)
+			logger, ctx := ktesting.NewTestContext(t)
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
-			p, err := NewFit(ctx, &test.args, nil, plfeature.Features{EnablePodLevelResources: test.podLevelResourcesEnabled})
+
+			client := fake.NewSimpleClientset(deviceClassWithExtendResourceName)
+			informerFactory := informers.NewSharedInformerFactory(client, 0)
+			claimsCache := assumecache.NewAssumeCache(logger, informerFactory.Resource().V1().ResourceClaims().Informer(), "resource claim", "", nil)
+			draManager := dynamicresources.NewDRAManager(ctx, claimsCache, nil, informerFactory)
+			if test.draExtendedResourceEnabled {
+				cache := draManager.DeviceClassResolver().(*extendedresourcecache.ExtendedResourceCache)
+				if _, err := informerFactory.Resource().V1().DeviceClasses().Informer().AddEventHandler(cache); err != nil {
+					logger.Error(err, "failed to add device class informer event handler")
+				}
+			}
+			informerFactory.Start(ctx.Done())
+			t.Cleanup(func() {
+				// Now we can wait for all goroutines to stop.
+				informerFactory.Shutdown()
+			})
+			informerFactory.WaitForCacheSync(ctx.Done())
+			runOpts := []runtime.Option{
+				runtime.WithSharedDRAManager(draManager),
+			}
+			fh, _ := runtime.NewFramework(ctx, nil, nil, runOpts...)
+			p, err := NewFit(ctx, &test.args, fh, plfeature.Features{EnablePodLevelResources: test.podLevelResourcesEnabled, EnableDRAExtendedResource: test.draExtendedResourceEnabled})
 			if err != nil {
 				t.Fatal(err)
 			}
 			cycleState := framework.NewCycleState()
-			_, preFilterStatus := p.(framework.PreFilterPlugin).PreFilter(ctx, cycleState, test.pod, nil)
+			_, preFilterStatus := p.(fwk.PreFilterPlugin).PreFilter(ctx, cycleState, test.pod, nil)
 			if !preFilterStatus.IsSuccess() {
 				t.Errorf("prefilter failed with status: %v", preFilterStatus)
 			}
 
-			gotStatus := p.(framework.FilterPlugin).Filter(ctx, cycleState, test.pod, test.nodeInfo)
+			gotStatus := p.(fwk.FilterPlugin).Filter(ctx, cycleState, test.pod, test.nodeInfo)
 			if diff := cmp.Diff(test.wantStatus, gotStatus); diff != "" {
 				t.Errorf("status does not match (-want,+got):\n%s", diff)
 			}
 
-			gotInsufficientResources := fitsRequest(computePodResourceRequest(test.pod, ResourceRequestsOptions{EnablePodLevelResources: test.podLevelResourcesEnabled}), test.nodeInfo, p.(*Fit).ignoredResources, p.(*Fit).ignoredResourceGroups)
+			opts := ResourceRequestsOptions{EnablePodLevelResources: test.podLevelResourcesEnabled, EnableDRAExtendedResource: test.draExtendedResourceEnabled}
+			state := computePodResourceRequest(test.pod, opts)
+			var testDRAManager fwk.SharedDRAManager
+			if !test.nilDRAManager {
+				testDRAManager = draManager
+			}
+			gotInsufficientResources := fitsRequest(state, test.nodeInfo, p.(*Fit).ignoredResources, p.(*Fit).ignoredResourceGroups, testDRAManager, opts)
 			if diff := cmp.Diff(test.wantInsufficientResources, gotInsufficientResources); diff != "" {
 				t.Errorf("insufficient resources do not match (-want,+got):\n%s", diff)
 			}
@@ -651,8 +781,8 @@ func TestPreFilterDisabled(t *testing.T) {
 		t.Fatal(err)
 	}
 	cycleState := framework.NewCycleState()
-	gotStatus := p.(framework.FilterPlugin).Filter(ctx, cycleState, pod, nodeInfo)
-	wantStatus := framework.AsStatus(framework.ErrNotFound)
+	gotStatus := p.(fwk.FilterPlugin).Filter(ctx, cycleState, pod, nodeInfo)
+	wantStatus := fwk.AsStatus(fwk.ErrNotFound)
 	if diff := cmp.Diff(wantStatus, gotStatus); diff != "" {
 		t.Errorf("status does not match (-want,+got):\n%s", diff)
 	}
@@ -664,31 +794,31 @@ func TestNotEnoughRequests(t *testing.T) {
 		nodeInfo   *framework.NodeInfo
 		fits       bool
 		name       string
-		wantStatus *framework.Status
+		wantStatus *fwk.Status
 	}{
 		{
 			pod:        &v1.Pod{},
 			nodeInfo:   framework.NewNodeInfo(newResourcePod(framework.Resource{MilliCPU: 10, Memory: 20})),
 			name:       "even without specified resources, predicate fails when there's no space for additional pod",
-			wantStatus: framework.NewStatus(framework.Unschedulable, "Too many pods"),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, "Too many pods"),
 		},
 		{
 			pod:        newResourcePod(framework.Resource{MilliCPU: 1, Memory: 1}),
 			nodeInfo:   framework.NewNodeInfo(newResourcePod(framework.Resource{MilliCPU: 5, Memory: 5})),
 			name:       "even if both resources fit, predicate fails when there's no space for additional pod",
-			wantStatus: framework.NewStatus(framework.Unschedulable, "Too many pods"),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, "Too many pods"),
 		},
 		{
 			pod:        newResourcePod(framework.Resource{MilliCPU: 5, Memory: 1}),
 			nodeInfo:   framework.NewNodeInfo(newResourcePod(framework.Resource{MilliCPU: 5, Memory: 19})),
 			name:       "even for equal edge case, predicate fails when there's no space for additional pod",
-			wantStatus: framework.NewStatus(framework.Unschedulable, "Too many pods"),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, "Too many pods"),
 		},
 		{
 			pod:        newResourceInitPod(newResourcePod(framework.Resource{MilliCPU: 5, Memory: 1}), framework.Resource{MilliCPU: 5, Memory: 1}),
 			nodeInfo:   framework.NewNodeInfo(newResourcePod(framework.Resource{MilliCPU: 5, Memory: 19})),
 			name:       "even for equal edge case, predicate fails when there's no space for additional pod due to init container",
-			wantStatus: framework.NewStatus(framework.Unschedulable, "Too many pods"),
+			wantStatus: fwk.NewStatus(fwk.Unschedulable, "Too many pods"),
 		},
 	}
 	for _, test := range notEnoughPodsTests {
@@ -704,12 +834,12 @@ func TestNotEnoughRequests(t *testing.T) {
 				t.Fatal(err)
 			}
 			cycleState := framework.NewCycleState()
-			_, preFilterStatus := p.(framework.PreFilterPlugin).PreFilter(ctx, cycleState, test.pod, nil)
+			_, preFilterStatus := p.(fwk.PreFilterPlugin).PreFilter(ctx, cycleState, test.pod, nil)
 			if !preFilterStatus.IsSuccess() {
 				t.Errorf("prefilter failed with status: %v", preFilterStatus)
 			}
 
-			gotStatus := p.(framework.FilterPlugin).Filter(ctx, cycleState, test.pod, test.nodeInfo)
+			gotStatus := p.(fwk.FilterPlugin).Filter(ctx, cycleState, test.pod, test.nodeInfo)
 			if diff := cmp.Diff(test.wantStatus, gotStatus); diff != "" {
 				t.Errorf("status does not match (-want,+got):\n%s", diff)
 			}
@@ -723,7 +853,7 @@ func TestStorageRequests(t *testing.T) {
 		pod        *v1.Pod
 		nodeInfo   *framework.NodeInfo
 		name       string
-		wantStatus *framework.Status
+		wantStatus *fwk.Status
 	}{
 		{
 			pod: newResourcePod(framework.Resource{MilliCPU: 1, Memory: 1}),
@@ -736,7 +866,7 @@ func TestStorageRequests(t *testing.T) {
 			nodeInfo: framework.NewNodeInfo(
 				newResourcePod(framework.Resource{MilliCPU: 2, Memory: 2})),
 			name:       "storage ephemeral local storage request exceeds allocatable",
-			wantStatus: framework.NewStatus(framework.Unschedulable, getErrReason(v1.ResourceEphemeralStorage)),
+			wantStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(v1.ResourceEphemeralStorage)),
 		},
 		{
 			pod: newResourceInitPod(newResourcePod(framework.Resource{EphemeralStorage: 5})),
@@ -765,12 +895,12 @@ func TestStorageRequests(t *testing.T) {
 				t.Fatal(err)
 			}
 			cycleState := framework.NewCycleState()
-			_, preFilterStatus := p.(framework.PreFilterPlugin).PreFilter(ctx, cycleState, test.pod, nil)
+			_, preFilterStatus := p.(fwk.PreFilterPlugin).PreFilter(ctx, cycleState, test.pod, nil)
 			if !preFilterStatus.IsSuccess() {
 				t.Errorf("prefilter failed with status: %v", preFilterStatus)
 			}
 
-			gotStatus := p.(framework.FilterPlugin).Filter(ctx, cycleState, test.pod, test.nodeInfo)
+			gotStatus := p.(fwk.FilterPlugin).Filter(ctx, cycleState, test.pod, test.nodeInfo)
 			if diff := cmp.Diff(test.wantStatus, gotStatus); diff != "" {
 				t.Errorf("status does not match (-want,+got):\n%s", diff)
 			}
@@ -820,8 +950,8 @@ func TestRestartableInitContainers(t *testing.T) {
 		name                    string
 		pod                     *v1.Pod
 		enableSidecarContainers bool
-		wantPreFilterStatus     *framework.Status
-		wantFilterStatus        *framework.Status
+		wantPreFilterStatus     *fwk.Status
+		wantFilterStatus        *fwk.Status
 	}{
 		{
 			name: "allow pod without restartable init containers if sidecar containers is disabled",
@@ -830,7 +960,7 @@ func TestRestartableInitContainers(t *testing.T) {
 		{
 			name:                "not allow pod with restartable init containers if sidecar containers is disabled",
 			pod:                 newPodWithRestartableInitContainers(nil, nil),
-			wantPreFilterStatus: framework.NewStatus(framework.UnschedulableAndUnresolvable, "Pod has a restartable init container and the SidecarContainers feature is disabled"),
+			wantPreFilterStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, "Pod has a restartable init container and the SidecarContainers feature is disabled"),
 		},
 		{
 			name:                    "allow pod without restartable init containers if sidecar containers is enabled",
@@ -857,7 +987,7 @@ func TestRestartableInitContainers(t *testing.T) {
 				&v1.ResourceList{v1.ResourceCPU: *resource.NewMilliQuantity(1, resource.DecimalSI)},
 				&v1.ResourceList{v1.ResourceCPU: *resource.NewMilliQuantity(2, resource.DecimalSI)},
 			),
-			wantFilterStatus: framework.NewStatus(framework.Unschedulable, "Insufficient cpu"),
+			wantFilterStatus: fwk.NewStatus(fwk.UnschedulableAndUnresolvable, getErrReason(v1.ResourceCPU)),
 		},
 	}
 
@@ -875,7 +1005,7 @@ func TestRestartableInitContainers(t *testing.T) {
 				t.Fatal(err)
 			}
 			cycleState := framework.NewCycleState()
-			_, preFilterStatus := p.(framework.PreFilterPlugin).PreFilter(ctx, cycleState, test.pod, nil)
+			_, preFilterStatus := p.(fwk.PreFilterPlugin).PreFilter(ctx, cycleState, test.pod, nil)
 			if diff := cmp.Diff(test.wantPreFilterStatus, preFilterStatus); diff != "" {
 				t.Error("prefilter status does not match (-expected +actual):\n", diff)
 			}
@@ -883,7 +1013,7 @@ func TestRestartableInitContainers(t *testing.T) {
 				return
 			}
 
-			filterStatus := p.(framework.FilterPlugin).Filter(ctx, cycleState, test.pod, nodeInfo)
+			filterStatus := p.(fwk.FilterPlugin).Filter(ctx, cycleState, test.pod, nodeInfo)
 			if diff := cmp.Diff(test.wantFilterStatus, filterStatus); diff != "" {
 				t.Error("filter status does not match (-expected +actual):\n", diff)
 			}
@@ -898,7 +1028,7 @@ func TestFitScore(t *testing.T) {
 		requestedPod         *v1.Pod
 		nodes                []*v1.Node
 		existingPods         []*v1.Pod
-		expectedPriorities   framework.NodeScoreList
+		expectedPriorities   fwk.NodeScoreList
 		nodeResourcesFitArgs config.NodeResourcesFitArgs
 		runPreScore          bool
 	}{
@@ -915,7 +1045,7 @@ func TestFitScore(t *testing.T) {
 				st.MakePod().Node("node1").Req(map[v1.ResourceName]string{"cpu": "2000", "memory": "4000"}).Obj(),
 				st.MakePod().Node("node2").Req(map[v1.ResourceName]string{"cpu": "1000", "memory": "2000"}).Obj(),
 			},
-			expectedPriorities: []framework.NodeScore{{Name: "node1", Score: 10}, {Name: "node2", Score: 32}},
+			expectedPriorities: []fwk.NodeScore{{Name: "node1", Score: 10}, {Name: "node2", Score: 32}},
 			nodeResourcesFitArgs: config.NodeResourcesFitArgs{
 				ScoringStrategy: &config.ScoringStrategy{
 					Type:      config.RequestedToCapacityRatio,
@@ -943,7 +1073,7 @@ func TestFitScore(t *testing.T) {
 				st.MakePod().Node("node1").Req(map[v1.ResourceName]string{"cpu": "2000", "memory": "4000"}).Obj(),
 				st.MakePod().Node("node2").Req(map[v1.ResourceName]string{"cpu": "1000", "memory": "2000"}).Obj(),
 			},
-			expectedPriorities: []framework.NodeScore{{Name: "node1", Score: 95}, {Name: "node2", Score: 68}},
+			expectedPriorities: []fwk.NodeScore{{Name: "node1", Score: 95}, {Name: "node2", Score: 68}},
 			nodeResourcesFitArgs: config.NodeResourcesFitArgs{
 				ScoringStrategy: &config.ScoringStrategy{
 					Type:      config.RequestedToCapacityRatio,
@@ -971,7 +1101,7 @@ func TestFitScore(t *testing.T) {
 				st.MakePod().Node("node1").Req(map[v1.ResourceName]string{"cpu": "2000", "memory": "4000"}).Obj(),
 				st.MakePod().Node("node2").Req(map[v1.ResourceName]string{"cpu": "1000", "memory": "2000"}).Obj(),
 			},
-			expectedPriorities: []framework.NodeScore{{Name: "node1", Score: 67}, {Name: "node2", Score: 36}},
+			expectedPriorities: []fwk.NodeScore{{Name: "node1", Score: 67}, {Name: "node2", Score: 36}},
 			nodeResourcesFitArgs: config.NodeResourcesFitArgs{
 				ScoringStrategy: &config.ScoringStrategy{
 					Type:      config.MostAllocated,
@@ -993,7 +1123,7 @@ func TestFitScore(t *testing.T) {
 				st.MakePod().Node("node1").Req(map[v1.ResourceName]string{"cpu": "2000", "memory": "4000"}).Obj(),
 				st.MakePod().Node("node2").Req(map[v1.ResourceName]string{"cpu": "1000", "memory": "2000"}).Obj(),
 			},
-			expectedPriorities: []framework.NodeScore{{Name: "node1", Score: 32}, {Name: "node2", Score: 63}},
+			expectedPriorities: []fwk.NodeScore{{Name: "node1", Score: 32}, {Name: "node2", Score: 63}},
 			nodeResourcesFitArgs: config.NodeResourcesFitArgs{
 				ScoringStrategy: &config.ScoringStrategy{
 					Type:      config.LeastAllocated,
@@ -1015,7 +1145,7 @@ func TestFitScore(t *testing.T) {
 				st.MakePod().Node("node1").Req(map[v1.ResourceName]string{"cpu": "2000", "memory": "4000"}).Obj(),
 				st.MakePod().Node("node2").Req(map[v1.ResourceName]string{"cpu": "1000", "memory": "2000"}).Obj(),
 			},
-			expectedPriorities: []framework.NodeScore{{Name: "node1", Score: 10}, {Name: "node2", Score: 32}},
+			expectedPriorities: []fwk.NodeScore{{Name: "node1", Score: 10}, {Name: "node2", Score: 32}},
 			nodeResourcesFitArgs: config.NodeResourcesFitArgs{
 				ScoringStrategy: &config.ScoringStrategy{
 					Type:      config.RequestedToCapacityRatio,
@@ -1043,7 +1173,7 @@ func TestFitScore(t *testing.T) {
 				st.MakePod().Node("node1").Req(map[v1.ResourceName]string{"cpu": "2000", "memory": "4000"}).Obj(),
 				st.MakePod().Node("node2").Req(map[v1.ResourceName]string{"cpu": "1000", "memory": "2000"}).Obj(),
 			},
-			expectedPriorities: []framework.NodeScore{{Name: "node1", Score: 67}, {Name: "node2", Score: 36}},
+			expectedPriorities: []fwk.NodeScore{{Name: "node1", Score: 67}, {Name: "node2", Score: 36}},
 			nodeResourcesFitArgs: config.NodeResourcesFitArgs{
 				ScoringStrategy: &config.ScoringStrategy{
 					Type:      config.MostAllocated,
@@ -1065,7 +1195,7 @@ func TestFitScore(t *testing.T) {
 				st.MakePod().Node("node1").Req(map[v1.ResourceName]string{"cpu": "2000", "memory": "4000"}).Obj(),
 				st.MakePod().Node("node2").Req(map[v1.ResourceName]string{"cpu": "1000", "memory": "2000"}).Obj(),
 			},
-			expectedPriorities: []framework.NodeScore{{Name: "node1", Score: 32}, {Name: "node2", Score: 63}},
+			expectedPriorities: []fwk.NodeScore{{Name: "node1", Score: 32}, {Name: "node2", Score: 63}},
 			nodeResourcesFitArgs: config.NodeResourcesFitArgs{
 				ScoringStrategy: &config.ScoringStrategy{
 					Type:      config.LeastAllocated,
@@ -1088,7 +1218,7 @@ func TestFitScore(t *testing.T) {
 					SidecarReq(map[v1.ResourceName]string{"cpu": "1000", "memory": "2000"}).Obj(),
 				st.MakePod().Node("node2").Req(map[v1.ResourceName]string{"cpu": "1000", "memory": "2000"}).Obj(),
 			},
-			expectedPriorities: []framework.NodeScore{{Name: "node1", Score: 67}, {Name: "node2", Score: 45}},
+			expectedPriorities: []fwk.NodeScore{{Name: "node1", Score: 67}, {Name: "node2", Score: 45}},
 			nodeResourcesFitArgs: config.NodeResourcesFitArgs{
 				ScoringStrategy: &config.ScoringStrategy{
 					Type:      config.MostAllocated,
@@ -1111,7 +1241,7 @@ func TestFitScore(t *testing.T) {
 					SidecarReq(map[v1.ResourceName]string{"cpu": "1000", "memory": "2000"}).Obj(),
 				st.MakePod().Node("node2").Req(map[v1.ResourceName]string{"cpu": "1000", "memory": "2000"}).Obj(),
 			},
-			expectedPriorities: []framework.NodeScore{{Name: "node1", Score: 32}, {Name: "node2", Score: 55}},
+			expectedPriorities: []fwk.NodeScore{{Name: "node1", Score: 32}, {Name: "node2", Score: 55}},
 			nodeResourcesFitArgs: config.NodeResourcesFitArgs{
 				ScoringStrategy: &config.ScoringStrategy{
 					Type:      config.LeastAllocated,
@@ -1137,10 +1267,10 @@ func TestFitScore(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			var gotPriorities framework.NodeScoreList
+			var gotPriorities fwk.NodeScoreList
 			for _, n := range test.nodes {
 				if test.runPreScore {
-					status := p.(framework.PreScorePlugin).PreScore(ctx, state, test.requestedPod, tf.BuildNodeInfos(test.nodes))
+					status := p.(fwk.PreScorePlugin).PreScore(ctx, state, test.requestedPod, tf.BuildNodeInfos(test.nodes))
 					if !status.IsSuccess() {
 						t.Errorf("PreScore is expected to return success, but didn't. Got status: %v", status)
 					}
@@ -1149,11 +1279,11 @@ func TestFitScore(t *testing.T) {
 				if err != nil {
 					t.Errorf("failed to get node %q from snapshot: %v", n.Name, err)
 				}
-				score, status := p.(framework.ScorePlugin).Score(ctx, state, test.requestedPod, nodeInfo)
+				score, status := p.(fwk.ScorePlugin).Score(ctx, state, test.requestedPod, nodeInfo)
 				if !status.IsSuccess() {
 					t.Errorf("Score is expected to return success, but didn't. Got status: %v", status)
 				}
-				gotPriorities = append(gotPriorities, framework.NodeScore{Name: n.Name, Score: score})
+				gotPriorities = append(gotPriorities, fwk.NodeScore{Name: n.Name, Score: score})
 			}
 
 			if diff := cmp.Diff(test.expectedPriorities, gotPriorities); diff != "" {
@@ -1287,37 +1417,55 @@ func TestEventsToRegister(t *testing.T) {
 		name                            string
 		enableInPlacePodVerticalScaling bool
 		enableSchedulingQueueHint       bool
-		expectedClusterEvents           []framework.ClusterEventWithHint
+		enableDRAExtendedResource       bool
+		expectedClusterEvents           []fwk.ClusterEventWithHint
 	}{
 		{
 			name:                            "Register events with InPlacePodVerticalScaling feature enabled",
 			enableInPlacePodVerticalScaling: true,
-			expectedClusterEvents: []framework.ClusterEventWithHint{
-				{Event: framework.ClusterEvent{Resource: "Pod", ActionType: framework.UpdatePodScaleDown | framework.Delete}},
-				{Event: framework.ClusterEvent{Resource: "Node", ActionType: framework.Add | framework.UpdateNodeAllocatable | framework.UpdateNodeTaint | framework.UpdateNodeLabel}},
+			expectedClusterEvents: []fwk.ClusterEventWithHint{
+				{Event: fwk.ClusterEvent{Resource: "Pod", ActionType: fwk.UpdatePodScaleDown | fwk.Delete}},
+				{Event: fwk.ClusterEvent{Resource: "Node", ActionType: fwk.Add | fwk.UpdateNodeAllocatable | fwk.UpdateNodeTaint | fwk.UpdateNodeLabel}},
 			},
 		},
 		{
 			name:                      "Register events with SchedulingQueueHint feature enabled",
 			enableSchedulingQueueHint: true,
-			expectedClusterEvents: []framework.ClusterEventWithHint{
-				{Event: framework.ClusterEvent{Resource: "Pod", ActionType: framework.Delete}},
-				{Event: framework.ClusterEvent{Resource: "Node", ActionType: framework.Add | framework.UpdateNodeAllocatable}},
+			expectedClusterEvents: []fwk.ClusterEventWithHint{
+				{Event: fwk.ClusterEvent{Resource: "Pod", ActionType: fwk.Delete}},
+				{Event: fwk.ClusterEvent{Resource: "Node", ActionType: fwk.Add | fwk.UpdateNodeAllocatable}},
 			},
 		},
 		{
 			name:                            "Register events with InPlacePodVerticalScaling feature disabled",
 			enableInPlacePodVerticalScaling: false,
-			expectedClusterEvents: []framework.ClusterEventWithHint{
-				{Event: framework.ClusterEvent{Resource: "Pod", ActionType: framework.Delete}},
-				{Event: framework.ClusterEvent{Resource: "Node", ActionType: framework.Add | framework.UpdateNodeAllocatable | framework.UpdateNodeTaint | framework.UpdateNodeLabel}},
+			expectedClusterEvents: []fwk.ClusterEventWithHint{
+				{Event: fwk.ClusterEvent{Resource: "Pod", ActionType: fwk.Delete}},
+				{Event: fwk.ClusterEvent{Resource: "Node", ActionType: fwk.Add | fwk.UpdateNodeAllocatable | fwk.UpdateNodeTaint | fwk.UpdateNodeLabel}},
+			},
+		},
+		{
+			name:                      "Register events with DRAExtendedResource feature enabled",
+			enableDRAExtendedResource: true,
+			expectedClusterEvents: []fwk.ClusterEventWithHint{
+				{Event: fwk.ClusterEvent{Resource: "Pod", ActionType: fwk.Delete}},
+				{Event: fwk.ClusterEvent{Resource: "Node", ActionType: fwk.Add | fwk.UpdateNodeAllocatable | fwk.UpdateNodeTaint | fwk.UpdateNodeLabel}},
+				{Event: fwk.ClusterEvent{Resource: fwk.DeviceClass, ActionType: fwk.Add | fwk.Update}},
+			},
+		},
+		{
+			name:                      "Register events with DRAExtendedResource feature disabled",
+			enableDRAExtendedResource: false,
+			expectedClusterEvents: []fwk.ClusterEventWithHint{
+				{Event: fwk.ClusterEvent{Resource: "Pod", ActionType: fwk.Delete}},
+				{Event: fwk.ClusterEvent{Resource: "Node", ActionType: fwk.Add | fwk.UpdateNodeAllocatable | fwk.UpdateNodeTaint | fwk.UpdateNodeLabel}},
 			},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			fp := &Fit{enableInPlacePodVerticalScaling: test.enableInPlacePodVerticalScaling, enableSchedulingQueueHint: test.enableSchedulingQueueHint}
+			fp := &Fit{enableInPlacePodVerticalScaling: test.enableInPlacePodVerticalScaling, enableSchedulingQueueHint: test.enableSchedulingQueueHint, enableDRAExtendedResource: test.enableDRAExtendedResource}
 			_, ctx := ktesting.NewTestContext(t)
 			actualClusterEvents, err := fp.EventsToRegister(ctx)
 			if err != nil {
@@ -1338,34 +1486,34 @@ func Test_isSchedulableAfterPodChange(t *testing.T) {
 		pod                             *v1.Pod
 		oldObj, newObj                  interface{}
 		enableInPlacePodVerticalScaling bool
-		expectedHint                    framework.QueueingHint
+		expectedHint                    fwk.QueueingHint
 		expectedErr                     bool
 	}{
 		"backoff-wrong-old-object": {
 			pod:                             &v1.Pod{},
 			oldObj:                          "not-a-pod",
 			enableInPlacePodVerticalScaling: true,
-			expectedHint:                    framework.Queue,
+			expectedHint:                    fwk.Queue,
 			expectedErr:                     true,
 		},
 		"backoff-wrong-new-object": {
 			pod:                             &v1.Pod{},
 			newObj:                          "not-a-pod",
 			enableInPlacePodVerticalScaling: true,
-			expectedHint:                    framework.Queue,
+			expectedHint:                    fwk.Queue,
 			expectedErr:                     true,
 		},
 		"queue-on-other-pod-deleted": {
 			pod:                             st.MakePod().Name("pod1").Req(map[v1.ResourceName]string{v1.ResourceCPU: "1"}).Obj(),
 			oldObj:                          st.MakePod().Name("pod2").Req(map[v1.ResourceName]string{v1.ResourceCPU: "1"}).Node("fake").Obj(),
 			enableInPlacePodVerticalScaling: true,
-			expectedHint:                    framework.Queue,
+			expectedHint:                    fwk.Queue,
 		},
 		"skip-queue-on-unscheduled-pod-deleted": {
 			pod:                             &v1.Pod{},
 			oldObj:                          &v1.Pod{},
 			enableInPlacePodVerticalScaling: true,
-			expectedHint:                    framework.QueueSkip,
+			expectedHint:                    fwk.QueueSkip,
 		},
 		"skip-queue-on-disable-inplace-pod-vertical-scaling": {
 			pod:    st.MakePod().Name("pod1").Req(map[v1.ResourceName]string{v1.ResourceCPU: "1"}).Obj(),
@@ -1373,35 +1521,56 @@ func Test_isSchedulableAfterPodChange(t *testing.T) {
 			// (Actually, this scale down cannot happen when InPlacePodVerticalScaling is disabled.)
 			newObj:                          st.MakePod().Name("pod2").Req(map[v1.ResourceName]string{v1.ResourceCPU: "1"}).Node("fake").Obj(),
 			enableInPlacePodVerticalScaling: false,
-			expectedHint:                    framework.QueueSkip,
+			expectedHint:                    fwk.QueueSkip,
 		},
 		"skip-queue-on-other-unscheduled-pod": {
 			pod:                             st.MakePod().Name("pod1").UID("pod1").Req(map[v1.ResourceName]string{v1.ResourceCPU: "1"}).UID("uid0").Obj(),
 			oldObj:                          st.MakePod().Name("pod2").UID("pod2").Req(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).UID("uid1").Obj(),
 			newObj:                          st.MakePod().Name("pod2").UID("pod2").Req(map[v1.ResourceName]string{v1.ResourceCPU: "1"}).UID("uid1").Obj(),
 			enableInPlacePodVerticalScaling: true,
-			expectedHint:                    framework.QueueSkip,
+			expectedHint:                    fwk.QueueSkip,
 		},
 		"skip-queue-on-other-pod-unrelated-resource-scaled-down": {
 			pod:                             st.MakePod().Name("pod1").UID("pod1").Req(map[v1.ResourceName]string{v1.ResourceCPU: "1"}).Obj(),
 			oldObj:                          st.MakePod().Name("pod2").UID("pod2").Req(map[v1.ResourceName]string{v1.ResourceMemory: "2"}).Node("fake").Obj(),
 			newObj:                          st.MakePod().Name("pod2").UID("pod2").Req(map[v1.ResourceName]string{v1.ResourceMemory: "1"}).Node("fake").Obj(),
 			enableInPlacePodVerticalScaling: true,
-			expectedHint:                    framework.QueueSkip,
+			expectedHint:                    fwk.QueueSkip,
+		},
+		"skip-queue-on-other-pod-unrelated-pod-level-resource-scaled-down": {
+			pod:                             st.MakePod().Name("pod1").UID("pod1").PodLevelResourceRequests(map[v1.ResourceName]string{v1.ResourceCPU: "1"}).Obj(),
+			oldObj:                          st.MakePod().Name("pod2").UID("pod2").PodLevelResourceRequests(map[v1.ResourceName]string{v1.ResourceMemory: "2"}).Node("fake").Obj(),
+			newObj:                          st.MakePod().Name("pod2").UID("pod2").PodLevelResourceRequests(map[v1.ResourceName]string{v1.ResourceMemory: "1"}).Node("fake").Obj(),
+			enableInPlacePodVerticalScaling: true,
+			expectedHint:                    fwk.QueueSkip,
 		},
 		"queue-on-other-pod-some-resource-scale-down": {
 			pod:                             st.MakePod().Name("pod1").UID("pod1").Req(map[v1.ResourceName]string{v1.ResourceCPU: "1"}).Obj(),
 			oldObj:                          st.MakePod().Name("pod2").UID("pod2").Req(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Node("fake").Obj(),
 			newObj:                          st.MakePod().Name("pod2").UID("pod2").Req(map[v1.ResourceName]string{v1.ResourceCPU: "1"}).Node("fake").Obj(),
 			enableInPlacePodVerticalScaling: true,
-			expectedHint:                    framework.Queue,
+			expectedHint:                    fwk.Queue,
+		},
+		"queue-on-other-pod-some-pod-level-resource-scale-down": {
+			pod:                             st.MakePod().Name("pod1").UID("pod1").PodLevelResourceRequests(map[v1.ResourceName]string{v1.ResourceCPU: "1"}).Obj(),
+			oldObj:                          st.MakePod().Name("pod2").UID("pod2").PodLevelResourceRequests(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Node("fake").Obj(),
+			newObj:                          st.MakePod().Name("pod2").UID("pod2").PodLevelResourceRequests(map[v1.ResourceName]string{v1.ResourceCPU: "1"}).Node("fake").Obj(),
+			enableInPlacePodVerticalScaling: true,
+			expectedHint:                    fwk.Queue,
 		},
 		"queue-on-target-pod-some-resource-scale-down": {
 			pod:                             st.MakePod().Name("pod1").UID("pod1").Req(map[v1.ResourceName]string{v1.ResourceCPU: "1"}).Obj(),
 			oldObj:                          st.MakePod().Name("pod1").UID("pod1").Req(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Obj(),
 			newObj:                          st.MakePod().Name("pod1").UID("pod1").Req(map[v1.ResourceName]string{v1.ResourceCPU: "1"}).Obj(),
 			enableInPlacePodVerticalScaling: true,
-			expectedHint:                    framework.Queue,
+			expectedHint:                    fwk.Queue,
+		},
+		"queue-on-target-pod-some-pod-level-resource-scale-down": {
+			pod:                             st.MakePod().Name("pod1").UID("pod1").PodLevelResourceRequests(map[v1.ResourceName]string{v1.ResourceCPU: "1"}).Obj(),
+			oldObj:                          st.MakePod().Name("pod1").UID("pod1").PodLevelResourceRequests(map[v1.ResourceName]string{v1.ResourceCPU: "2"}).Obj(),
+			newObj:                          st.MakePod().Name("pod1").UID("pod1").PodLevelResourceRequests(map[v1.ResourceName]string{v1.ResourceCPU: "1"}).Obj(),
+			enableInPlacePodVerticalScaling: true,
+			expectedHint:                    fwk.Queue,
 		},
 	}
 
@@ -1429,20 +1598,20 @@ func Test_isSchedulableAfterNodeChange(t *testing.T) {
 	testcases := map[string]struct {
 		pod            *v1.Pod
 		oldObj, newObj interface{}
-		expectedHint   framework.QueueingHint
+		expectedHint   fwk.QueueingHint
 		expectedErr    bool
 	}{
 		"backoff-wrong-new-object": {
 			pod:          &v1.Pod{},
 			newObj:       "not-a-node",
-			expectedHint: framework.Queue,
+			expectedHint: fwk.Queue,
 			expectedErr:  true,
 		},
 		"backoff-wrong-old-object": {
 			pod:          &v1.Pod{},
 			oldObj:       "not-a-node",
 			newObj:       &v1.Node{},
-			expectedHint: framework.Queue,
+			expectedHint: fwk.Queue,
 			expectedErr:  true,
 		},
 		"skip-queue-on-node-add-without-sufficient-resources": {
@@ -1450,7 +1619,7 @@ func Test_isSchedulableAfterNodeChange(t *testing.T) {
 			newObj: st.MakeNode().Capacity(map[v1.ResourceName]string{
 				v1.ResourceMemory: "1",
 			}).Obj(),
-			expectedHint: framework.QueueSkip,
+			expectedHint: fwk.QueueSkip,
 		},
 		"skip-queue-on-node-add-without-required-resource-type": {
 			pod: newResourcePod(framework.Resource{
@@ -1459,7 +1628,7 @@ func Test_isSchedulableAfterNodeChange(t *testing.T) {
 			newObj: st.MakeNode().Capacity(map[v1.ResourceName]string{
 				extendedResourceB: "1",
 			}).Obj(),
-			expectedHint: framework.QueueSkip,
+			expectedHint: fwk.QueueSkip,
 		},
 		"queue-on-node-add-with-sufficient-resources": {
 			pod: newResourcePod(framework.Resource{
@@ -1470,7 +1639,7 @@ func Test_isSchedulableAfterNodeChange(t *testing.T) {
 				v1.ResourceMemory: "4",
 				extendedResourceA: "2",
 			}).Obj(),
-			expectedHint: framework.Queue,
+			expectedHint: fwk.Queue,
 		},
 		"skip-queue-on-node-unrelated-changes": {
 			pod: newResourcePod(framework.Resource{
@@ -1486,7 +1655,7 @@ func Test_isSchedulableAfterNodeChange(t *testing.T) {
 				extendedResourceA: "1",
 				extendedResourceB: "2",
 			}).Obj(),
-			expectedHint: framework.QueueSkip,
+			expectedHint: fwk.QueueSkip,
 		},
 		"queue-on-pod-requested-resources-increase": {
 			pod: newResourcePod(framework.Resource{
@@ -1501,7 +1670,7 @@ func Test_isSchedulableAfterNodeChange(t *testing.T) {
 				v1.ResourceMemory: "2",
 				extendedResourceA: "2",
 			}).Obj(),
-			expectedHint: framework.Queue,
+			expectedHint: fwk.Queue,
 		},
 		"skip-queue-on-node-changes-from-suitable-to-unsuitable": {
 			pod: newResourcePod(framework.Resource{
@@ -1516,7 +1685,7 @@ func Test_isSchedulableAfterNodeChange(t *testing.T) {
 				v1.ResourceMemory: "1",
 				extendedResourceA: "2",
 			}).Obj(),
-			expectedHint: framework.QueueSkip,
+			expectedHint: fwk.QueueSkip,
 		},
 		"queue-on-node-changes-from-unsuitable-to-suitable": {
 			pod: newResourcePod(framework.Resource{
@@ -1531,7 +1700,7 @@ func Test_isSchedulableAfterNodeChange(t *testing.T) {
 				v1.ResourceMemory: "4",
 				extendedResourceA: "2",
 			}).Obj(),
-			expectedHint: framework.Queue,
+			expectedHint: fwk.Queue,
 		},
 	}
 
@@ -1543,6 +1712,155 @@ func Test_isSchedulableAfterNodeChange(t *testing.T) {
 				t.Fatal(err)
 			}
 			actualHint, err := p.(*Fit).isSchedulableAfterNodeChange(logger, tc.pod, tc.oldObj, tc.newObj)
+			if tc.expectedErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedHint, actualHint)
+		})
+	}
+}
+
+func Test_isSchedulableAfterDeviceClassChange(t *testing.T) {
+	ern := "example.com/gpu"
+	testcases := map[string]struct {
+		pod            *v1.Pod
+		oldObj, newObj any
+		expectedHint   fwk.QueueingHint
+		expectedErr    bool
+	}{
+		"backoff-wrong-new-object": {
+			pod:          &v1.Pod{},
+			newObj:       "not-a-class",
+			expectedHint: fwk.Queue,
+			expectedErr:  true,
+		},
+		"backoff-wrong-old-object": {
+			pod:          &v1.Pod{},
+			oldObj:       "not-a-class",
+			newObj:       &resourceapi.DeviceClass{},
+			expectedHint: fwk.Queue,
+			expectedErr:  true,
+		},
+		"skip-queue-on-class-nil-extended-resource-name-pointer": {
+			pod: newResourcePod(framework.Resource{Memory: 2}),
+			newObj: &resourceapi.DeviceClass{
+				Spec: resourceapi.DeviceClassSpec{},
+			},
+			oldObj: &resourceapi.DeviceClass{
+				Spec: resourceapi.DeviceClassSpec{},
+			},
+			expectedHint: fwk.QueueSkip,
+		},
+		"skip-queue-on-class-same-extended-resource-name-pointer": {
+			pod: newResourcePod(framework.Resource{Memory: 2}),
+			newObj: &resourceapi.DeviceClass{
+				Spec: resourceapi.DeviceClassSpec{
+					ExtendedResourceName: &ern,
+				},
+			},
+			oldObj: &resourceapi.DeviceClass{
+				Spec: resourceapi.DeviceClassSpec{
+					ExtendedResourceName: &ern,
+				},
+			},
+			expectedHint: fwk.QueueSkip,
+		},
+		"skip-queue-on-class-same-extended-resource-name": {
+			pod: newResourcePod(framework.Resource{Memory: 2}),
+			newObj: &resourceapi.DeviceClass{
+				Spec: resourceapi.DeviceClassSpec{ExtendedResourceName: ptr.To("example.com/gpu")},
+			},
+			oldObj: &resourceapi.DeviceClass{
+				Spec: resourceapi.DeviceClassSpec{ExtendedResourceName: ptr.To("example.com/gpu")},
+			},
+			expectedHint: fwk.QueueSkip,
+		},
+		"queue-on-class-add-with-implicit-extended-resource-name": {
+			pod: newResourcePod(framework.Resource{
+				ScalarResources: map[v1.ResourceName]int64{"deviceclass.resource.kubernetes.io/gpuclass": 1},
+			}),
+			newObj: &resourceapi.DeviceClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "gpuclass",
+				},
+				Spec: resourceapi.DeviceClassSpec{ExtendedResourceName: ptr.To("example.com/gpu")},
+			},
+			expectedHint: fwk.Queue,
+		},
+		"skip-on-class-add-with-implicit-extended-resource-name-not-matching": {
+			pod: newResourcePod(framework.Resource{
+				ScalarResources: map[v1.ResourceName]int64{"deviceclass.resource.kubernetes.io/gpuclass": 1},
+			}),
+			newObj: &resourceapi.DeviceClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "myclass",
+				},
+				Spec: resourceapi.DeviceClassSpec{ExtendedResourceName: ptr.To("example.com/gpu")},
+			},
+			expectedHint: fwk.QueueSkip,
+		},
+		"skip-on-class-add-with-explicit-extended-resource-name-not-matching": {
+			pod: newResourcePod(framework.Resource{
+				ScalarResources: map[v1.ResourceName]int64{"example.com/othergpu": 1},
+			}),
+			newObj: &resourceapi.DeviceClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "myclass",
+				},
+				Spec: resourceapi.DeviceClassSpec{ExtendedResourceName: ptr.To("example.com/gpu")},
+			},
+			expectedHint: fwk.QueueSkip,
+		},
+		"skip-on-class-update-with-implicit-extended-resource-name": {
+			pod: newResourcePod(framework.Resource{
+				ScalarResources: map[v1.ResourceName]int64{"deviceclass.resource.kubernetes.io/gpuclass": 1},
+			}),
+			newObj: &resourceapi.DeviceClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "gpuclass",
+				},
+				Spec: resourceapi.DeviceClassSpec{ExtendedResourceName: ptr.To("example.com/gpu")},
+			},
+			oldObj: &resourceapi.DeviceClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "gpuclass",
+				},
+			},
+			expectedHint: fwk.QueueSkip,
+		},
+		"queue-on-class-add-with-extended-resource-name": {
+			pod: newResourcePod(framework.Resource{
+				ScalarResources: map[v1.ResourceName]int64{"example.com/gpu": 1},
+			}),
+			newObj: &resourceapi.DeviceClass{
+				Spec: resourceapi.DeviceClassSpec{ExtendedResourceName: ptr.To("example.com/gpu")},
+			},
+			expectedHint: fwk.Queue,
+		},
+		"queue-on-class-update-with-extended-resource-name": {
+			pod: newResourcePod(framework.Resource{
+				ScalarResources: map[v1.ResourceName]int64{"example.com/gpu": 1},
+			}),
+			newObj: &resourceapi.DeviceClass{
+				Spec: resourceapi.DeviceClassSpec{ExtendedResourceName: ptr.To("example.com/gpu")},
+			},
+			oldObj: &resourceapi.DeviceClass{
+				Spec: resourceapi.DeviceClassSpec{ExtendedResourceName: ptr.To("example.com/gpu1")},
+			},
+			expectedHint: fwk.Queue,
+		},
+	}
+
+	for name, tc := range testcases {
+		t.Run(name, func(t *testing.T) {
+			logger, ctx := ktesting.NewTestContext(t)
+			p, err := NewFit(ctx, &config.NodeResourcesFitArgs{ScoringStrategy: defaultScoringStrategy}, nil, plfeature.Features{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			actualHint, err := p.(*Fit).isSchedulableAfterDeviceClassEvent(logger, tc.pod, tc.oldObj, tc.newObj)
 			if tc.expectedErr {
 				require.Error(t, err)
 				return
@@ -1610,7 +1928,7 @@ func TestIsFit(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			if got := isFit(tc.pod, tc.node, ResourceRequestsOptions{tc.podLevelResourcesEnabled}); got != tc.expected {
+			if got := isFit(tc.pod, tc.node, nil, ResourceRequestsOptions{EnablePodLevelResources: tc.podLevelResourcesEnabled}); got != tc.expected {
 				t.Errorf("expected: %v, got: %v", tc.expected, got)
 			}
 		})
@@ -1619,10 +1937,11 @@ func TestIsFit(t *testing.T) {
 
 func TestHaveAnyRequestedResourcesIncreased(t *testing.T) {
 	testCases := map[string]struct {
-		pod          *v1.Pod
-		originalNode *v1.Node
-		modifiedNode *v1.Node
-		expected     bool
+		pod                        *v1.Pod
+		originalNode               *v1.Node
+		modifiedNode               *v1.Node
+		draExtendedResourceEnabled bool
+		expected                   bool
 	}{
 		"no-requested-resources": {
 			pod: newResourcePod(framework.Resource{}),
@@ -1659,6 +1978,81 @@ func TestHaveAnyRequestedResourcesIncreased(t *testing.T) {
 				extendedResourceA:           "1",
 			}).Obj(),
 			expected: true,
+		},
+		"requested-resources-dra-in-node": {
+			pod: newResourcePod(framework.Resource{
+				MilliCPU:         2,
+				Memory:           2,
+				EphemeralStorage: 2,
+				ScalarResources:  map[v1.ResourceName]int64{extendedResourceA: 2},
+			}),
+			originalNode: st.MakeNode().Capacity(map[v1.ResourceName]string{
+				v1.ResourceCPU:              "1",
+				v1.ResourceMemory:           "2",
+				v1.ResourceEphemeralStorage: "3",
+				extendedResourceA:           "4",
+			}).Obj(),
+			modifiedNode: st.MakeNode().Capacity(map[v1.ResourceName]string{
+				v1.ResourceCPU:              "1",
+				v1.ResourceMemory:           "2",
+				v1.ResourceEphemeralStorage: "1",
+				extendedResourceA:           "1",
+			}).Obj(),
+			draExtendedResourceEnabled: true,
+			expected:                   false,
+		},
+		"requested-resources-dra-not-in-node": {
+			pod: newResourcePod(framework.Resource{
+				MilliCPU:         2,
+				Memory:           2,
+				EphemeralStorage: 2,
+				ScalarResources:  map[v1.ResourceName]int64{extendedResourceA: 2},
+			}),
+			originalNode: st.MakeNode().Capacity(map[v1.ResourceName]string{
+				v1.ResourceCPU:              "1",
+				v1.ResourceMemory:           "2",
+				v1.ResourceEphemeralStorage: "3",
+			}).Obj(),
+			modifiedNode: st.MakeNode().Capacity(map[v1.ResourceName]string{
+				v1.ResourceCPU:              "1",
+				v1.ResourceMemory:           "2",
+				v1.ResourceEphemeralStorage: "1",
+			}).Obj(),
+			draExtendedResourceEnabled: true,
+			expected:                   true,
+		},
+		"requested-resources-dra-zero-capacity": {
+			pod: newResourcePod(framework.Resource{
+				ScalarResources: map[v1.ResourceName]int64{extendedResourceA: 1},
+			}),
+			originalNode: st.MakeNode().Capacity(map[v1.ResourceName]string{
+				extendedResourceA: "0",
+			}).Obj(),
+			modifiedNode: st.MakeNode().Capacity(map[v1.ResourceName]string{
+				extendedResourceA: "0",
+			}).Obj(),
+			draExtendedResourceEnabled: true,
+			expected:                   true,
+		},
+		"scalar-resources-not-in-node": {
+			pod: newResourcePod(framework.Resource{
+				MilliCPU:         2,
+				Memory:           2,
+				EphemeralStorage: 2,
+				ScalarResources:  map[v1.ResourceName]int64{extendedResourceA: 2},
+			}),
+			originalNode: st.MakeNode().Capacity(map[v1.ResourceName]string{
+				v1.ResourceCPU:              "1",
+				v1.ResourceMemory:           "2",
+				v1.ResourceEphemeralStorage: "3",
+			}).Obj(),
+			modifiedNode: st.MakeNode().Capacity(map[v1.ResourceName]string{
+				v1.ResourceCPU:              "1",
+				v1.ResourceMemory:           "2",
+				v1.ResourceEphemeralStorage: "1",
+			}).Obj(),
+			draExtendedResourceEnabled: false,
+			expected:                   false,
 		},
 		"requested-resources-decreased": {
 			pod: newResourcePod(framework.Resource{
@@ -1743,7 +2137,7 @@ func TestHaveAnyRequestedResourcesIncreased(t *testing.T) {
 	}
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			if got := haveAnyRequestedResourcesIncreased(tc.pod, tc.originalNode, tc.modifiedNode, ResourceRequestsOptions{}); got != tc.expected {
+			if got := haveAnyRequestedResourcesIncreased(tc.pod, tc.originalNode, tc.modifiedNode, nil, ResourceRequestsOptions{EnableDRAExtendedResource: tc.draExtendedResourceEnabled}); got != tc.expected {
 				t.Errorf("expected: %v, got: %v", tc.expected, got)
 			}
 		})

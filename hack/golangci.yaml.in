@@ -102,6 +102,12 @@ linters:
           - revive
         text: "(ST1003: should not use underscores in Go names; func ([cC]onvert_.*_To_.*|[sS]etDefaults_)|exported: exported function (Convert|SetDefaults)_.* should be of the form)"
 
+      # The generated swagger docs also don't follow the naming convention.
+      - linters:
+          - staticcheck
+        text: "ST1003: should not use underscores in Go names"
+        path: types_swagger_doc_generated.go$
+
       {{- if .Hints}}
 
       - path: (.+)\.go$
@@ -135,15 +141,16 @@ linters:
 
       - linters:
           - gocritic
-        text: "append result not assigned to the same slice|put a space between `//` and comment text|sloppyLen|elseif|should rewrite switch statement to if statement|regexpMust|wrapperFunc: use strings.ReplaceAll|singleCaseSwitch|deprecatedComment|exitAfterDefer|captLocal|unlambda|underef|unslice|valSwap|typeSwitchVar"
-
-      # https://github.com/kubernetes/kubernetes/issues/117288#issuecomment-1507008918
-      - linters:
-          - gocritic
-        text: "assignOp:"
+        text: "wrapperFunc: use strings.ReplaceAll|should rewrite switch statement to if statement"
 
     {{- end}}
 
+      # Kube-API-Linter should only be run on the API definitions
+      - linters:
+        - kubeapilinter
+        path-except: staging/src/k8s.io/api/.*
+        
+      {{include "hack/kube-api-linter/exceptions.yaml" | indent 6 | trim}}
 
   default: {{if .Base -}} none {{- else -}} standard {{- end}}
   enable: # please keep this alphabetized
@@ -156,8 +163,10 @@ linters:
     - errorlint
     {{- end}}
     - ineffassign
+    - kubeapilinter
     - logcheck
     - revive
+    - sorted
     - staticcheck
     - testifylint
     - unused
@@ -175,19 +184,39 @@ linters:
         settings:
           config: |
             {{include "hack/logcheck.conf" | indent 12 | trim}}
+      sorted:
+        # Installed there by hack/verify-golangci-lint.sh.
+        path: _output/local/bin/sorted.so
+        description: check if feature gates are sorted
+        original-url: k8s.io/kubernetes/hack/tools/golangci-lint/sorted
+        settings:
+          {{include "hack/tools/golangci-lint/sorted/config.yaml" | indent 10 | trim}}
+      kubeapilinter:
+        path: _output/local/bin/kube-api-linter.so
+        description: kube-api-linter and lints Kube like APIs based on API conventions and best practices.
+        original-url: sigs.k8s.io/kube-api-linter
+        settings:
+          {{include "hack/kube-api-linter/kube-api-linter.yaml" | indent 10 | trim}}
     depguard:
       rules:
-        main:
+        go-cmp:
           files:
             - $all
             - "!$test"
             - "!**/test/**"
+            - "!**/testing/**"
+            - "!**/apitesting/**"
           deny:
             - pkg: "github.com/google/go-cmp/cmp"
               desc: "cmp is allowed only in test files"
+            - pkg: "html/template"
+              desc: "template is allowed only in test files as it disables dead code elimination"
     forbidigo:
       analyze-types: true
       forbid:
+        - pattern: md5\.*
+          # https://github.com/kubernetes/kubernetes/issues/129652
+          msg: md5 is oudated, insecure, prefer a secure hash (such as sha256) or a non-cryptographic hash
         - pattern: ^managedfields\.ExtractInto$
           pkg: ^k8s\.io/apimachinery/pkg/util/managedfields$
           msg: should not be used because managedFields was removed
@@ -206,10 +235,25 @@ linters:
           msg: "it does not produce a good failure message - use BeFalseBecause with an explicit printf-style failure message instead, or plain Go: if ... { ginkgo.Fail(...) }"        
       {{- end}}
       {{- if .Base }}
-    gocritic:	
-      enabled-checks:	
-        - equalFold	
-        - boolExprSimplify	
+    gocritic:
+      enabled-checks: # These are in addition to the default checks - see https://golangci-lint.run/docs/linters/configuration/#gocritic
+        - boolExprSimplify
+        - equalFold
+      disabled-checks: # This disables checks that are enabled by default (this can be combined with enabled-checks, contrary to the docs)
+        - appendAssign
+        - assignOp # https://github.com/kubernetes/kubernetes/issues/117288#issuecomment-1507008918
+        - captLocal
+        - commentFormatting
+        - deprecatedComment
+        - elseif
+        # The following have few (single-digit) occurrences left in k/k and wouldn't be too onerous to enable
+        - exitAfterDefer
+        - regexpMust
+        - sloppyLen
+        - typeSwitchVar
+        - underef
+        - unslice
+        - valSwap
     {{- end}}
     revive:
       # Only these rules are enabled.
@@ -220,6 +264,7 @@ linters:
     staticcheck:
       checks:
         - "all"
+        - "-QF1008"  # Omit embedded fields from selector expression
         {{- if .Base }}
         - "-QF1001"  # Apply De Morgan’s law
         - "-QF1002"  # Convert untagged switch to tagged switch

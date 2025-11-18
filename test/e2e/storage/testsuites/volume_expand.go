@@ -117,6 +117,12 @@ func (v *volumeExpandTestSuite) DefineTests(driver storageframework.TestDriver, 
 	f := framework.NewFrameworkWithCustomTimeouts("volume-expand", storageframework.GetDriverTimeouts(driver))
 	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged
 
+	driverSizeRange := driver.GetDriverInfo().SupportedSizeRange
+	expandSize := resource.MustParse("1Gi")
+	if driverSizeRange.Step != "" {
+		expandSize = resource.MustParse(driverSizeRange.Step)
+	}
+
 	init := func(ctx context.Context) {
 		l = local{}
 
@@ -182,7 +188,7 @@ func (v *volumeExpandTestSuite) DefineTests(driver storageframework.TestDriver, 
 			ginkgo.By("Expanding non-expandable pvc")
 			currentPvcSize := l.resource.Pvc.Spec.Resources.Requests[v1.ResourceStorage]
 			newSize := currentPvcSize.DeepCopy()
-			newSize.Add(resource.MustParse("1Gi"))
+			newSize.Add(expandSize)
 			framework.Logf("currentPvcSize %v, newSize %v", currentPvcSize, newSize)
 			_, err = ExpandPVCSizeToError(ctx, l.resource.Pvc, newSize, f.ClientSet)
 			gomega.Expect(err).To(gomega.MatchError(apierrors.IsForbidden, "While updating non-expandable PVC"))
@@ -217,7 +223,7 @@ func (v *volumeExpandTestSuite) DefineTests(driver storageframework.TestDriver, 
 			ginkgo.By("Expanding current pvc")
 			currentPvcSize := l.resource.Pvc.Spec.Resources.Requests[v1.ResourceStorage]
 			newSize := currentPvcSize.DeepCopy()
-			newSize.Add(resource.MustParse("1Gi"))
+			newSize.Add(expandSize)
 			framework.Logf("currentPvcSize %v, newSize %v", currentPvcSize, newSize)
 			newPVC, err := ExpandPVCSize(ctx, l.resource.Pvc, newSize, f.ClientSet)
 			framework.ExpectNoError(err, "While updating pvc for more size")
@@ -237,6 +243,10 @@ func (v *volumeExpandTestSuite) DefineTests(driver storageframework.TestDriver, 
 			npvc, err := WaitForPendingFSResizeCondition(ctx, l.resource.Pvc, f.ClientSet)
 			framework.ExpectNoError(err, "While waiting for pvc to have fs resizing condition")
 			l.resource.Pvc = npvc
+
+			ginkgo.By("Verifying allocatedResources on PVC")
+			err = verifyOfflineAllocatedResources(l.resource.Pvc, pvcSize)
+			framework.ExpectNoError(err, "While verifying allocatedResources on PVC")
 
 			ginkgo.By("Creating a new pod with same volume")
 			podConfig = e2epod.Config{
@@ -285,7 +295,7 @@ func (v *volumeExpandTestSuite) DefineTests(driver storageframework.TestDriver, 
 			ginkgo.By("Expanding current pvc")
 			currentPvcSize := l.resource.Pvc.Spec.Resources.Requests[v1.ResourceStorage]
 			newSize := currentPvcSize.DeepCopy()
-			newSize.Add(resource.MustParse("1Gi"))
+			newSize.Add(expandSize)
 			framework.Logf("currentPvcSize %v, newSize %v", currentPvcSize, newSize)
 			newPVC, err := ExpandPVCSize(ctx, l.resource.Pvc, newSize, f.ClientSet)
 			framework.ExpectNoError(err, "While updating pvc for more size")
@@ -337,7 +347,7 @@ func (v *volumeExpandTestSuite) DefineTests(driver storageframework.TestDriver, 
 			ginkgo.By("Expanding current pvc")
 			currentPvcSize := l.resource.Pvc.Spec.Resources.Requests[v1.ResourceStorage]
 			newSize := currentPvcSize.DeepCopy()
-			newSize.Add(resource.MustParse("1Gi"))
+			newSize.Add(expandSize)
 			framework.Logf("currentPvcSize %v, newSize %v", currentPvcSize, newSize)
 			newPVC, err := ExpandPVCSize(ctx, l.resource.Pvc, newSize, f.ClientSet)
 			framework.ExpectNoError(err, "While updating pvc for more size")
@@ -559,6 +569,25 @@ func WaitForFSResize(ctx context.Context, pvc *v1.PersistentVolumeClaim, c clien
 		return nil, fmt.Errorf("error waiting for pvc %q filesystem resize to finish: %v", pvc.Name, waitErr)
 	}
 	return updatedPVC, nil
+}
+
+func verifyOfflineAllocatedResources(pvc *v1.PersistentVolumeClaim, allocatedSize resource.Quantity) error {
+	actualResizeStatus := pvc.Status.AllocatedResourceStatuses[v1.ResourceStorage]
+	if !checkControllerExpansionCompleted(pvc) {
+		return fmt.Errorf("pvc %q had %s resize status, expected %s", pvc.Name, actualResizeStatus, v1.PersistentVolumeClaimNodeResizePending)
+	}
+
+	actualAllocatedSize := pvc.Status.AllocatedResources.Storage()
+	if actualAllocatedSize.Cmp(allocatedSize) < 0 {
+		return fmt.Errorf("pvc %q had %s allocated size, expected %s", pvc.Name, actualAllocatedSize.String(), allocatedSize.String())
+	}
+	return nil
+}
+
+func checkControllerExpansionCompleted(pvc *v1.PersistentVolumeClaim) bool {
+	resizeStatus := pvc.Status.AllocatedResourceStatuses[v1.ResourceStorage]
+	// if resizeStatus is empty that means no node expansion is required but still controller expansion is completed
+	return (resizeStatus == "" || resizeStatus == v1.PersistentVolumeClaimNodeResizePending)
 }
 
 func VerifyRecoveryRelatedFields(pvc *v1.PersistentVolumeClaim) error {

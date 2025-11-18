@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
 	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
 	kubeadmapiv1 "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/v1beta4"
 	"k8s.io/kubernetes/cmd/kubeadm/app/constants"
@@ -148,7 +149,7 @@ func TestGetEtcdImage(t *testing.T) {
 		},
 	}
 	for _, rt := range tests {
-		actual := GetEtcdImage(rt.cfg)
+		actual := GetEtcdImage(rt.cfg, constants.SupportedEtcdVersion)
 		if actual != rt.expected {
 			t.Errorf(
 				"failed GetEtcdImage:\n\texpected: %s\n\t  actual: %s",

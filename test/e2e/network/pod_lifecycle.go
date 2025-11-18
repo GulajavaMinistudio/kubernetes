@@ -26,12 +26,14 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 	v1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
+	e2eendpointslice "k8s.io/kubernetes/test/e2e/framework/endpointslice"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	e2eoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 	e2eservice "k8s.io/kubernetes/test/e2e/framework/service"
@@ -162,14 +164,8 @@ var _ = common.SIGDescribe("Connectivity Pod Lifecycle", func() {
 		}
 
 		// Expect EndpointSlice resource to have the blue pod ready to serve traffic
-		if err := wait.PollUntilContextTimeout(ctx, 2*time.Second, wait.ForeverTestTimeout, true, func(context.Context) (bool, error) {
-			endpointSliceList, err := cs.DiscoveryV1().EndpointSlices(blueGreenJig.Namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: "kubernetes.io/service-name=" + blueGreenJig.Name,
-			})
-			if err != nil {
-				return false, err
-			}
-			for _, slice := range endpointSliceList.Items {
+		if err := e2eendpointslice.WaitForEndpointSlices(ctx, cs, blueGreenJig.Namespace, blueGreenJig.Name, 2*time.Second, wait.ForeverTestTimeout, func(ctx context.Context, endpointSlices []discoveryv1.EndpointSlice) (bool, error) {
+			for _, slice := range endpointSlices {
 				for _, ep := range slice.Endpoints {
 					if ep.TargetRef != nil &&
 						ep.TargetRef.Name == bluePod.Name &&
@@ -220,14 +216,8 @@ var _ = common.SIGDescribe("Connectivity Pod Lifecycle", func() {
 		}
 
 		// Expect EndpointSlice resource to have the green pod ready to serve traffic
-		if err := wait.PollUntilContextTimeout(ctx, 2*time.Second, wait.ForeverTestTimeout, true, func(context.Context) (bool, error) {
-			endpointSliceList, err := cs.DiscoveryV1().EndpointSlices(blueGreenJig.Namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: "kubernetes.io/service-name=" + blueGreenJig.Name,
-			})
-			if err != nil {
-				return false, err
-			}
-			for _, slice := range endpointSliceList.Items {
+		if err := e2eendpointslice.WaitForEndpointSlices(ctx, cs, blueGreenJig.Namespace, blueGreenJig.Name, 2*time.Second, wait.ForeverTestTimeout, func(ctx context.Context, endpointSlices []discoveryv1.EndpointSlice) (bool, error) {
+			for _, slice := range endpointSlices {
 				for _, ep := range slice.Endpoints {
 					if ep.TargetRef != nil &&
 						ep.TargetRef.Name == greenPod.Name &&
@@ -249,14 +239,8 @@ var _ = common.SIGDescribe("Connectivity Pod Lifecycle", func() {
 		}
 
 		// Expect EndpointSlice resource to have the blue pod NOT ready to serve traffic
-		if err := wait.PollUntilContextTimeout(ctx, 2*time.Second, wait.ForeverTestTimeout, true, func(context.Context) (bool, error) {
-			endpointSliceList, err := cs.DiscoveryV1().EndpointSlices(blueGreenJig.Namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: "kubernetes.io/service-name=" + blueGreenJig.Name,
-			})
-			if err != nil {
-				return false, err
-			}
-			for _, slice := range endpointSliceList.Items {
+		if err := e2eendpointslice.WaitForEndpointSlices(ctx, cs, blueGreenJig.Namespace, blueGreenJig.Name, 2*time.Second, wait.ForeverTestTimeout, func(ctx context.Context, endpointSlices []discoveryv1.EndpointSlice) (bool, error) {
+			for _, slice := range endpointSlices {
 				for _, ep := range slice.Endpoints {
 					if ep.TargetRef != nil &&
 						ep.TargetRef.Name == bluePod.Name &&
@@ -276,15 +260,24 @@ var _ = common.SIGDescribe("Connectivity Pod Lifecycle", func() {
 		// is a distributed system eventually consistent, so there is a propagation
 		// delay until this information is present on the nodes and a programming delay
 		// until the corresponding node components program the information on the dataplane.
-		err = wait.PollUntilContextTimeout(ctx, 3*time.Second, 30*time.Second, true, func(ctx context.Context) (done bool, err error) {
+		// Since there are only two backends, we need to ensure that only one is active,
+		// the chance of hitting any backend is 50% and each request is independent.
+		// We can use binomial probability to calculate the probability of hitting only
+		// the new pod despite there are two active pods, using 6 requests gives us
+		// a 0.5^6=0.015625,  1.5625% of chances of not able to detect the transition.
+		consecutiveHits := 0
+		expectedHits := 6
+		err = wait.PollUntilContextTimeout(ctx, 3*time.Second, e2eservice.ServiceReachabilityShortPollTimeout, true, func(ctx context.Context) (done bool, err error) {
 			cmd := fmt.Sprintf(`curl -q -s --connect-timeout 5 %s/hostname`, scvAddress)
 			stdout, err := e2eoutput.RunHostCmd(clientPod.Namespace, clientPod.Name, cmd)
 			if err != nil {
 				framework.Logf("expected error when trying to connect to cluster IP : %v", err)
+				consecutiveHits = 0
 				return false, nil
 			}
 			if strings.TrimSpace(stdout) == "" {
 				framework.Logf("got empty stdout, retry until timeout")
+				consecutiveHits = 0
 				return false, nil
 			}
 			// Ensure we're comparing hostnames and not FQDNs
@@ -292,6 +285,12 @@ var _ = common.SIGDescribe("Connectivity Pod Lifecycle", func() {
 			hostname := strings.TrimSpace(strings.Split(stdout, ".")[0])
 			if hostname != targetHostname {
 				framework.Logf("expecting hostname %s got %s", targetHostname, hostname)
+				consecutiveHits = 0
+				return false, nil
+			}
+			consecutiveHits++
+			if consecutiveHits < expectedHits {
+				framework.Logf("got %s %d times, needs %d hits to ensure the dataplane is programmed with more 98.5 percent accuracy", targetHostname, consecutiveHits, expectedHits)
 				return false, nil
 			}
 			return true, nil
@@ -301,9 +300,9 @@ var _ = common.SIGDescribe("Connectivity Pod Lifecycle", func() {
 		}
 
 		ginkgo.By("Try to connect to the green pod through the service")
-		// assert 5 times that we can connect only to the green pod
+		// assert 5 times that we can connect ONLY to the green pod
 		for i := 0; i < 5; i++ {
-			err := wait.PollUntilContextTimeout(ctx, 3*time.Second, 30*time.Second, true, func(ctx context.Context) (done bool, err error) {
+			err := wait.PollUntilContextTimeout(ctx, 3*time.Second, e2eservice.KubeProxyEndpointLagTimeout, true, func(ctx context.Context) (done bool, err error) {
 				cmd := fmt.Sprintf(`curl -q -s --connect-timeout 5 %s/hostname`, scvAddress)
 				stdout, err := e2eoutput.RunHostCmd(clientPod.Namespace, clientPod.Name, cmd)
 				if err != nil {

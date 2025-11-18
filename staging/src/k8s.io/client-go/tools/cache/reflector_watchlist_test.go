@@ -36,11 +36,68 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
+	clientfeatures "k8s.io/client-go/features"
+	clientfeaturestesting "k8s.io/client-go/features/testing"
 	"k8s.io/klog/v2/ktesting"
 	testingclock "k8s.io/utils/clock/testing"
-	"k8s.io/utils/pointer"
 	"k8s.io/utils/ptr"
 )
+
+type lwSupportsWatchListSemantics struct{ fakeListWatcher }
+
+func (lw *lwSupportsWatchListSemantics) IsWatchListSemanticsUnSupported() bool { return false }
+
+type lwDoesNotSupportWatchListSemantics struct{ fakeListWatcher }
+
+func (lw *lwDoesNotSupportWatchListSemantics) IsWatchListSemanticsUnSupported() bool { return true }
+
+type lwNoWatchListSemanticsUnSupportedExposed struct{ fakeListWatcher }
+
+func TestNewReflectorWithDisablementWatchList(t *testing.T) {
+	scenarios := []struct {
+		name                    string
+		enableWatchListClientFG bool
+		lw                      ListerWatcher
+		expectUseWatchListValue bool
+	}{
+		{
+			name:                    "WatchListClient feature gate off, client supports WatchList semantics",
+			enableWatchListClientFG: false,
+			lw:                      &lwSupportsWatchListSemantics{},
+			expectUseWatchListValue: false,
+		},
+		{
+			name:                    "WatchListClient feature gate on, client supports WatchList semantics",
+			enableWatchListClientFG: true,
+			lw:                      &lwSupportsWatchListSemantics{},
+			expectUseWatchListValue: true,
+		},
+		{
+			name:                    "WatchListClient feature gate on, client doesn't support the WatchList semantics",
+			enableWatchListClientFG: true,
+			lw:                      &lwDoesNotSupportWatchListSemantics{},
+			expectUseWatchListValue: false,
+		},
+		{
+			name:                    "WatchListClient feature gate on, client doesn't expose the IsWatchListSemanticsUnSupported method",
+			enableWatchListClientFG: true,
+			lw:                      &lwNoWatchListSemanticsUnSupportedExposed{},
+			expectUseWatchListValue: true,
+		},
+	}
+
+	for _, scenario := range scenarios {
+		t.Run(scenario.name, func(t *testing.T) {
+			clientfeaturestesting.SetFeatureDuringTest(t, clientfeatures.WatchListClient, scenario.enableWatchListClientFG)
+
+			r := NewReflectorWithOptions(scenario.lw, struct{}{}, &fakeStore{}, ReflectorOptions{})
+
+			if r.useWatchList != scenario.expectUseWatchListValue {
+				t.Fatalf("got: %v, want: %v", r.useWatchList, scenario.expectUseWatchListValue)
+			}
+		})
+	}
+}
 
 func TestInitialEventsEndBookmarkTicker(t *testing.T) {
 	assertNoEvents := func(t *testing.T, c <-chan time.Time) {
@@ -142,10 +199,10 @@ func TestWatchList(t *testing.T) {
 			closeAfterWatchEvents: 1,
 			expectedWatchRequests: 1,
 			expectedRequestOptions: []metav1.ListOptions{{
-				SendInitialEvents:    pointer.Bool(true),
+				SendInitialEvents:    ptr.To(true),
 				AllowWatchBookmarks:  true,
 				ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
-				TimeoutSeconds:       pointer.Int64(1),
+				TimeoutSeconds:       ptr.To[int64](1),
 			}},
 		},
 		{
@@ -166,7 +223,7 @@ func TestWatchList(t *testing.T) {
 				{
 					AllowWatchBookmarks: true,
 					ResourceVersion:     "1",
-					TimeoutSeconds:      pointer.Int64(1),
+					TimeoutSeconds:      ptr.To[int64](1),
 				}},
 			expectedStoreContent: []v1.Pod{*makePod("p1", "1")},
 		},
@@ -189,10 +246,10 @@ func TestWatchList(t *testing.T) {
 			expectedStoreContent:  []v1.Pod{*makePod("p1", "1"), *makePod("p2", "2")},
 			expectedRequestOptions: []metav1.ListOptions{
 				{
-					SendInitialEvents:    pointer.Bool(true),
+					SendInitialEvents:    ptr.To(true),
 					AllowWatchBookmarks:  true,
 					ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
-					TimeoutSeconds:       pointer.Int64(1),
+					TimeoutSeconds:       ptr.To[int64](1),
 				},
 				{
 					ResourceVersion: "0",
@@ -201,7 +258,7 @@ func TestWatchList(t *testing.T) {
 				{
 					AllowWatchBookmarks: true,
 					ResourceVersion:     "1",
-					TimeoutSeconds:      pointer.Int64(1),
+					TimeoutSeconds:      ptr.To[int64](1),
 				},
 			},
 		},
@@ -224,10 +281,10 @@ func TestWatchList(t *testing.T) {
 			expectedStoreContent:  []v1.Pod{*makePod("p1", "1"), *makePod("p2", "2")},
 			expectedRequestOptions: []metav1.ListOptions{
 				{
-					SendInitialEvents:    pointer.Bool(true),
+					SendInitialEvents:    ptr.To(true),
 					AllowWatchBookmarks:  true,
 					ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
-					TimeoutSeconds:       pointer.Int64(1),
+					TimeoutSeconds:       ptr.To[int64](1),
 				},
 				{
 					ResourceVersion: "0",
@@ -236,7 +293,7 @@ func TestWatchList(t *testing.T) {
 				{
 					AllowWatchBookmarks: true,
 					ResourceVersion:     "1",
-					TimeoutSeconds:      pointer.Int64(1),
+					TimeoutSeconds:      ptr.To[int64](1),
 				},
 			},
 		},
@@ -255,10 +312,10 @@ func TestWatchList(t *testing.T) {
 			},
 			expectedWatchRequests: 1,
 			expectedRequestOptions: []metav1.ListOptions{{
-				SendInitialEvents:    pointer.Bool(true),
+				SendInitialEvents:    ptr.To(true),
 				AllowWatchBookmarks:  true,
 				ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
-				TimeoutSeconds:       pointer.Int64(1),
+				TimeoutSeconds:       ptr.To[int64](1),
 			}},
 			expectedStoreContent: []v1.Pod{*makePod("p1", "1"), *makePod("p2", "2")},
 		},
@@ -270,7 +327,7 @@ func TestWatchList(t *testing.T) {
 				{Type: watch.Added, Object: makePod("p2", "2")},
 				{Type: watch.Modified, Object: func() runtime.Object {
 					p1 := makePod("p1", "3")
-					p1.Spec.ActiveDeadlineSeconds = pointer.Int64(12)
+					p1.Spec.ActiveDeadlineSeconds = ptr.To[int64](12)
 					return p1
 				}()},
 				{Type: watch.Added, Object: makePod("p3", "4")},
@@ -284,16 +341,16 @@ func TestWatchList(t *testing.T) {
 			},
 			expectedWatchRequests: 1,
 			expectedRequestOptions: []metav1.ListOptions{{
-				SendInitialEvents:    pointer.Bool(true),
+				SendInitialEvents:    ptr.To(true),
 				AllowWatchBookmarks:  true,
 				ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
-				TimeoutSeconds:       pointer.Int64(1),
+				TimeoutSeconds:       ptr.To[int64](1),
 			}},
 			expectedStoreContent: []v1.Pod{
 				*makePod("p2", "2"),
 				func() v1.Pod {
 					p1 := *makePod("p1", "3")
-					p1.Spec.ActiveDeadlineSeconds = pointer.Int64(12)
+					p1.Spec.ActiveDeadlineSeconds = ptr.To[int64](12)
 					return p1
 				}(),
 			},
@@ -323,22 +380,22 @@ func TestWatchList(t *testing.T) {
 			expectedWatchRequests: 3,
 			expectedRequestOptions: []metav1.ListOptions{
 				{
-					SendInitialEvents:    pointer.Bool(true),
+					SendInitialEvents:    ptr.To(true),
 					AllowWatchBookmarks:  true,
 					ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
-					TimeoutSeconds:       pointer.Int64(1),
+					TimeoutSeconds:       ptr.To[int64](1),
 				},
 				{
-					SendInitialEvents:    pointer.Bool(true),
+					SendInitialEvents:    ptr.To(true),
 					AllowWatchBookmarks:  true,
 					ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
-					TimeoutSeconds:       pointer.Int64(1),
+					TimeoutSeconds:       ptr.To[int64](1),
 				},
 				{
-					SendInitialEvents:    pointer.Bool(true),
+					SendInitialEvents:    ptr.To(true),
 					AllowWatchBookmarks:  true,
 					ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
-					TimeoutSeconds:       pointer.Int64(1),
+					TimeoutSeconds:       ptr.To[int64](1),
 				},
 			},
 			expectedStoreContent: []v1.Pod{*makePod("p1", "1")},
@@ -361,16 +418,16 @@ func TestWatchList(t *testing.T) {
 			expectedWatchRequests: 2,
 			expectedRequestOptions: []metav1.ListOptions{
 				{
-					SendInitialEvents:    pointer.Bool(true),
+					SendInitialEvents:    ptr.To(true),
 					AllowWatchBookmarks:  true,
 					ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
-					TimeoutSeconds:       pointer.Int64(1),
+					TimeoutSeconds:       ptr.To[int64](1),
 				},
 				{
-					SendInitialEvents:    pointer.Bool(true),
+					SendInitialEvents:    ptr.To(true),
 					AllowWatchBookmarks:  true,
 					ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
-					TimeoutSeconds:       pointer.Int64(1),
+					TimeoutSeconds:       ptr.To[int64](1),
 				},
 			},
 			expectedStoreContent: []v1.Pod{*makePod("p1", "1")},
@@ -395,15 +452,15 @@ func TestWatchList(t *testing.T) {
 			expectedWatchRequests: 2,
 			expectedRequestOptions: []metav1.ListOptions{
 				{
-					SendInitialEvents:    pointer.Bool(true),
+					SendInitialEvents:    ptr.To(true),
 					AllowWatchBookmarks:  true,
 					ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
-					TimeoutSeconds:       pointer.Int64(1),
+					TimeoutSeconds:       ptr.To[int64](1),
 				},
 				{
 					AllowWatchBookmarks: true,
 					ResourceVersion:     "3",
-					TimeoutSeconds:      pointer.Int64(1),
+					TimeoutSeconds:      ptr.To[int64](1),
 				},
 			},
 			expectedStoreContent: []v1.Pod{*makePod("p1", "1"), *makePod("p2", "2"), *makePod("p3", "3"), *makePod("p4", "4")},
@@ -434,15 +491,15 @@ func TestWatchList(t *testing.T) {
 			expectedWatchRequests: 2,
 			expectedRequestOptions: []metav1.ListOptions{
 				{
-					SendInitialEvents:    pointer.Bool(true),
+					SendInitialEvents:    ptr.To(true),
 					AllowWatchBookmarks:  true,
 					ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
-					TimeoutSeconds:       pointer.Int64(1),
+					TimeoutSeconds:       ptr.To[int64](1),
 				},
 				{
 					AllowWatchBookmarks: true,
 					ResourceVersion:     "3",
-					TimeoutSeconds:      pointer.Int64(1),
+					TimeoutSeconds:      ptr.To[int64](1),
 				},
 			},
 			expectedStoreContent: []v1.Pod{*makePod("p1", "1"), *makePod("p3", "3")},
@@ -463,10 +520,10 @@ func TestWatchList(t *testing.T) {
 			},
 			expectedWatchRequests: 1,
 			expectedRequestOptions: []metav1.ListOptions{{
-				SendInitialEvents:    pointer.Bool(true),
+				SendInitialEvents:    ptr.To(true),
 				AllowWatchBookmarks:  true,
 				ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
-				TimeoutSeconds:       pointer.Int64(1),
+				TimeoutSeconds:       ptr.To[int64](1),
 			}},
 		},
 	}
@@ -474,6 +531,7 @@ func TestWatchList(t *testing.T) {
 		t.Run(s.name, func(t *testing.T) {
 			scenario := s // capture as local variable
 			_, ctx := ktesting.NewTestContext(t)
+			clientfeaturestesting.SetFeatureDuringTest(t, clientfeatures.WatchListClient, !scenario.disableUseWatchList)
 			listWatcher, store, reflector, ctx, cancel := testData(ctx)
 			go func() {
 				for i, e := range scenario.watchEvents {
@@ -491,9 +549,6 @@ func TestWatchList(t *testing.T) {
 			listWatcher.closeAfterWatchRequests = scenario.closeAfterWatchRequests
 			listWatcher.customListResponse = scenario.podList
 			listWatcher.closeAfterListRequests = scenario.closeAfterListRequests
-			if scenario.disableUseWatchList {
-				reflector.UseWatchList = ptr.To(false)
-			}
 
 			err := reflector.ListAndWatchWithContext(ctx)
 			if scenario.expectedError != nil && err == nil {
@@ -582,7 +637,6 @@ func testData(ctx context.Context) (*fakeListWatcher, Store, *Reflector, context
 		},
 	}
 	r := NewReflector(lw, &v1.Pod{}, s, 0)
-	r.UseWatchList = ptr.To(true)
 
 	return lw, s, r, ctx, cancel
 }

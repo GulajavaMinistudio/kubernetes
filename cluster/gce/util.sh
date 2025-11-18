@@ -54,54 +54,36 @@ if [[ ${NODE_LOCAL_SSDS:-} -ge 1 ]] && [[ -n ${NODE_LOCAL_SSDS_EXT:-} ]] ; then
   exit 2
 fi
 
-if [[ "${MASTER_OS_DISTRIBUTION}" == "gci" ]]; then
-    DEFAULT_GCI_PROJECT=google-containers
-    if [[ "${GCI_VERSION}" == "cos"* ]] || [[ "${MASTER_IMAGE_FAMILY}" == "cos"* ]]; then
-        DEFAULT_GCI_PROJECT=cos-cloud
-    fi
-    export MASTER_IMAGE_PROJECT=${KUBE_GCE_MASTER_PROJECT:-${DEFAULT_GCI_PROJECT}}
-
-    # If the master image is not set, we use the latest image based on image
-    # family.
-    kube_master_image="${KUBE_GCE_MASTER_IMAGE:-${GCI_VERSION}}"
-    if [[ -z "${kube_master_image}" ]]; then
-      kube_master_image=$(gcloud compute images list --project="${MASTER_IMAGE_PROJECT}" --no-standard-images --filter="family:${MASTER_IMAGE_FAMILY}" --format 'value(name)')
-    fi
-
-    echo "Using image: ${kube_master_image} from project: ${MASTER_IMAGE_PROJECT} as master image" >&2
-    export MASTER_IMAGE="${kube_master_image}"
+# If the master image is not set, we use the latest image based on image
+# family.
+kube_master_image="${KUBE_GCE_MASTER_IMAGE:-}"
+if [[ -z "${kube_master_image}" ]]; then
+  # remove architecture:X86_64 once we move on from ubuntu jammy as that image family has both X86_64 and ARM images
+  kube_master_image=$(gcloud compute images list --project="${MASTER_IMAGE_PROJECT}" --no-standard-images --filter="family:${MASTER_IMAGE_FAMILY} architecture:X86_64" --format 'value(name)')
 fi
+
+echo "Using image: ${kube_master_image} from project: ${MASTER_IMAGE_PROJECT} as master image" >&2
+export MASTER_IMAGE="${kube_master_image}"
+
 
 # Sets node image based on the specified os distro. Currently this function only
 # supports gci and debian.
 #
-# Requires:
-#   NODE_OS_DISTRIBUTION
 # Sets:
-#   DEFAULT_GCI_PROJECT
 #   NODE_IMAGE
-#   NODE_IMAGE_PROJECT
 function set-linux-node-image() {
-  if [[ "${NODE_OS_DISTRIBUTION}" == "gci" ]]; then
-    DEFAULT_GCI_PROJECT=google-containers
-    if [[ "${GCI_VERSION}" == "cos"* ]] || [[ "${NODE_IMAGE_FAMILY}" == "cos"* ]]; then
-      DEFAULT_GCI_PROJECT=cos-cloud
-    fi
 
-    # If the node image is not set, we use the latest image based on image
-    # family.
-    # Otherwise, we respect whatever is set by the user.
-    NODE_IMAGE_PROJECT=${KUBE_GCE_NODE_PROJECT:-${DEFAULT_GCI_PROJECT}}
-    local kube_node_image
+  # If the node image is not set, we use the latest image based on image
+  # family.
 
-    kube_node_image="${KUBE_GCE_NODE_IMAGE:-${GCI_VERSION}}"
-    if [[ -z "${kube_node_image}" ]]; then
-      kube_node_image=$(gcloud compute images list --project="${NODE_IMAGE_PROJECT}" --no-standard-images --filter="family:${NODE_IMAGE_FAMILY}" --format 'value(name)')
-    fi
-
-    echo "Using image: ${kube_node_image} from project: ${NODE_IMAGE_PROJECT} as node image" >&2
-    export NODE_IMAGE="${kube_node_image}"
+  kube_node_image="${KUBE_GCE_NODE_IMAGE:-}"
+  if [[ -z "${kube_node_image}" ]]; then
+    # remove architecture:X86_64 once we move on from ubuntu jammy as that image family has both X86_64 and ARM images
+    kube_node_image=$(gcloud compute images list --project="${NODE_IMAGE_PROJECT}" --no-standard-images --filter="family:${NODE_IMAGE_FAMILY} architecture:X86_64" --format 'value(name)')
   fi
+
+  echo "Using image: ${kube_node_image} from project: ${NODE_IMAGE_PROJECT} as node image" >&2
+  export NODE_IMAGE="${kube_node_image}"
 }
 
 # Requires:
@@ -794,7 +776,6 @@ function construct-linux-kubelet-flags {
       #flags+=" --kubeconfig=/var/lib/kubelet/kubeconfig"
       flags+=" --register-with-taints=node-role.kubernetes.io/control-plane=:NoSchedule"
       flags+=" --kubeconfig=/var/lib/kubelet/bootstrap-kubeconfig"
-      flags+=" --register-schedulable=false"
     fi
     if [[ "${MASTER_OS_DISTRIBUTION}" == "ubuntu" ]]; then
       # Configure the file path for host dns configuration
@@ -1199,7 +1180,6 @@ ENABLE_APISERVER_DYNAMIC_AUDIT: $(yaml-quote "${ENABLE_APISERVER_DYNAMIC_AUDIT:-
 ENABLE_CACHE_MUTATION_DETECTOR: $(yaml-quote "${ENABLE_CACHE_MUTATION_DETECTOR:-false}")
 ENABLE_KUBE_WATCHCACHE_CONSISTENCY_CHECKER: $(yaml-quote "${ENABLE_KUBE_WATCHCACHE_CONSISTENCY_CHECKER:-false}")
 ENABLE_KUBE_WATCHLIST_INCONSISTENCY_DETECTOR: $(yaml-quote "${ENABLE_KUBE_WATCHLIST_INCONSISTENCY_DETECTOR:-false}")
-ENABLE_KUBE_LIST_FROM_CACHE_INCONSISTENCY_DETECTOR: $(yaml-quote "${ENABLE_KUBE_LIST_FROM_CACHE_INCONSISTENCY_DETECTOR:-false}")
 ENABLE_PATCH_CONVERSION_DETECTOR: $(yaml-quote "${ENABLE_PATCH_CONVERSION_DETECTOR:-false}")
 ADVANCED_AUDIT_POLICY: $(yaml-quote "${ADVANCED_AUDIT_POLICY:-}")
 ADVANCED_AUDIT_BACKEND: $(yaml-quote "${ADVANCED_AUDIT_BACKEND:-log}")
@@ -1837,7 +1817,7 @@ function generate-certs {
     # make the config for the signer
     echo '{"signing":{"default":{"expiry":"43800h","usages":["signing","key encipherment","client auth"]}}}' > "ca-config.json"
     # create the kubelet client cert with the correct groups
-    echo '{"CN":"kubelet","names":[{"O":"system:nodes"}],"hosts":[""],"key":{"algo":"rsa","size":2048}}' | "${CFSSL_BIN}" gencert -ca=pki/ca.crt -ca-key=pki/private/ca.key -config=ca-config.json - | "${CFSSLJSON_BIN}" -bare kubelet
+    echo '{"CN":"kubelet","names":[{"O":"system:nodes"}],"hosts":[],"key":{"algo":"rsa","size":2048}}' | "${CFSSL_BIN}" gencert -ca=pki/ca.crt -ca-key=pki/private/ca.key -config=ca-config.json - | "${CFSSLJSON_BIN}" -bare kubelet
     mv "kubelet-key.pem" "pki/private/kubelet.key"
     mv "kubelet.pem" "pki/issued/kubelet.crt"
     rm -f "kubelet.csr"
@@ -1902,7 +1882,7 @@ function generate-aggregator-certs {
     # make the config for the signer
     echo '{"signing":{"default":{"expiry":"43800h","usages":["signing","key encipherment","client auth"]}}}' > "ca-config.json"
     # create the aggregator client cert with the correct groups
-    echo '{"CN":"aggregator","hosts":[""],"key":{"algo":"rsa","size":2048}}' | "${CFSSL_BIN}" gencert -ca=pki/ca.crt -ca-key=pki/private/ca.key -config=ca-config.json - | "${CFSSLJSON_BIN}" -bare proxy-client
+    echo '{"CN":"aggregator","hosts":[],"key":{"algo":"rsa","size":2048}}' | "${CFSSL_BIN}" gencert -ca=pki/ca.crt -ca-key=pki/private/ca.key -config=ca-config.json - | "${CFSSLJSON_BIN}" -bare proxy-client
     mv "proxy-client-key.pem" "pki/private/proxy-client.key"
     mv "proxy-client.pem" "pki/issued/proxy-client.crt"
     rm -f "proxy-client.csr"
@@ -1963,7 +1943,7 @@ function generate-konnectivity-server-certs {
     # make the config for the signer
     echo '{"signing":{"default":{"expiry":"43800h","usages":["signing","key encipherment","client auth"]}}}' > "ca-config.json"
     # create the konnectivity server cert with the correct groups
-    echo '{"CN":"konnectivity-server","hosts":[""],"key":{"algo":"rsa","size":2048}}' | "${CFSSL_BIN}" gencert -ca=pki/ca.crt -ca-key=pki/private/ca.key -config=ca-config.json - | "${CFSSLJSON_BIN}" -bare konnectivity-server
+    echo '{"CN":"konnectivity-server","hosts":[],"key":{"algo":"rsa","size":2048}}' | "${CFSSL_BIN}" gencert -ca=pki/ca.crt -ca-key=pki/private/ca.key -config=ca-config.json - | "${CFSSLJSON_BIN}" -bare konnectivity-server
     rm -f "konnectivity-server.csr"
 
     # Make the agent <-> konnectivity server side certificates.
@@ -1979,7 +1959,7 @@ function generate-konnectivity-server-certs {
     # make the config for the signer
     echo '{"signing":{"default":{"expiry":"43800h","usages":["signing","key encipherment","agent auth"]}}}' > "ca-config.json"
     # create the konnectivity server cert with the correct groups
-    echo '{"CN":"koonectivity-server","hosts":[""],"key":{"algo":"rsa","size":2048}}' | "${CFSSL_BIN}" gencert -ca=pki/ca.crt -ca-key=pki/private/ca.key -config=ca-config.json - | "${CFSSLJSON_BIN}" -bare konnectivity-agent
+    echo '{"CN":"koonectivity-server","hosts":[],"key":{"algo":"rsa","size":2048}}' | "${CFSSL_BIN}" gencert -ca=pki/ca.crt -ca-key=pki/private/ca.key -config=ca-config.json - | "${CFSSLJSON_BIN}" -bare konnectivity-agent
     rm -f "konnectivity-agent.csr"
 
     echo "completed main certificate section") &>"${cert_create_debug_output}" || true
@@ -2041,7 +2021,7 @@ function generate-cloud-pvl-admission-certs {
     # make the config for the signer
     echo '{"signing":{"default":{"expiry":"43800h","usages":["signing","key encipherment","client auth"]}}}' > "ca-config.json"
     # create the cloud-pvl-admission cert with the correct groups
-    echo '{"CN":"cloud-pvl-admission","hosts":[""],"key":{"algo":"rsa","size":2048}}' | "${CFSSL_BIN}" gencert -ca=pki/ca.crt -ca-key=pki/private/ca.key -config=ca-config.json - | "${CFSSLJSON_BIN}" -bare cloud-pvl-admission
+    echo '{"CN":"cloud-pvl-admission","hosts":[],"key":{"algo":"rsa","size":2048}}' | "${CFSSL_BIN}" gencert -ca=pki/ca.crt -ca-key=pki/private/ca.key -config=ca-config.json - | "${CFSSLJSON_BIN}" -bare cloud-pvl-admission
     rm -f "cloud-pvl-admission.csr"
 
     # Make the cloud-pvl-admission server side certificates.
@@ -2057,7 +2037,7 @@ function generate-cloud-pvl-admission-certs {
     # make the config for the signer
     echo '{"signing":{"default":{"expiry":"43800h","usages":["signing","key encipherment","agent auth"]}}}' > "ca-config.json"
     # create the cloud-pvl-admission server cert with the correct groups
-    echo '{"CN":"cloud-pvl-admission","hosts":[""],"key":{"algo":"rsa","size":2048}}' | "${CFSSL_BIN}" gencert -ca=pki/ca.crt -ca-key=pki/private/ca.key -config=ca-config.json - | "${CFSSLJSON_BIN}" -bare konnectivity-agent
+    echo '{"CN":"cloud-pvl-admission","hosts":[],"key":{"algo":"rsa","size":2048}}' | "${CFSSL_BIN}" gencert -ca=pki/ca.crt -ca-key=pki/private/ca.key -config=ca-config.json - | "${CFSSLJSON_BIN}" -bare konnectivity-agent
     rm -f "konnectivity-agent.csr"
 
     echo "completed main certificate section") &>"${cert_create_debug_output}" || true

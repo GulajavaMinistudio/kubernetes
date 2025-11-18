@@ -46,8 +46,10 @@ import (
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/volume"
 	fakecsi "k8s.io/kubernetes/pkg/volume/csi/fake"
-	"k8s.io/kubernetes/pkg/volume/util"
 	volumetypes "k8s.io/kubernetes/pkg/volume/util/types"
+	"k8s.io/mount-utils"
+	testingexec "k8s.io/utils/exec/testing"
+	"k8s.io/utils/ptr"
 )
 
 var (
@@ -1181,7 +1183,7 @@ func TestUnmounterTeardown(t *testing.T) {
 	}
 
 	// do a fake local mount
-	diskMounter := util.NewSafeFormatAndMountFromHost(plug.GetPluginName(), plug.host)
+	diskMounter := mount.NewSafeFormatAndMount(plug.host.GetMounter(), &testingexec.FakeExec{DisableScripts: true})
 	device := "/fake/device"
 	if goruntime.GOOS == "windows" {
 		// We need disk numbers on Windows.
@@ -1238,7 +1240,7 @@ func TestUnmounterTeardownNoClientError(t *testing.T) {
 	}
 
 	// do a fake local mount
-	diskMounter := util.NewSafeFormatAndMountFromHost(plug.GetPluginName(), plug.host)
+	diskMounter := mount.NewSafeFormatAndMount(plug.host.GetMounter(), &testingexec.FakeExec{DisableScripts: true})
 	device := "/fake/device"
 	if goruntime.GOOS == "windows" {
 		// We need disk numbers on Windows.
@@ -1294,6 +1296,7 @@ func TestPodServiceAccountTokenAttrs(t *testing.T) {
 		driver            *storage.CSIDriver
 		volumeContext     map[string]string
 		wantVolumeContext map[string]string
+		wantSecrets       map[string]string
 	}{
 		{
 			desc: "csi driver has no ServiceAccountToken",
@@ -1336,6 +1339,23 @@ func TestPodServiceAccountTokenAttrs(t *testing.T) {
 				},
 			},
 			wantVolumeContext: map[string]string{"csi.storage.k8s.io/serviceAccount.tokens": `{"gcp":{"token":"test-ns:test-service-account:3600:[gcp]","expirationTimestamp":"1970-01-01T00:00:01Z"}}`},
+		},
+		{
+			desc: "service account token in secrets",
+			driver: &storage.CSIDriver{
+				ObjectMeta: meta.ObjectMeta{
+					Name: testDriver,
+				},
+				Spec: storage.CSIDriverSpec{
+					ServiceAccountTokenInSecrets: ptr.To(true),
+					TokenRequests: []storage.TokenRequest{
+						{
+							Audience: gcp,
+						},
+					},
+				},
+			},
+			wantSecrets: map[string]string{"gcp": "test-ns:test-service-account:3600:[gcp]"},
 		},
 	}
 

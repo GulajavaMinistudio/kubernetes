@@ -17,12 +17,11 @@ limitations under the License.
 package fuzzer
 
 import (
-	"sigs.k8s.io/randfill"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtimeserializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/randfill"
 
 	bootstraptokenv1 "k8s.io/kubernetes/cmd/kubeadm/app/apis/bootstraptoken/v1"
 	"k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
@@ -38,6 +37,7 @@ func Funcs(codecs runtimeserializer.CodecFactory) []interface{} {
 		fuzzDNS,
 		fuzzNodeRegistration,
 		fuzzLocalEtcd,
+		fuzzExternalEtcd,
 		fuzzNetworking,
 		fuzzJoinConfiguration,
 		fuzzJoinControlPlane,
@@ -115,6 +115,15 @@ func fuzzLocalEtcd(obj *kubeadm.LocalEtcd, c randfill.Continue) {
 
 	// Pinning values for fields that get defaults if fuzz value is empty string or nil (thus making the round trip test fail)
 	obj.DataDir = "foo"
+}
+
+// TODO: Remove this once v1beta3 API was removed.
+func fuzzExternalEtcd(obj *kubeadm.ExternalEtcd, c randfill.Continue) {
+	c.FillNoCustom(obj)
+
+	// Ensure HTTPEndpoints equals Endpoints to maintain roundtrip compatibility
+	// with v1beta3 which doesn't have HTTPEndpoints field
+	obj.HTTPEndpoints = obj.Endpoints
 }
 
 func fuzzNetworking(obj *kubeadm.Networking, c randfill.Continue) {
