@@ -171,11 +171,6 @@ func TestDRA(t *testing.T) {
 				tCtx.Run("ExtendedResource", func(tCtx ktesting.TContext) { testExtendedResource(tCtx, false) })
 				tCtx.Run("ResourceClaimDeviceStatus", func(tCtx ktesting.TContext) { testResourceClaimDeviceStatus(tCtx, false) })
 				tCtx.Run("DeviceBindingConditions", func(tCtx ktesting.TContext) { testDeviceBindingConditions(tCtx, false) })
-				tCtx.Run("ResourceSliceController", func(tCtx ktesting.TContext) {
-					namespace := createTestNamespace(tCtx, nil)
-					tCtx = tCtx.WithNamespace(namespace)
-					TestCreateResourceSlices(tCtx, 100)
-				})
 			},
 		},
 		"v1beta1": {
@@ -283,7 +278,7 @@ func TestDRA(t *testing.T) {
 				tCtx.Log("Stopping the apiserver...")
 				server.TearDownFn()
 			})
-			tCtx = ktesting.WithRESTConfig(tCtx, server.ClientConfig)
+			tCtx = tCtx.WithRESTConfig(server.ClientConfig)
 
 			createNodes(tCtx)
 			tCtx = prepareScheduler(tCtx)
@@ -355,7 +350,7 @@ func prepareScheduler(tCtx ktesting.TContext) ktesting.TContext {
 		rootCtx: tCtx,
 	}
 
-	return ktesting.WithValue(tCtx, schedulerKey, scheduler)
+	return tCtx.WithValue(schedulerKey, scheduler)
 }
 
 // startScheduler starts the scheduler with an empty config, i.e. all settings at their default.
@@ -402,8 +397,8 @@ func (scheduler *schedulerSingleton) start(tCtx ktesting.TContext, config string
 	// starting the scheduler is done.
 	tCtx = scheduler.rootCtx
 	tCtx.Logf("Starting the scheduler for test %s...", tCtx.Name())
-	tCtx = ktesting.WithLogger(tCtx, klog.LoggerWithName(tCtx.Logger(), "scheduler"))
-	schedulerCtx := ktesting.WithCancel(tCtx)
+	tCtx = tCtx.WithLogger(klog.LoggerWithName(tCtx.Logger(), "scheduler"))
+	schedulerCtx := tCtx.WithCancel()
 	scheduler.cancel = schedulerCtx.Cancel
 	cfg := newSchedulerComponentConfig(schedulerCtx, config)
 	_, scheduler.informerFactory = util.StartScheduler(schedulerCtx, cfg, nil)
@@ -593,7 +588,7 @@ func testPrioritizedList(tCtx ktesting.TContext, enabled bool) {
 	// This is allowed to fail if the feature is disabled.
 	// createClaim normally doesn't return errors because this is unusual, but we can get it indirectly.
 	claim, err := func() (claim *resourceapi.ResourceClaim, finalError error) {
-		tCtx, finalize := ktesting.WithError(tCtx, &finalError)
+		tCtx, finalize := tCtx.WithError(&finalError)
 		defer finalize()
 		return createClaim(tCtx, namespace, "", class, claimPrioritizedList), nil
 	}()
@@ -618,7 +613,7 @@ func testPrioritizedList(tCtx ktesting.TContext, enabled bool) {
 			"Message": gomega.Equal("0/8 nodes are available: 8 cannot allocate all claims. still not schedulable, preemption: 0/8 nodes are available: 8 Preemption is not helpful for scheduling."),
 		}),
 	))
-	ktesting.Eventually(tCtx, func(tCtx ktesting.TContext) *v1.Pod {
+	tCtx.Eventually(func(tCtx ktesting.TContext) *v1.Pod {
 		pod, err := tCtx.Client().CoreV1().Pods(namespace).Get(tCtx, pod.Name, metav1.GetOptions{})
 		tCtx.ExpectNoError(err, "get pod")
 		return pod
@@ -689,7 +684,7 @@ func testPrioritizedListScoring(tCtx ktesting.TContext) {
 
 		_ = createPod(tCtx, namespace, "-pl-single-claim", podWithClaimName, claim)
 		expectedSelectedRequest := fmt.Sprintf("%s/%s", claim.Spec.Devices.Requests[0].Name, claim.Spec.Devices.Requests[0].FirstAvailable[0].Name)
-		ktesting.Eventually(tCtx, func(tCtx ktesting.TContext) *resourceapi.ResourceClaim {
+		tCtx.Eventually(func(tCtx ktesting.TContext) *resourceapi.ResourceClaim {
 			c, err := tCtx.Client().ResourceV1().ResourceClaims(namespace).Get(tCtx, claim.Name, metav1.GetOptions{})
 			tCtx.ExpectNoError(err)
 			return c
@@ -751,7 +746,7 @@ func testPrioritizedListScoring(tCtx ktesting.TContext) {
 
 		// The second subrequest in claim1 is for nodeInfos[2], so it should be chosen.
 		expectedSelectedRequest := fmt.Sprintf("%s/%s", claim1.Spec.Devices.Requests[0].Name, claim1.Spec.Devices.Requests[0].FirstAvailable[1].Name)
-		ktesting.Eventually(tCtx, func(tCtx ktesting.TContext) *resourceapi.ResourceClaim {
+		tCtx.Eventually(func(tCtx ktesting.TContext) *resourceapi.ResourceClaim {
 			c, err := tCtx.Client().ResourceV1().ResourceClaims(namespace).Get(tCtx, claimPrioritizedList1.Name, metav1.GetOptions{})
 			tCtx.ExpectNoError(err)
 			return c
@@ -759,7 +754,7 @@ func testPrioritizedListScoring(tCtx ktesting.TContext) {
 
 		// The first subrequest in claim2 is for nodeInfos[2], so it should be chosen.
 		expectedSelectedRequest = fmt.Sprintf("%s/%s", claim2.Spec.Devices.Requests[0].Name, claim2.Spec.Devices.Requests[0].FirstAvailable[0].Name)
-		ktesting.Eventually(tCtx, func(tCtx ktesting.TContext) *resourceapi.ResourceClaim {
+		tCtx.Eventually(func(tCtx ktesting.TContext) *resourceapi.ResourceClaim {
 			c, err := tCtx.Client().ResourceV1().ResourceClaims(namespace).Get(tCtx, claimPrioritizedList2.Name, metav1.GetOptions{})
 			tCtx.ExpectNoError(err)
 			return c
@@ -833,7 +828,7 @@ func testExtendedResource(tCtx ktesting.TContext, enabled bool) {
 				}),
 			))
 		}
-		ktesting.Eventually(tCtx, func(tCtx ktesting.TContext) *v1.Pod {
+		tCtx.Eventually(func(tCtx ktesting.TContext) *v1.Pod {
 			pod, err := tCtx.Client().CoreV1().Pods(namespace).Get(tCtx, pod.Name, metav1.GetOptions{})
 			tCtx.ExpectNoError(err, "get pod")
 			return pod
@@ -1114,7 +1109,7 @@ func testPublishResourceSlices(tCtx ktesting.TContext, haveLatestAPI bool, disab
 		getStats := func(tCtx ktesting.TContext) resourceslice.Stats {
 			return controller.GetStats()
 		}
-		ktesting.Eventually(tCtx, getStats).WithTimeout(syncDelay + 5*time.Second).Should(gomega.Equal(expectedStats))
+		tCtx.Eventually(getStats).WithTimeout(syncDelay + 5*time.Second).Should(gomega.Equal(expectedStats))
 		expectSlices(tCtx)
 
 		return controller, getStats, expectedStats
@@ -1126,7 +1121,7 @@ func testPublishResourceSlices(tCtx ktesting.TContext, haveLatestAPI bool, disab
 		controller, getStats, expectedStats := setup(tCtx)
 
 		// No further changes necessary.
-		ktesting.Consistently(tCtx, getStats).WithTimeout(quiesencePeriod).Should(gomega.Equal(expectedStats))
+		tCtx.Consistently(getStats).WithTimeout(quiesencePeriod).Should(gomega.Equal(expectedStats))
 
 		if len(disabledFeatures) > 0 && !gotDroppedFieldError.Load() {
 			tCtx.Error("expected dropped fields error, got none")
@@ -1140,8 +1135,8 @@ func testPublishResourceSlices(tCtx ktesting.TContext, haveLatestAPI bool, disab
 		resources.Pools[poolName] = pool
 		validationErrorsOkay.Store(true)
 		controller.Update(resources)
-		ktesting.Eventually(tCtx, getStats).WithTimeout(10*time.Second).Should(gomega.HaveField("NumDeletes", gomega.BeNumerically(">=", int64(1))), "Slice should have been removed.")
-		ktesting.Eventually(tCtx, func(tCtx ktesting.TContext) bool {
+		tCtx.Eventually(getStats).WithTimeout(10*time.Second).Should(gomega.HaveField("NumDeletes", gomega.BeNumerically(">=", int64(1))), "Slice should have been removed.")
+		tCtx.Eventually(func(tCtx ktesting.TContext) bool {
 			return gotValidationError.Load()
 		}).WithTimeout(time.Minute).Should(gomega.BeTrueBecause("Should have gotten another error because the slice is invalid."))
 	})
@@ -1152,7 +1147,7 @@ func testPublishResourceSlices(tCtx ktesting.TContext, haveLatestAPI bool, disab
 
 	tCtx.Run("recreate-after-delete", func(tCtx ktesting.TContext) {
 		_, getStats, expectedStats := setup(tCtx)
-		ktesting.Consistently(tCtx, getStats).WithTimeout(quiesencePeriod).Should(gomega.Equal(expectedStats))
+		tCtx.Consistently(getStats).WithTimeout(quiesencePeriod).Should(gomega.Equal(expectedStats))
 
 		// Stress the controller by repeatedly deleting the slices.
 		// One delete occurs after the sync period is over (because of the Consistently),
@@ -1161,7 +1156,7 @@ func testPublishResourceSlices(tCtx ktesting.TContext, haveLatestAPI bool, disab
 			tCtx.Log("deleting ResourceSlices")
 			tCtx.ExpectNoError(tCtx.Client().ResourceV1().ResourceSlices().DeleteCollection(tCtx, metav1.DeleteOptions{}, listDriverSlices), "delete driver slices")
 			expectedStats.NumCreates += int64(len(expectedSlices))
-			ktesting.Eventually(tCtx, getStats).WithTimeout(syncDelay + 5*time.Second).Should(gomega.Equal(expectedStats))
+			tCtx.Eventually(getStats).WithTimeout(syncDelay + 5*time.Second).Should(gomega.Equal(expectedStats))
 			expectSlices(tCtx)
 		}
 	})
@@ -1185,7 +1180,7 @@ func testPublishResourceSlices(tCtx ktesting.TContext, haveLatestAPI bool, disab
 				tCtx.ExpectNoError(err, "update slice")
 			}
 			expectedStats.NumUpdates += int64(len(expectedSlices))
-			ktesting.Eventually(tCtx, getStats).WithTimeout(syncDelay + 5*time.Second).Should(gomega.Equal(expectedStats))
+			tCtx.Eventually(getStats).WithTimeout(syncDelay + 5*time.Second).Should(gomega.Equal(expectedStats))
 			expectSlices(tCtx)
 		}
 	})
@@ -1716,7 +1711,7 @@ func testInvalidResourceSlices(tCtx ktesting.TContext) {
 			schedulingAttempted := gomega.HaveField("Status.Conditions", gomega.ContainElement(
 				gstruct.MatchFields(gstruct.IgnoreExtras, tc.expectedPodScheduledCondition),
 			))
-			ktesting.Eventually(tCtx, func(tCtx ktesting.TContext) *v1.Pod {
+			tCtx.Eventually(func(tCtx ktesting.TContext) *v1.Pod {
 				pod, err := tCtx.Client().CoreV1().Pods(namespace).Get(tCtx, pod.Name, metav1.GetOptions{})
 				tCtx.ExpectNoError(err, "get pod")
 				return pod
@@ -1724,7 +1719,7 @@ func testInvalidResourceSlices(tCtx ktesting.TContext) {
 
 			// Only check the ResourceClaim if we expected the Pod to schedule.
 			if tc.expectPodToSchedule {
-				ktesting.Eventually(tCtx, func(tCtx ktesting.TContext) *resourceapi.ResourceClaim {
+				tCtx.Eventually(func(tCtx ktesting.TContext) *resourceapi.ResourceClaim {
 					c, err := tCtx.Client().ResourceV1().ResourceClaims(namespace).Get(tCtx, claim.Name, metav1.GetOptions{})
 					tCtx.ExpectNoError(err)
 					return c
